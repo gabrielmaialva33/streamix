@@ -4,7 +4,6 @@ defmodule StreamixWeb.Api.V1.HistoryControllerTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
-  alias Streamix.Accounts
   alias Streamix.Iptv
 
   setup do
@@ -46,7 +45,7 @@ defmodule StreamixWeb.Api.V1.HistoryControllerTest do
       assert response["content_type"] == "movie"
       assert response["content_id"] == movie.id
       movie_id = movie.id
-      assert [%{content_id: ^movie_id}] = Iptv.list_watch_history(user.id)
+      assert [%{content_id: ^movie_id}] = Iptv.list_watch_history(library_key_fixture(user))
     end
 
     test "blocks recording another user's private playable content", %{conn: conn} do
@@ -66,7 +65,7 @@ defmodule StreamixWeb.Api.V1.HistoryControllerTest do
         |> json_response(404)
 
       assert response["error"]["code"] == "content_not_found"
-      assert Iptv.list_watch_history(user.id) == []
+      assert Iptv.list_watch_history(library_key_fixture(user)) == []
     end
 
     test "rejects negative, partial, and non-boolean progress values", %{conn: conn} do
@@ -94,12 +93,31 @@ defmodule StreamixWeb.Api.V1.HistoryControllerTest do
         assert response["error"]["code"] == "invalid_progress"
       end
 
-      assert Iptv.list_watch_history(user.id) == []
+      assert Iptv.list_watch_history(library_key_fixture(user)) == []
+    end
+  end
+
+  describe "DELETE /api/v1/history/:id" do
+    test "another user's entry id deletes nothing", %{conn: conn} do
+      owner = user_fixture()
+      intruder = user_fixture()
+      channel = channel_fixture(provider_fixture(owner))
+      owner_key = library_key_fixture(owner)
+      {:ok, entry} = Iptv.add_watch_history(owner_key, "live_channel", channel.id)
+
+      conn =
+        conn
+        |> authenticated(intruder)
+        |> delete(~p"/api/v1/history/#{entry.id}")
+
+      assert response(conn, 204)
+      assert [%{id: id}] = Iptv.list_watch_history(owner_key)
+      assert id == entry.id
     end
   end
 
   defp authenticated(conn, user) do
-    token = Accounts.generate_user_session_token(user)
-    put_req_header(conn, "authorization", "Bearer #{Base.url_encode64(token)}")
+    token = api_token_fixture(user)
+    put_req_header(conn, "authorization", "Bearer #{token}")
   end
 end

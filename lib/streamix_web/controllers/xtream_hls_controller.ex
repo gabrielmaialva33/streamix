@@ -143,7 +143,8 @@ defmodule StreamixWeb.XtreamHlsController do
 
   defp log_master_failure(%{content: {type, id}, provider_id: provider_id}, reason) do
     Logger.warning(
-      "[XtreamHls] master unavailable type=#{type} id=#{id} provider=#{provider_id} " <>
+      "[XtreamHls] master unavailable content=#{Streamix.SafeLog.content_ref({type, id})} " <>
+        "provider=#{provider_id} " <>
         "reason=#{inspect(reason)}"
     )
   end

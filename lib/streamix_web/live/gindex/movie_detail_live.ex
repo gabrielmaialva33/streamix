@@ -36,7 +36,9 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
            |> put_flash(:error, "Filme não pertence ao GIndex")
            |> push_navigate(to: ~p"/gindex/movies")}
         else
-          is_favorite = Library.favorite?(user_id, "movie", movie.id)
+          is_favorite =
+            Library.favorite?(socket.assigns.current_scope.library_key, "movie", movie.id)
+
           movie = Streamix.Catalog.get_movie_with_provider!(movie.id)
           display_title = DH.display_title_movie(movie)
 
@@ -71,12 +73,12 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
   end
 
   def handle_event("toggle_favorite", _, socket) do
-    user_id = socket.assigns.user_id
+    library_key = socket.assigns.current_scope.library_key
     movie = socket.assigns.movie
     is_favorite = socket.assigns.is_favorite
 
     result =
-      FavoriteState.toggle(user_id, "movie", movie.id, %{
+      FavoriteState.toggle(library_key, "movie", movie.id, %{
         content_name: movie.title || movie.name,
         content_icon: movie.stream_icon
       })

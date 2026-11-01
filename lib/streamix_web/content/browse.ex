@@ -134,7 +134,7 @@ defmodule StreamixWeb.Content.Browse do
     config = config!(kind)
 
     case FavoriteState.toggle(
-           socket.assigns.user_id,
+           socket.assigns.current_scope.library_key,
            config.content_type,
            item_id,
            favorite_attrs(kind, item)
@@ -481,7 +481,12 @@ defmodule StreamixWeb.Content.Browse do
   end
 
   defp load_favorites_map(socket, kind) do
-    favorite_ids = Library.list_favorite_ids(socket.assigns.user_id, config!(kind).content_type)
+    favorite_ids =
+      Library.list_favorite_ids(
+        socket.assigns.current_scope.library_key,
+        config!(kind).content_type
+      )
+
     assign(socket, favorites_map: favorite_ids)
   end
 

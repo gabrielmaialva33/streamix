@@ -29,7 +29,9 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
          |> push_navigate(to: ~p"/browse/animes?source=gindex")}
 
       anime ->
-        is_favorite = Library.favorite?(user_id, "series", anime.id)
+        is_favorite =
+          Library.favorite?(socket.assigns.current_scope.library_key, "series", anime.id)
+
         sorted_releases = Enum.sort_by(anime.seasons || [], & &1.season_number)
         display_title = DH.display_title(anime)
 
@@ -92,12 +94,12 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
   end
 
   def handle_event("toggle_favorite", _, socket) do
-    user_id = socket.assigns.user_id
+    library_key = socket.assigns.current_scope.library_key
     anime = socket.assigns.anime
     is_favorite = socket.assigns.is_favorite
 
     result =
-      FavoriteState.toggle(user_id, "series", anime.id, %{
+      FavoriteState.toggle(library_key, "series", anime.id, %{
         content_name: anime.title || anime.name,
         content_icon: anime.cover
       })

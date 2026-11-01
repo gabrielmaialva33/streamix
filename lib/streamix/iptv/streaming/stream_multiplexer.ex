@@ -171,7 +171,7 @@ defmodule Streamix.Iptv.StreamMultiplexer do
       health_recorded?: false
     }
 
-    Logger.info("[StreamMux] ready stream_key=#{inspect(stream_key)}")
+    Logger.info("[StreamMux] ready stream=#{SafeLog.content_ref(stream_key)}")
     {:ok, state}
   end
 
@@ -198,7 +198,9 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   def handle_call({:reclaim_if_idle, provider_id}, _from, state) do
     if state.provider_id == provider_id and map_size(state.subscribers) == 0 and
          state.status in [:connecting, :streaming] do
-      Logger.info("[StreamMux] reclaimed idle upstream stream_key=#{inspect(state.stream_key)}")
+      Logger.info(
+        "[StreamMux] reclaimed idle upstream stream=#{SafeLog.content_ref(state.stream_key)}"
+      )
 
       :telemetry.execute([:streamix, :live_mux, :reclaimed], %{count: 1}, %{
         provider_id: provider_id
@@ -263,7 +265,7 @@ defmodule Streamix.Iptv.StreamMultiplexer do
 
   def handle_info(:idle_timeout, state) do
     if map_size(state.subscribers) == 0 do
-      Logger.info("[StreamMux] idle shutdown stream_key=#{inspect(state.stream_key)}")
+      Logger.info("[StreamMux] idle shutdown stream=#{SafeLog.content_ref(state.stream_key)}")
       {:stop, :normal, %{state | idle_timer: nil}}
     else
       {:noreply, %{state | idle_timer: nil}}

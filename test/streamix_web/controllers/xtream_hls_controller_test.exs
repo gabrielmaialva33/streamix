@@ -191,7 +191,7 @@ defmodule StreamixWeb.XtreamHlsControllerTest do
 
     test "a playing session outlives the two-hour start window of its token", context do
       old =
-        Phoenix.Token.sign(
+        Phoenix.Token.encrypt(
           Endpoint,
           "stream",
           %{type: "movie", id: context.movie.id, user_id: nil, bypass: true},
@@ -305,7 +305,7 @@ defmodule StreamixWeb.XtreamHlsControllerTest do
       assert get(build_conn(), master_path("bad")).status == 401
 
       expired =
-        Phoenix.Token.sign(
+        Phoenix.Token.encrypt(
           Endpoint,
           "stream",
           %{type: "movie", id: context.movie.id, user_id: nil, bypass: true},
@@ -613,7 +613,7 @@ defmodule StreamixWeb.XtreamHlsControllerTest do
   defp master_path(token), do: "/api/stream/hls/master.m3u8?token=#{encoded(token)}"
 
   defp aged_token(movie_id, seconds) do
-    Phoenix.Token.sign(
+    Phoenix.Token.encrypt(
       Endpoint,
       "stream",
       %{type: "movie", id: movie_id, user_id: nil, bypass: true},

@@ -227,7 +227,7 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbe do
     with {:error, reason} <- result do
       Logger.info(
         "[DeliveryProbe] live channel unavailable provider=#{provider.id} " <>
-          "id=#{channel.id} reason=#{inspect(reason)}"
+          "content=#{Streamix.SafeLog.content_ref({:channel, channel.id})} reason=#{inspect(reason)}"
       )
 
       result
@@ -250,7 +250,8 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbe do
       failures ->
         Logger.info(
           "[DeliveryProbe] no usable source provider=#{provider.id} type=#{type} " <>
-            "id=#{content.id} reasons=#{inspect(Enum.reverse(failures))}"
+            "content=#{Streamix.SafeLog.content_ref({type, content.id})} " <>
+            "reasons=#{inspect(Enum.reverse(failures))}"
         )
 
         {:error, failure_reason(failures)}

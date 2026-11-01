@@ -70,14 +70,16 @@ defmodule StreamixWeb.Content.Detail do
     end
   end
 
+  # The favorite helpers take the signed-in user's library key
+  # (`scope.library_key`); favorites are sealed with it.
   def favorite?(nil, _content_type, _content_id), do: false
 
-  def favorite?(user_id, content_type, content_id),
-    do: Library.favorite?(user_id, content_type, content_id)
+  def favorite?(library_key, content_type, content_id),
+    do: Library.favorite?(library_key, content_type, content_id)
 
-  def toggle_movie_favorite(user_id, movie, current) do
+  def toggle_movie_favorite(library_key, movie, current) do
     result =
-      FavoriteState.toggle(user_id, "movie", movie.id, %{
+      FavoriteState.toggle(library_key, "movie", movie.id, %{
         content_name: movie.title || movie.name,
         content_icon: movie.stream_icon
       })
@@ -85,9 +87,9 @@ defmodule StreamixWeb.Content.Detail do
     FavoriteState.preserve_boolean(current, result)
   end
 
-  def toggle_series_favorite(user_id, series, current) do
+  def toggle_series_favorite(library_key, series, current) do
     result =
-      FavoriteState.toggle(user_id, "series", series.id, %{
+      FavoriteState.toggle(library_key, "series", series.id, %{
         content_name: series.title || series.name,
         content_icon: series.cover
       })

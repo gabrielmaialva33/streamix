@@ -45,6 +45,8 @@ defmodule StreamixWeb.Telemetry.Handlers do
 
   defp events do
     [
+      # Request lines, by route pattern
+      [:phoenix, :router_dispatch, :stop],
       # Sync pipeline
       [:streamix, :sync, :start],
       [:streamix, :sync, :stop],
@@ -70,6 +72,17 @@ defmodule StreamixWeb.Telemetry.Handlers do
   end
 
   # ----- handlers -----
+
+  # The route pattern, never the path: "/watch/:type/:id" says which page,
+  # "/watch/movie/123" would say which title (docs/privacy.md).
+  def handle_event([:phoenix, :router_dispatch, :stop], %{duration: duration}, meta, _config) do
+    %{conn: conn, route: route} = meta
+
+    Logger.info(fn ->
+      ms = System.convert_time_unit(duration, :native, :microsecond) / 1000
+      "#{conn.method} #{route} -> #{conn.status} in #{:erlang.float_to_binary(ms, decimals: 1)}ms"
+    end)
+  end
 
   def handle_event([:streamix, :sync, :start], _measurements, meta, _) do
     Logger.info("[Sync] start provider=#{meta[:provider_id]}")

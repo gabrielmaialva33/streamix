@@ -97,7 +97,8 @@ defmodule StreamixWeb.Content.MovieDetailLive do
          |> LiveSessionNavigation.navigate("/browse/movies", target)}
 
       movie ->
-        is_favorite = Detail.favorite?(user_id, "movie", movie.id)
+        is_favorite =
+          Detail.favorite?(socket.assigns.current_scope.library_key, "movie", movie.id)
 
         # Prewarm the upstream redirect chain in the background. The
         # user is on the detail page now and will likely click play in
@@ -204,12 +205,12 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   end
 
   def handle_event("toggle_favorite", _, socket) do
-    user_id = socket.assigns.user_id
+    library_key = socket.assigns.current_scope.library_key
     movie = socket.assigns.movie
     is_favorite = socket.assigns.is_favorite
 
     {:noreply,
-     assign(socket, is_favorite: Detail.toggle_movie_favorite(user_id, movie, is_favorite))}
+     assign(socket, is_favorite: Detail.toggle_movie_favorite(library_key, movie, is_favorite))}
   end
 
   def handle_event("open_gallery_image", %{"src" => image}, socket) do

@@ -252,10 +252,22 @@ defmodule StreamixWeb.Content.EpisodeDetailLiveTest do
       })
 
     assert {:ok, _} =
-             Streamix.Library.update_watch_progress(user.id, "episode", ep1.id, 1150, 1200)
+             Streamix.Library.update_watch_progress(
+               library_key_fixture(user),
+               "episode",
+               ep1.id,
+               1150,
+               1200
+             )
 
     assert {:ok, _} =
-             Streamix.Library.update_watch_progress(user.id, "episode", ep2.id, 600, 1200)
+             Streamix.Library.update_watch_progress(
+               library_key_fixture(user),
+               "episode",
+               ep2.id,
+               600,
+               1200
+             )
 
     conn = log_in_user(conn, user)
     {:ok, view, _html} = live(conn, ~p"/browse/series/#{series.id}")

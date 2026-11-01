@@ -126,11 +126,9 @@ defmodule StreamixWeb.SearchLive do
   end
 
   def handle_event("toggle_favorite", %{"id" => id, "type" => type}, socket) do
-    user_id = socket.assigns.user_id
-
     case parse_positive_integer(id) do
       {:ok, content_id} ->
-        result = toggle_favorite(user_id, type, content_id)
+        result = toggle_favorite(socket.assigns.current_scope.library_key, type, content_id)
         {:noreply, refresh_after_favorite(socket, result)}
 
       :error ->
@@ -138,8 +136,8 @@ defmodule StreamixWeb.SearchLive do
     end
   end
 
-  defp toggle_favorite(user_id, type, content_id) do
-    FavoriteState.toggle(user_id, type, content_id)
+  defp toggle_favorite(library_key, type, content_id) do
+    FavoriteState.toggle(library_key, type, content_id)
   end
 
   defp with_return_to(path, return_to) do
@@ -512,7 +510,8 @@ defmodule StreamixWeb.SearchLive do
       {series, more_series?} =
         search_series(user_id, query, show_adult, 0, page_sizes.series)
 
-      favorite_ids = search_favorite_ids(user_id, channels, movies, series)
+      favorite_ids =
+        search_favorite_ids(socket.assigns.current_scope.library_key, channels, movies, series)
 
       channels = mark_favorites(channels, favorite_ids.live_channels)
       movies = mark_favorites(movies, favorite_ids.movies)
@@ -581,7 +580,7 @@ defmodule StreamixWeb.SearchLive do
       next_page =
         mark_favorites(
           next_page,
-          favorite_ids_for(socket.assigns.user_id, result_type, next_page)
+          favorite_ids_for(socket.assigns.current_scope.library_key, result_type, next_page)
         )
 
       socket
@@ -630,24 +629,24 @@ defmodule StreamixWeb.SearchLive do
   defp result_stream(:movies), do: :search_movies
   defp result_stream(:series), do: :search_series
 
-  defp favorite_ids_for(user_id, :channels, items) do
-    Library.list_favorite_ids(user_id, "live_channel", Enum.map(items, & &1.id))
+  defp favorite_ids_for(library_key, :channels, items) do
+    Library.list_favorite_ids(library_key, "live_channel", Enum.map(items, & &1.id))
   end
 
-  defp favorite_ids_for(user_id, :movies, items) do
-    Library.list_favorite_ids(user_id, "movie", Enum.map(items, & &1.id))
+  defp favorite_ids_for(library_key, :movies, items) do
+    Library.list_favorite_ids(library_key, "movie", Enum.map(items, & &1.id))
   end
 
-  defp favorite_ids_for(user_id, :series, items) do
-    Library.list_favorite_ids(user_id, "series", Enum.map(items, & &1.id))
+  defp favorite_ids_for(library_key, :series, items) do
+    Library.list_favorite_ids(library_key, "series", Enum.map(items, & &1.id))
   end
 
-  defp search_favorite_ids(user_id, channels, movies, series) do
+  defp search_favorite_ids(library_key, channels, movies, series) do
     %{
       live_channels:
-        Library.list_favorite_ids(user_id, "live_channel", Enum.map(channels, & &1.id)),
-      movies: Library.list_favorite_ids(user_id, "movie", Enum.map(movies, & &1.id)),
-      series: Library.list_favorite_ids(user_id, "series", Enum.map(series, & &1.id))
+        Library.list_favorite_ids(library_key, "live_channel", Enum.map(channels, & &1.id)),
+      movies: Library.list_favorite_ids(library_key, "movie", Enum.map(movies, & &1.id)),
+      series: Library.list_favorite_ids(library_key, "series", Enum.map(series, & &1.id))
     }
   end
 

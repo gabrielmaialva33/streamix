@@ -33,7 +33,7 @@ defmodule StreamixWeb.Api.V1.HistoryController do
       show_adult: user.show_adult_content
     ]
 
-    items = Library.list_watch_history(user.id, opts)
+    items = Library.list_watch_history(conn.assigns.current_library_key, opts)
 
     json(conn, %{
       items:
@@ -63,7 +63,7 @@ defmodule StreamixWeb.Api.V1.HistoryController do
       {:ok, content_id} ->
         case progress_attrs(params) do
           {:ok, attrs} ->
-            save_history(conn, user.id, type, content_id, attrs)
+            save_history(conn, type, content_id, attrs)
 
           :error ->
             Response.error(
@@ -99,11 +99,9 @@ defmodule StreamixWeb.Api.V1.HistoryController do
   Removes a single history entry.
   """
   def delete(conn, %{"id" => id}) do
-    user = conn.assigns.current_user
-
     case parse_positive_integer(id) do
       {:ok, entry_id} ->
-        Library.remove_from_watch_history(user.id, entry_id)
+        Library.remove_from_watch_history(conn.assigns.current_library_key, entry_id)
         send_resp(conn, 204, "")
 
       :error ->
@@ -130,8 +128,8 @@ defmodule StreamixWeb.Api.V1.HistoryController do
   defp parse_optional_duration(nil), do: {:ok, nil}
   defp parse_optional_duration(value), do: parse_non_negative_integer(value)
 
-  defp save_history(conn, user_id, type, content_id, attrs) do
-    case Library.add_watch_history(user_id, type, content_id, attrs) do
+  defp save_history(conn, type, content_id, attrs) do
+    case Library.add_watch_history(conn.assigns.current_library_key, type, content_id, attrs) do
       {:ok, entry} ->
         conn
         |> put_status(:created)

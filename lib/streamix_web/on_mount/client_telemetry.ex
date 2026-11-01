@@ -28,13 +28,13 @@ defmodule StreamixWeb.OnMount.ClientTelemetry do
     count = socket.assigns.client_telemetry_count
 
     if count < @event_budget do
-      user_id =
+      library_key =
         case socket.assigns[:current_scope] do
-          %{user: %{id: id}} -> id
+          %{library_key: key} -> key
           _ -> nil
         end
 
-      persist_event(user_id, params)
+      persist_event(library_key, params)
       {:halt, assign(socket, :client_telemetry_count, count + 1)}
     else
       {:halt, socket}
@@ -44,8 +44,8 @@ defmodule StreamixWeb.OnMount.ClientTelemetry do
   defp handle_event("client_telemetry", _params, socket), do: {:halt, socket}
   defp handle_event(_event, _params, socket), do: {:cont, socket}
 
-  defp persist_event(user_id, params) do
-    case Qoe.record_client_event(user_id, params) do
+  defp persist_event(library_key, params) do
+    case Qoe.record_client_event(library_key, params) do
       {:ok, _result} ->
         :ok
 

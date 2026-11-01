@@ -287,7 +287,7 @@ defmodule StreamixWeb.XtreamLiveHlsTest do
   defp swap_token(path, old, new), do: String.replace(path, encoded(old), encoded(new))
 
   defp aged_token(channel_id, seconds) do
-    Phoenix.Token.sign(
+    Phoenix.Token.encrypt(
       Endpoint,
       "stream",
       %{type: "channel", id: channel_id, user_id: nil, bypass: true},

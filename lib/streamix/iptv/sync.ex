@@ -279,9 +279,9 @@ defmodule Streamix.Iptv.Sync do
       )
 
       # Sweep catalog_items whose content row was removed by this sync's
-      # orphan pass, plus the favorites/watch_progress/rooms that point at
-      # them. Otherwise stranded catalog_items linger until the nightly
-      # worker and can crash surfaces that join through them (see HomeLive).
+      # orphan pass, plus the watch-party rooms that point at them. Otherwise
+      # stranded catalog_items linger until the nightly worker and can crash
+      # surfaces that join through them (see HomeLive).
       cleanup_provider_orphans(provider.id)
 
       {:ok, %{live: live_count, movies: vod_count, series: series_count, details: details}}

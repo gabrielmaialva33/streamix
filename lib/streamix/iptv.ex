@@ -33,46 +33,58 @@ defmodule Streamix.Iptv do
   alias Streamix.Iptv.Streaming.StreamErrors
 
   # =============================================================================
-  # Favorites (catalog_item_id)
+  # Favorites (sealed per user)
+  #
+  # Favorites and watch history take the user's unlocked library key (see
+  # Streamix.Library), never a bare user id.
   # =============================================================================
-  defdelegate list_favorites(user_id, opts \\ []), to: Library
-  defdelegate list_home_favorites(user_id, opts \\ []), to: Library
-  defdelegate favorite?(user_id, content_type, content_id), to: Library
-  defdelegate count_favorites_by_type(user_id, opts \\ []), to: Library
-  defdelegate list_favorite_ids(user_id, content_type, content_ids \\ nil), to: Library
-  defdelegate count_favorites(user_id, opts \\ []), to: Library
-  defdelegate add_favorite(user_id, attrs), to: Library
-  defdelegate add_favorite(user_id, content_type, content_id, attrs \\ %{}), to: Library
-  defdelegate remove_favorite(user_id, content_type, content_id), to: Library
-  defdelegate toggle_favorite(user_id, content_type, content_id, attrs \\ %{}), to: Library
+  defdelegate list_favorites(key, opts \\ []), to: Library
+  defdelegate list_home_favorites(key, opts \\ []), to: Library
+  defdelegate favorite?(key, content_type, content_id), to: Library
+  defdelegate count_favorites_by_type(key, opts \\ []), to: Library
+  defdelegate list_favorite_ids(key, content_type, content_ids \\ nil), to: Library
+  defdelegate count_favorites(key, opts \\ []), to: Library
+  defdelegate add_favorite(key, attrs), to: Library
+  defdelegate add_favorite(key, content_type, content_id, attrs \\ %{}), to: Library
+  defdelegate remove_favorite(key, content_type, content_id), to: Library
+  defdelegate toggle_favorite(key, content_type, content_id, attrs \\ %{}), to: Library
 
   # =============================================================================
-  # Watch History (catalog_item_id via WatchProgress)
+  # Watch History (sealed WatchProgress)
   # =============================================================================
-  defdelegate list_watch_history(user_id, opts \\ []), to: Library
-  defdelegate list_home_history(user_id, opts \\ []), to: Library
-  defdelegate list_watch_history_for_analytics(user_id, opts \\ []), to: Library
-  defdelegate count_watch_history_by_type(user_id, opts \\ []), to: Library
+  defdelegate list_watch_history(key, opts \\ []), to: Library
+  defdelegate list_home_history(key, opts \\ []), to: Library
+  defdelegate list_watch_history_for_analytics(key, opts \\ []), to: Library
+  defdelegate count_watch_history_by_type(key, opts \\ []), to: Library
 
-  defdelegate add_watch_history(user_id, content_type, content_id, attrs \\ %{}),
+  defdelegate add_watch_history(key, content_type, content_id, attrs \\ %{}),
     to: Library
 
-  defdelegate add_to_watch_history(user_id, attrs), to: Library
+  defdelegate add_to_watch_history(key, attrs), to: Library
 
-  defdelegate update_progress(user_id, content_type, content_id, progress, duration \\ nil),
+  defdelegate update_progress(key, content_type, content_id, progress, duration \\ nil),
     to: Library
 
-  defdelegate update_watch_progress(user_id, content_type, content_id, current_time, duration),
+  defdelegate update_watch_progress(key, content_type, content_id, current_time, duration),
     to: Library
 
-  defdelegate update_watch_time(user_id, content_type, content_id, duration_seconds),
+  defdelegate update_watch_time(key, content_type, content_id, duration_seconds),
     to: Library
 
-  defdelegate remove_from_watch_history(user_id, entry_id), to: Library
-  defdelegate clear_watch_history(user_id), to: Library
-  defdelegate get_watch_progress_map(user_id, content_type, content_ids), to: Library
-  defdelegate get_series_progress_map(user_id, series_ids), to: Library
-  defdelegate latest_series_progress(user_id, series_ids), to: Library
+  defdelegate remove_from_watch_history(key, entry_id), to: Library
+  defdelegate clear_watch_history(key), to: Library
+  defdelegate get_watch_progress_map(key, content_type, content_ids), to: Library
+  defdelegate get_series_progress_map(key, series_ids), to: Library
+  defdelegate latest_series_progress(key, series_ids), to: Library
+
+  # Library keys (compatibility only; callers use Streamix.Library)
+  defdelegate unlock(user, password), to: Library
+  defdelegate seal_session(key), to: Library
+  defdelegate open_session(user_id, client_secret, sealed), to: Library
+  defdelegate session_secret_bytes(), to: Library
+  defdelegate change_password(user_id, current_password, new_password), to: Library
+  defdelegate forget(user_id), to: Library
+  defdelegate purge_legacy_plaintext(), to: Library
 
   # =============================================================================
   # Live Channels

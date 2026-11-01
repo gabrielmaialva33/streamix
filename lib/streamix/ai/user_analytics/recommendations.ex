@@ -12,8 +12,9 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
   alias Streamix.AI.UserAnalytics.Profile
   alias Streamix.Cache
   alias Streamix.Library
+  alias Streamix.Library.Key
 
-  @recommendations_ttl 3600
+  @recommendations_ttl :timer.hours(1)
   @content_collections ~w(movies series)
 
   @doc """
@@ -25,35 +26,36 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
   - `:limit` - Number of results (default: 20)
   - `:type` - Filter by content type ("movies", "series", "animes")
   - `:exclude_watched` - Exclude already watched (default: true)
+
+  The result reflects the sealed history, so it needs the user's library key
+  and is only cached in this node's memory.
   """
-  def get_recommendations(user_id, opts \\ []) do
+  def get_recommendations(%Key{} = key, opts \\ []) do
     collection = Keyword.get(opts, :type, "movies")
 
     if collection in @content_collections do
-      fetch_recommendations(user_id, opts)
+      fetch_recommendations(key, opts)
     else
       {:error, :invalid_collection}
     end
   end
 
-  defp fetch_recommendations(user_id, opts) do
-    cache_key = build_recommendations_key(user_id, opts)
-
-    Cache.fetch(cache_key, @recommendations_ttl, fn ->
-      recommend_for_profile(resolve_profile(user_id, opts), user_id, opts)
+  defp fetch_recommendations(%Key{user_id: user_id} = key, opts) do
+    Cache.fetch_personal(user_id, recommendations_cache_kind(opts), @recommendations_ttl, fn ->
+      recommend_for_profile(resolve_profile(key, opts), key, opts)
     end)
   end
 
-  defp recommend_for_profile(nil, _user_id, _opts), do: {:ok, []}
+  defp recommend_for_profile(nil, _key, _opts), do: {:ok, []}
 
-  defp recommend_for_profile(profile_vector, user_id, opts) do
-    search_recommendations(user_id, profile_vector, opts)
+  defp recommend_for_profile(profile_vector, key, opts) do
+    search_recommendations(key, profile_vector, opts)
   end
 
-  defp resolve_profile(user_id, opts) do
+  defp resolve_profile(key, opts) do
     case Keyword.fetch(opts, :profile) do
       {:ok, profile} -> profile
-      :error -> Profile.get_user_profile(user_id)
+      :error -> Profile.get_user_profile(key)
     end
   end
 
@@ -111,11 +113,11 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
     end
   end
 
-  defp search_recommendations(user_id, profile_vector, opts) do
+  defp search_recommendations(%Key{user_id: user_id} = key, profile_vector, opts) do
     collection = opts[:type] || "movies"
     limit = opts[:limit] || 20
     exclude_watched = Keyword.get(opts, :exclude_watched, true)
-    search_opts = build_search_opts(user_id, collection, limit, exclude_watched)
+    search_opts = build_search_opts(key, collection, limit, exclude_watched)
 
     case Qdrant.search(collection, profile_vector, search_opts) do
       {:ok, results} ->
@@ -138,28 +140,28 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
     end
   end
 
-  defp build_search_opts(user_id, collection, limit, exclude_watched) do
+  defp build_search_opts(key, collection, limit, exclude_watched) do
     search_opts = [limit: limit, score_threshold: ScoreThresholds.profile()]
 
-    case build_exclusion_filter(user_id, collection, exclude_watched) do
+    case build_exclusion_filter(key, collection, exclude_watched) do
       nil -> search_opts
       filter -> Keyword.put(search_opts, :filter, filter)
     end
   end
 
-  defp build_exclusion_filter(_user_id, _collection, false), do: nil
+  defp build_exclusion_filter(_key, _collection, false), do: nil
 
-  defp build_exclusion_filter(user_id, collection, true) do
-    case get_watched_content_ids(user_id, collection) do
+  defp build_exclusion_filter(key, collection, true) do
+    case get_watched_content_ids(key, collection) do
       [] -> nil
       watched_ids -> %{must_not: [%{has_id: watched_ids}]}
     end
   end
 
-  defp get_watched_content_ids(user_id, collection) do
+  defp get_watched_content_ids(%Key{user_id: user_id} = key, collection) do
     content_type = collection_to_content_type(collection)
 
-    Library.list_watch_history_for_analytics(user_id,
+    Library.list_watch_history_for_analytics(key,
       content_type: content_type,
       limit: 500,
       show_adult: show_adult_content?(user_id)
@@ -173,11 +175,11 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
   defp collection_to_content_type("series"), do: "episode"
   defp collection_to_content_type(_), do: "movie"
 
-  defp build_recommendations_key(user_id, opts) do
+  defp recommendations_cache_kind(opts) do
     type = opts[:type] || "movies"
     limit = opts[:limit] || 20
     exclude_watched = Keyword.get(opts, :exclude_watched, true)
-    Cache.recommendations_key(user_id, type, limit, exclude_watched)
+    {:recommendations, type, limit, exclude_watched}
   end
 
   defp recommendation_content_id(%{content_type: "episode", series_id: series_id}),

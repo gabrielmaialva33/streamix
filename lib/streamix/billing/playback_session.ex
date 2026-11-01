@@ -1,6 +1,10 @@
 defmodule Streamix.Billing.PlaybackSession do
   @moduledoc """
   Active playback slot used to enforce plan screen limits.
+
+  It records that a screen is in use, never what it plays: the limit only
+  needs a count, and the content would tell the operator what the user
+  watches (docs/privacy.md).
   """
 
   use Ecto.Schema
@@ -9,8 +13,6 @@ defmodule Streamix.Billing.PlaybackSession do
   schema "playback_sessions" do
     field :user_id, :id
     field :session_id, :string
-    field :content_type, :string
-    field :content_id, :integer
     field :status, :string, default: "active"
     field :started_at, :utc_datetime
     field :last_seen_at, :utc_datetime
@@ -28,8 +30,6 @@ defmodule Streamix.Billing.PlaybackSession do
     |> cast(attrs, [
       :user_id,
       :session_id,
-      :content_type,
-      :content_id,
       :status,
       :started_at,
       :last_seen_at,
@@ -40,8 +40,6 @@ defmodule Streamix.Billing.PlaybackSession do
     |> validate_required([
       :user_id,
       :session_id,
-      :content_type,
-      :content_id,
       :status,
       :started_at,
       :last_seen_at

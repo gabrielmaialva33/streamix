@@ -80,9 +80,30 @@ defmodule StreamixWeb.Telemetry.HandlersTest do
           [:streamix, :auth, :api_key, :rejected],
           [:streamix, :auth, :bearer, :rejected],
           [:streamix, :permission, :denied],
-          [:streamix, :stream_token, :bypass_used]
+          [:streamix, :stream_token, :bypass_used],
+          [:phoenix, :router_dispatch, :stop]
         ] do
       assert event in attached, "#{inspect(event)} is not attached"
     end
+  end
+
+  test "request lines name the route pattern, never the path" do
+    conn = %Plug.Conn{method: "GET", request_path: "/watch/movie/123", status: 200}
+    previous_level = Logger.level()
+    Logger.configure(level: :info)
+    on_exit(fn -> Logger.configure(level: previous_level) end)
+
+    log =
+      ExUnit.CaptureLog.capture_log([level: :info], fn ->
+        Handlers.handle_event(
+          [:phoenix, :router_dispatch, :stop],
+          %{duration: System.convert_time_unit(12, :millisecond, :native)},
+          %{conn: conn, route: "/watch/:type/:id"},
+          nil
+        )
+      end)
+
+    assert log =~ "GET /watch/:type/:id -> 200 in 12.0ms"
+    refute log =~ "123"
   end
 end

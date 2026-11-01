@@ -81,13 +81,13 @@ defmodule StreamixWeb.TorrentLive do
   end
 
   def handle_event("toggle_favorite", %{"id" => id}, socket) do
-    user_id = socket.assigns.user_id
+    library_key = socket.assigns.current_scope.library_key
 
     case parse_positive_integer(id) do
       {:ok, movie_id} ->
         movie = Streamix.Catalog.get_movie!(movie_id)
 
-        case FavoriteState.toggle(user_id, "movie", movie_id, %{
+        case FavoriteState.toggle(library_key, "movie", movie_id, %{
                content_name: movie.title || movie.name,
                content_icon: movie.stream_icon
              }) do
@@ -282,7 +282,11 @@ defmodule StreamixWeb.TorrentLive do
       empty_results = socket.assigns.page == 1 and Enum.empty?(movies)
 
       favorite_ids =
-        Library.list_favorite_ids(socket.assigns.user_id, "movie", Enum.map(movies, & &1.id))
+        Library.list_favorite_ids(
+          socket.assigns.current_scope.library_key,
+          "movie",
+          Enum.map(movies, & &1.id)
+        )
 
       socket
       |> stream(:movies, movies)

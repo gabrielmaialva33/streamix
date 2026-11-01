@@ -95,7 +95,7 @@ defmodule StreamixWeb.HomeData do
   def filter_trending_genre(socket, genre) do
     trending =
       load_trending(
-        user_id(socket),
+        library_key(socket),
         genre,
         socket.assigns.trending_period,
         show_adult_content?(socket)
@@ -111,7 +111,7 @@ defmodule StreamixWeb.HomeData do
 
     trending =
       load_trending(
-        user_id(socket),
+        library_key(socket),
         socket.assigns.trending_genre,
         period_days,
         show_adult_content?(socket)
@@ -125,13 +125,13 @@ defmodule StreamixWeb.HomeData do
   def filter_series_genre(socket, genre) do
     socket
     |> assign(series_genre: genre)
-    |> assign(series: load_series(user_id(socket), genre, show_adult_content?(socket)))
+    |> assign(series: load_series(library_key(socket), genre, show_adult_content?(socket)))
   end
 
   def filter_channels_category(socket, category) do
     socket
     |> assign(channels_category: category)
-    |> assign(channels: load_channels(user_id(socket), category, show_adult_content?(socket)))
+    |> assign(channels: load_channels(library_key(socket), category, show_adult_content?(socket)))
   end
 
   def toggle_featured_favorite(%{assigns: %{current_scope: nil}} = socket), do: socket
@@ -144,7 +144,7 @@ defmodule StreamixWeb.HomeData do
     content_type = content_type(type)
 
     result =
-      FavoriteState.toggle(scope.user.id, content_type, content.id, %{
+      FavoriteState.toggle(scope.library_key, content_type, content.id, %{
         content_name: content.title || content.name,
         content_icon: content.stream_icon || content.cover
       })
@@ -158,7 +158,11 @@ defmodule StreamixWeb.HomeData do
     with {:ok, content_type} <- normalize_favorite_type(type),
          {:ok, content_id} <- parse_content_id(id),
          {:ok, status} <-
-           FavoriteState.toggle(socket.assigns.current_scope.user.id, content_type, content_id) do
+           FavoriteState.toggle(
+             socket.assigns.current_scope.library_key,
+             content_type,
+             content_id
+           ) do
       socket
       |> assign_favorite_map(content_type, content_id, status)
       |> refresh_home_favorites()
@@ -172,6 +176,11 @@ defmodule StreamixWeb.HomeData do
   def user_id(%{current_scope: nil}), do: nil
   def user_id(%{current_scope: %{user: %{id: id}}}), do: id
   def user_id(_assigns), do: nil
+
+  @doc "The signed-in user's unlocked library key, or nil for guests."
+  def library_key(%{assigns: assigns}), do: library_key(assigns)
+  def library_key(%{current_scope: %{library_key: key}}), do: key
+  def library_key(_assigns), do: nil
 
   @doc "Loads the non-personalized catalog shelves for progressive rendering."
   def catalog_sections(assigns) when is_map(assigns) do
@@ -232,15 +241,15 @@ defmodule StreamixWeb.HomeData do
 
   @doc "Loads shelves that use the shared user taste context."
   def personalization_sections(assigns) when is_map(assigns) do
-    user_id = user_id(assigns)
+    key = library_key(assigns)
     show_adult = show_adult_content?(assigns)
-    personalization = personalization_context(user_id)
+    personalization = personalization_context(key)
 
     HomeCatalogLoader.load(
       %{
         trending: fn ->
           load_trending(
-            user_id,
+            key,
             Map.get(assigns, :trending_genre, "all"),
             Map.get(assigns, :trending_period, 7),
             show_adult,
@@ -249,17 +258,17 @@ defmodule StreamixWeb.HomeData do
         end,
         series: fn ->
           load_series(
-            user_id,
+            key,
             Map.get(assigns, :series_genre, "all"),
             show_adult,
             personalization
           )
         end,
         channels: fn ->
-          load_channels(user_id, Map.get(assigns, :channels_category, "all"), show_adult)
+          load_channels(key, Map.get(assigns, :channels_category, "all"), show_adult)
         end,
-        recommendations: fn -> load_recommendations(user_id, show_adult, personalization) end,
-        genre_filters: fn -> load_genre_filters(user_id) end
+        recommendations: fn -> load_recommendations(key, show_adult, personalization) end,
+        genre_filters: fn -> load_genre_filters(key) end
       },
       timeout: 8_000
     )
@@ -270,17 +279,17 @@ defmodule StreamixWeb.HomeData do
     %{favorites: [], history: []}
   end
 
-  def library_sections(%{current_scope: %{user: user}}) do
+  def library_sections(%{current_scope: %{user: user, library_key: key}}) do
     HomeCatalogLoader.load(
       %{
         favorites: fn ->
-          Library.list_home_favorites(user.id,
+          Library.list_home_favorites(key,
             limit: @home_default_limit,
             show_adult: user.show_adult_content
           )
         end,
         history: fn ->
-          user.id
+          key
           |> Library.list_home_history(
             limit: @home_history_limit * 3,
             show_adult: user.show_adult_content
@@ -304,23 +313,23 @@ defmodule StreamixWeb.HomeData do
     }
   end
 
-  def annotation_sections(%{current_scope: %{user: user}} = assigns) do
+  def annotation_sections(%{current_scope: %{library_key: key}} = assigns) do
     movie_ids = collect_content_ids(assigns, [:movies, :trending, :new_releases, :top_10])
     series_ids = collect_content_ids(assigns, [:series])
 
     HomeCatalogLoader.load(
       %{
-        featured_favorite: fn -> check_featured_favorite(Map.get(assigns, :featured), user.id) end,
-        movie_favorites_map: fn -> Library.list_favorite_ids(user.id, "movie", movie_ids) end,
-        series_favorites_map: fn -> Library.list_favorite_ids(user.id, "series", series_ids) end,
-        movie_progress: fn -> Library.get_watch_progress_map(user.id, "movie", movie_ids) end,
-        series_progress: fn -> Library.get_series_progress_map(user.id, series_ids) end
+        featured_favorite: fn -> check_featured_favorite(Map.get(assigns, :featured), key) end,
+        movie_favorites_map: fn -> Library.list_favorite_ids(key, "movie", movie_ids) end,
+        series_favorites_map: fn -> Library.list_favorite_ids(key, "series", series_ids) end,
+        movie_progress: fn -> Library.get_watch_progress_map(key, "movie", movie_ids) end,
+        series_progress: fn -> Library.get_series_progress_map(key, series_ids) end
       },
       timeout: 6_000
     )
   end
 
-  defp load_trending(user_id, genre, period, show_adult, personalization \\ nil)
+  defp load_trending(key, genre, period, show_adult, personalization \\ nil)
 
   defp load_trending(nil, _genre, period, _show_adult, _personalization) do
     Cache.fetch("home:trending:guest:#{period}", @trending_ttl, fn ->
@@ -332,12 +341,14 @@ defmodule StreamixWeb.HomeData do
     end)
   end
 
-  defp load_trending(user_id, genre, period, show_adult, personalization) do
-    cache_key = "home:trending:user:#{user_id}:#{genre}:#{period}:adult:#{show_adult}"
-    personalization = personalization || personalization_context(user_id)
+  # Reordered by the user's taste, so it is cached in memory only (Redis would
+  # hold a ranking derived from their sealed history).
+  defp load_trending(key, genre, period, show_adult, personalization) do
+    cache_kind = {:home_trending, genre, period, show_adult}
+    personalization = personalization || personalization_context(key)
 
-    Cache.fetch(cache_key, @trending_ttl, fn ->
-      AI.get_personalized_trending(user_id,
+    Cache.fetch_personal(key.user_id, cache_kind, :timer.seconds(@trending_ttl), fn ->
+      AI.get_personalized_trending(key,
         limit: @home_default_limit,
         genre: genre,
         days: period,
@@ -355,16 +366,16 @@ defmodule StreamixWeb.HomeData do
     end)
   end
 
-  defp load_series(user_id, genre, show_adult, personalization \\ nil)
+  defp load_series(key, genre, show_adult, personalization \\ nil)
 
   defp load_series(nil, _genre, _show_adult, _personalization) do
     Streamix.Catalog.list_public_series(limit: @home_default_limit, show_adult: false)
   end
 
-  defp load_series(user_id, genre, show_adult, personalization) do
-    personalization = personalization || personalization_context(user_id)
+  defp load_series(key, genre, show_adult, personalization) do
+    personalization = personalization || personalization_context(key)
 
-    AI.get_personalized_series(user_id,
+    AI.get_personalized_series(key,
       limit: @home_default_limit,
       genre: genre,
       show_adult: show_adult,
@@ -378,8 +389,8 @@ defmodule StreamixWeb.HomeData do
     Streamix.Catalog.list_public_channels(limit: @home_channels_limit, show_adult: false)
   end
 
-  defp load_channels(user_id, category, show_adult) do
-    AI.get_personalized_channels(user_id,
+  defp load_channels(key, category, show_adult) do
+    AI.get_personalized_channels(key,
       limit: @home_channels_limit,
       category: category,
       show_adult: show_adult
@@ -388,13 +399,13 @@ defmodule StreamixWeb.HomeData do
 
   defp load_recommendations(nil, _show_adult, _personalization), do: []
 
-  defp load_recommendations(user_id, show_adult, personalization) do
+  defp load_recommendations(key, show_adult, personalization) do
     ids = recommendation_ids(personalization.movie_recommendations)
 
     # One card per title: the vectors of several providers' copies of a movie
     # rank side by side.
     recommendations =
-      user_id
+      key.user_id
       |> Streamix.Catalog.list_visible_movies_by_ids(ids, show_adult: show_adult)
       |> order_by_ids(ids)
       |> TitleIdentity.distinct()
@@ -403,7 +414,7 @@ defmodule StreamixWeb.HomeData do
       Enum.take(recommendations, @home_default_limit)
     else
       fallback =
-        AI.get_personalized_trending(user_id,
+        AI.get_personalized_trending(key,
           limit: @home_default_limit,
           show_adult: show_adult,
           profile: personalization.profile,
@@ -455,10 +466,15 @@ defmodule StreamixWeb.HomeData do
 
   defp load_genre_filters(nil), do: AI.get_user_genre_filters(nil)
 
-  defp load_genre_filters(user_id) do
-    Cache.fetch("home:genre_filters:user:#{user_id}", @genre_filters_ttl, fn ->
-      AI.get_user_genre_filters(user_id)
-    end)
+  defp load_genre_filters(key) do
+    Cache.fetch_personal(
+      key.user_id,
+      :home_genre_filters,
+      :timer.seconds(@genre_filters_ttl),
+      fn ->
+        AI.get_user_genre_filters(key)
+      end
+    )
   end
 
   defp personalization_context(nil) do
@@ -472,7 +488,7 @@ defmodule StreamixWeb.HomeData do
     }
   end
 
-  defp personalization_context(user_id), do: AI.get_personalization_context(user_id)
+  defp personalization_context(key), do: AI.get_personalization_context(key)
 
   defp mark_all_loaded(socket) do
     assign(socket, :home_loading, Map.new(@home_groups, &{&1, false}))
@@ -490,10 +506,10 @@ defmodule StreamixWeb.HomeData do
     |> Enum.uniq()
   end
 
-  defp check_featured_favorite(nil, _user_id), do: false
+  defp check_featured_favorite(nil, _key), do: false
 
-  defp check_featured_favorite({type, content}, user_id) do
-    Library.favorite?(user_id, content_type(type), content.id)
+  defp check_featured_favorite({type, content}, key) do
+    Library.favorite?(key, content_type(type), content.id)
   end
 
   defp content_type(:movie), do: "movie"
@@ -534,12 +550,12 @@ defmodule StreamixWeb.HomeData do
   defp update_favorite_map(map, content_id, :removed), do: MapSet.delete(map, content_id)
 
   defp refresh_home_favorites(socket) do
-    user = socket.assigns.current_scope.user
+    %{user: user, library_key: key} = socket.assigns.current_scope
 
     assign(
       socket,
       :favorites,
-      Library.list_home_favorites(user.id,
+      Library.list_home_favorites(key,
         limit: @home_default_limit,
         show_adult: user.show_adult_content
       )
@@ -554,7 +570,7 @@ defmodule StreamixWeb.HomeData do
     assign(
       socket,
       :featured_favorite,
-      check_featured_favorite(socket.assigns.featured, socket.assigns.current_scope.user.id)
+      check_featured_favorite(socket.assigns.featured, socket.assigns.current_scope.library_key)
     )
   end
 

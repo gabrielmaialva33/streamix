@@ -46,7 +46,10 @@ defmodule StreamixWeb.Content.ReelsLive do
            show_adult: user.show_adult_content
          )
      )
-     |> assign(favorites_map: Library.list_favorite_ids(user.id, "series"))
+     |> assign(
+       favorites_map:
+         Library.list_favorite_ids(socket.assigns.current_scope.library_key, "series")
+     )
      |> assign(selected_category: nil)
      |> assign(search: "")
      |> assign(page: 1)

@@ -126,6 +126,31 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Minha lista uses the poster grid with touch-visible actions, Histórico no longer stacks its type badge on the
   progress bar, and the Guia has compact phone rows and category chips without the "Canais |" prefix.
 
+### Security
+
+- Watch history, playback progress and favorites are sealed per user: AES-256-GCM rows under a random library key
+  that only the user's password (PBKDF2, 600k iterations) or a secret held by their own session can open. Neither the
+  database, its backups, Redis, Qdrant, the logs nor the admin panel can tell which content anyone watched. The threat
+  model and its limits are in [`docs/privacy.md`](docs/privacy.md).
+- Personalization (taste profile, insights, recommendations, personalized shelves) is computed inside the user's
+  session and cached in node memory only. The Qdrant `user_profiles` collection and `UpdateUserProfileWorker` are
+  gone.
+- "Em alta" ranks recent, well-rated titles instead of counting views, which on a small instance would tell who
+  watched what.
+- Logs never pair a user with content, nor name content: request lines show route patterns (`GET /watch/:type/:id`)
+  without `user_id`, streaming logs tag content with a per-boot opaque reference, upstream URLs lose their stream
+  ids, and the sample nginx log format drops query strings, `Referer` and client addresses. Stream tokens are
+  encrypted instead of signed.
+- `playback_sessions` stops recording what a screen plays and deletes slots when playback ends, QoE samples no longer
+  store a user, `watch_events` is emptied, ended Watch Party rooms are purged after a day instead of 90, and
+  personal-provider VOD bypasses the on-disk block cache.
+- The migration is an expand step (new `sealed_watch_progress`/`sealed_favorites` tables, nothing dropped, renamed or
+  made stricter), so the previous image survives the deploy window and an image rollback. A later release retires
+  the plaintext tables and the cleared columns.
+- Upgrading ends every session once: web users and TV/mobile apps log in again, and the API bearer token now carries
+  the session's library secret (88 characters). Each user's plaintext history is sealed at their next login; run
+  `Streamix.Library.purge_legacy_plaintext/0` to delete what is left.
+
 ## [v0.0.1] - 2026-04-13
 
 Initial pre-release. Everything built so far is bundled into a single baseline tag.

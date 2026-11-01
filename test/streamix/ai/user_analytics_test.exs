@@ -19,7 +19,7 @@ defmodule Streamix.AI.UserAnalyticsTest do
   }
 
   alias Streamix.Cache
-  alias Streamix.Iptv.{Category, Episode, Genre, History, Season, WatchProgress}
+  alias Streamix.Iptv.{Category, Episode, Genre, History, Season}
   alias Streamix.Iptv.Genres.Normalizer
 
   defmodule ProfileQdrantStub do
@@ -31,8 +31,12 @@ defmodule Streamix.AI.UserAnalyticsTest do
       {:ok, Enum.map(ids, &%{id: &1, vector: [0.25, 0.75], payload: %{}})}
     end
 
-    def upsert_point(_collection, _id, _vector, _payload) do
-      Application.fetch_env!(:streamix, :user_profile_qdrant_result)
+    def upsert_point(collection, id, _vector, _payload) do
+      if owner = Application.get_env(:streamix, :user_profile_test_owner) do
+        send(owner, {:profile_upserted, collection, id})
+      end
+
+      {:ok, id}
     end
   end
 
@@ -136,49 +140,33 @@ defmodule Streamix.AI.UserAnalyticsTest do
                {"acao", "Ação"},
                {"drama", "Drama"},
                {"comedia", "Comédia"}
-             ] = UserAnalytics.get_user_genre_filters(user.id)
+             ] = UserAnalytics.get_user_genre_filters(library_key_fixture(user))
     end
 
     test "skips favorite genres that normalize to nothing and dedupes" do
       user = user_fixture()
-      cache_key = Cache.user_insights_key(user.id)
 
-      ConCache.put(
-        :streamix_l1_cache,
-        cache_key,
-        %ConCache.Item{
-          value: %{
-            has_data: true,
-            favorite_genres: ["Action", "Ação", "UnknownXYZ", "Drama"]
-          },
-          ttl: :timer.seconds(60)
-        }
-      )
+      put_personal_cache(user, :insights, %{
+        has_data: true,
+        favorite_genres: ["Action", "Ação", "UnknownXYZ", "Drama"]
+      })
 
       assert [
                {"all", "Todos"},
                {"acao", "Ação"},
                {"drama", "Drama"}
-             ] = UserAnalytics.get_user_genre_filters(user.id)
+             ] = UserAnalytics.get_user_genre_filters(library_key_fixture(user))
     end
 
     test "falls back to default genre filters when all favorite genres map to nothing" do
       user = user_fixture()
-      cache_key = Cache.user_insights_key(user.id)
 
-      ConCache.put(
-        :streamix_l1_cache,
-        cache_key,
-        %ConCache.Item{
-          value: %{
-            has_data: true,
-            favorite_genres: ["UnknownXYZ", "NotAGenre"]
-          },
-          ttl: :timer.seconds(60)
-        }
-      )
+      put_personal_cache(user, :insights, %{
+        has_data: true,
+        favorite_genres: ["UnknownXYZ", "NotAGenre"]
+      })
 
-      assert UserAnalytics.get_user_genre_filters(user.id) ==
+      assert UserAnalytics.get_user_genre_filters(library_key_fixture(user)) ==
                UserAnalytics.get_user_genre_filters(nil)
     end
   end
@@ -187,8 +175,10 @@ defmodule Streamix.AI.UserAnalyticsTest do
     test "returns no-data contract for users without history" do
       user = user_fixture()
 
-      assert UserAnalytics.get_user_insights(user.id) == Insights.get_user_insights(user.id)
-      assert UserAnalytics.get_user_insights(user.id) == %{has_data: false}
+      assert UserAnalytics.get_user_insights(library_key_fixture(user)) ==
+               Insights.get_user_insights(library_key_fixture(user))
+
+      assert UserAnalytics.get_user_insights(library_key_fixture(user)) == %{has_data: false}
     end
 
     test "summarizes completion, genre, type, time, and session patterns" do
@@ -231,7 +221,7 @@ defmodule Streamix.AI.UserAnalyticsTest do
         watched_at: tuesday_morning
       })
 
-      insights = UserAnalytics.get_user_insights(user.id)
+      insights = UserAnalytics.get_user_insights(library_key_fixture(user))
 
       assert insights.has_data == true
       assert insights.total_items == 3
@@ -255,39 +245,47 @@ defmodule Streamix.AI.UserAnalyticsTest do
     test "compute_user_profile returns a deterministic no-history error without Qdrant" do
       user = user_fixture()
 
-      assert UserAnalytics.compute_user_profile(user.id) == Profile.compute_user_profile(user.id)
-      assert UserAnalytics.compute_user_profile(user.id) == {:error, :no_history}
+      assert UserAnalytics.compute_user_profile(library_key_fixture(user)) ==
+               Profile.compute_user_profile(library_key_fixture(user))
+
+      assert UserAnalytics.compute_user_profile(library_key_fixture(user)) ==
+               {:error, :no_history}
     end
 
     test "get_user_profile returns cached profile vectors without external lookup" do
       user = user_fixture()
       vector = [0.1, 0.2, 0.7]
 
-      put_l1_cache(Cache.user_profile_key(user.id), vector)
+      put_personal_cache(user, :profile, vector)
 
-      assert UserAnalytics.get_user_profile(user.id) == Profile.get_user_profile(user.id)
-      assert UserAnalytics.get_user_profile(user.id) == vector
+      assert UserAnalytics.get_user_profile(library_key_fixture(user)) ==
+               Profile.get_user_profile(library_key_fixture(user))
+
+      assert UserAnalytics.get_user_profile(library_key_fixture(user)) == vector
     end
 
-    test "returns persistence failures so callers can retry profile updates" do
+    # A stored taste vector can be searched for the titles nearest to it,
+    # which reveals what the user watched: profiles stay in memory.
+    test "computes the profile without storing it anywhere" do
       user = user_fixture()
       provider = provider_fixture(user)
       movie = movie_fixture(provider, %{name: "Profile Persistence"})
       watched_movie(user, movie)
 
       previous_module = Application.get_env(:streamix, :user_profile_qdrant_module)
-      previous_result = Application.get_env(:streamix, :user_profile_qdrant_result)
+      previous_owner = Application.get_env(:streamix, :user_profile_test_owner)
 
       Application.put_env(:streamix, :user_profile_qdrant_module, ProfileQdrantStub)
-      Application.put_env(:streamix, :user_profile_qdrant_result, {:error, :unavailable})
+      Application.put_env(:streamix, :user_profile_test_owner, self())
 
       on_exit(fn ->
         restore_env(:user_profile_qdrant_module, previous_module)
-        restore_env(:user_profile_qdrant_result, previous_result)
+        restore_env(:user_profile_test_owner, previous_owner)
       end)
 
-      assert UserAnalytics.compute_user_profile(user.id) ==
-               {:error, {:profile_store_failed, :unavailable}}
+      assert UserAnalytics.compute_user_profile(library_key_fixture(user)) == {:ok, [0.25, 0.75]}
+      assert_received {:profile_embedding_ids, "movies", [_movie_id]}
+      refute_received {:profile_upserted, _collection, _id}
     end
 
     test "uses the parent series id when fetching an episode embedding" do
@@ -322,23 +320,20 @@ defmodule Streamix.AI.UserAnalyticsTest do
         })
         |> Repo.insert!()
 
-      {:ok, _history} = History.add(user.id, "episode", episode.id)
+      {:ok, _history} = History.add(library_key_fixture(user), "episode", episode.id)
 
       previous_module = Application.get_env(:streamix, :user_profile_qdrant_module)
-      previous_result = Application.get_env(:streamix, :user_profile_qdrant_result)
       previous_owner = Application.get_env(:streamix, :user_profile_test_owner)
 
       Application.put_env(:streamix, :user_profile_qdrant_module, ProfileQdrantStub)
-      Application.put_env(:streamix, :user_profile_qdrant_result, {:ok, %{}})
       Application.put_env(:streamix, :user_profile_test_owner, self())
 
       on_exit(fn ->
         restore_env(:user_profile_qdrant_module, previous_module)
-        restore_env(:user_profile_qdrant_result, previous_result)
         restore_env(:user_profile_test_owner, previous_owner)
       end)
 
-      assert {:ok, _profile} = UserAnalytics.compute_user_profile(user.id)
+      assert {:ok, _profile} = UserAnalytics.compute_user_profile(library_key_fixture(user))
       assert_received {:profile_embedding_ids, "series", [series_id]}
       assert series_id == series.id
       refute series_id == episode.id
@@ -346,6 +341,23 @@ defmodule Streamix.AI.UserAnalyticsTest do
   end
 
   describe "personalization context and hybrid ranking" do
+    test "loads both shelves' rankings for a user with a taste profile" do
+      user = user_fixture()
+      key = library_key_fixture(user)
+
+      put_personal_cache(user, :profile, [0.1, 0.9])
+      put_personal_cache(user, {:recommendations, "movies", 48, true}, [%{id: 7, score: 0.9}])
+      put_personal_cache(user, {:recommendations, "series", 48, true}, [%{id: 9, score: 0.8}])
+
+      assert %{
+               profile: [0.1, 0.9],
+               movie_recommendations: [%{id: 7}],
+               series_recommendations: [%{id: 9}],
+               movie_scores: %{7 => 0.9},
+               series_scores: %{9 => 0.8}
+             } = Context.load(key)
+    end
+
     test "returns one complete empty context for a user without history" do
       user = user_fixture()
 
@@ -356,9 +368,10 @@ defmodule Streamix.AI.UserAnalyticsTest do
                series_recommendations: [],
                movie_scores: %{},
                series_scores: %{}
-             } = Context.load(user.id)
+             } = Context.load(library_key_fixture(user))
 
-      assert UserAnalytics.get_personalization_context(user.id) == Context.load(user.id)
+      assert UserAnalytics.get_personalization_context(library_key_fixture(user)) ==
+               Context.load(library_key_fixture(user))
     end
 
     test "semantic similarity leads the hybrid score while metadata fills coverage gaps" do
@@ -442,17 +455,26 @@ defmodule Streamix.AI.UserAnalyticsTest do
       watched_movie(user, animation_movie)
 
       results_acao =
-        UserAnalytics.get_personalized_trending(user.id, genre: "acao", limit: 10)
+        UserAnalytics.get_personalized_trending(library_key_fixture(user),
+          genre: "acao",
+          limit: 10
+        )
 
       assert Enum.map(results_acao, & &1.id) == [action_movie.id]
 
       results_animacao =
-        UserAnalytics.get_personalized_trending(user.id, genre: "animacao", limit: 10)
+        UserAnalytics.get_personalized_trending(library_key_fixture(user),
+          genre: "animacao",
+          limit: 10
+        )
 
       assert Enum.map(results_animacao, & &1.id) == [animation_movie.id]
 
       results_all =
-        UserAnalytics.get_personalized_trending(user.id, genre: "all", limit: 10)
+        UserAnalytics.get_personalized_trending(library_key_fixture(user),
+          genre: "all",
+          limit: 10
+        )
 
       assert length(results_all) == 2
     end
@@ -501,12 +523,21 @@ defmodule Streamix.AI.UserAnalyticsTest do
         }
       ]
 
-      put_l1_cache(Cache.recommendations_key(user.id, "movies", 1, true), cached)
+      put_personal_cache(user, {:recommendations, "movies", 1, true}, cached)
 
-      assert UserAnalytics.get_recommendations(user.id, type: "movies", limit: 1) ==
-               Recommendations.get_recommendations(user.id, type: "movies", limit: 1)
+      assert UserAnalytics.get_recommendations(library_key_fixture(user),
+               type: "movies",
+               limit: 1
+             ) ==
+               Recommendations.get_recommendations(library_key_fixture(user),
+                 type: "movies",
+                 limit: 1
+               )
 
-      assert UserAnalytics.get_recommendations(user.id, type: "movies", limit: 1) == cached
+      assert UserAnalytics.get_recommendations(library_key_fixture(user),
+               type: "movies",
+               limit: 1
+             ) == cached
     end
 
     test "get_more_like_this returns the embedding failure without searching Qdrant" do
@@ -541,7 +572,9 @@ defmodule Streamix.AI.UserAnalyticsTest do
           stream_icon: "http://example.com/private.png"
         })
 
-      assert {:ok, channels} = UserAnalytics.get_channel_recommendations(user.id, limit: 5)
+      assert {:ok, channels} =
+               UserAnalytics.get_channel_recommendations(library_key_fixture(user), limit: 5)
+
       assert Enum.map(channels, & &1.id) == [global_channel.id]
     end
 
@@ -563,7 +596,10 @@ defmodule Streamix.AI.UserAnalyticsTest do
       |> attach_category(news)
 
       assert [channel] =
-               UserAnalytics.get_personalized_channels(user.id, category: "sports", limit: 5)
+               UserAnalytics.get_personalized_channels(library_key_fixture(user),
+                 category: "sports",
+                 limit: 5
+               )
 
       assert channel.id == sports_channel.id
     end
@@ -599,29 +635,23 @@ defmodule Streamix.AI.UserAnalyticsTest do
 
   defp watched_movie(user, movie, attrs \\ %{}) do
     watched_at = Map.get(attrs, :watched_at, DateTime.utc_now(:second))
+    key = library_key_fixture(user)
 
-    {:ok, _history} =
-      History.add(user.id, "movie", movie.id, Map.drop(attrs, [:watched_at]))
+    {:ok, history} = History.add(key, "movie", movie.id, Map.drop(attrs, [:watched_at]))
 
-    set_watched_at(user.id, movie.catalog_item_id, watched_at)
+    backdate_history!(key, history, watched_at)
     movie
   end
 
   defp watched_channel(user, channel, attrs) do
     watched_at = Map.fetch!(attrs, :watched_at)
+    key = library_key_fixture(user)
 
-    {:ok, _history} =
-      History.add(user.id, "live_channel", channel.id, Map.drop(attrs, [:watched_at]))
+    {:ok, history} =
+      History.add(key, "live_channel", channel.id, Map.drop(attrs, [:watched_at]))
 
-    set_watched_at(user.id, channel.catalog_item_id, watched_at)
+    backdate_history!(key, history, watched_at)
     channel
-  end
-
-  defp set_watched_at(user_id, catalog_item_id, watched_at) do
-    from(progress in WatchProgress,
-      where: progress.user_id == ^user_id and progress.catalog_item_id == ^catalog_item_id
-    )
-    |> Repo.update_all(set: [last_watched_at: DateTime.truncate(watched_at, :second)])
   end
 
   defp genre_fixture(name, attrs \\ %{}) do
@@ -670,14 +700,15 @@ defmodule Streamix.AI.UserAnalyticsTest do
     channel
   end
 
-  defp put_l1_cache(key, value) do
-    ConCache.put(
-      :streamix_l1_cache,
-      key,
-      %ConCache.Item{value: value, ttl: :timer.seconds(60)}
-    )
+  # Personalization is cached in this node's memory only, which the test env
+  # bypasses by default; switch it on for the test and seed the entry.
+  defp put_personal_cache(user, kind, value) do
+    previous = Application.get_env(:streamix, :disable_local_cache)
+    Application.put_env(:streamix, :disable_local_cache, false)
+    on_exit(fn -> restore_env(:disable_local_cache, previous) end)
 
-    on_exit(fn -> ConCache.delete(:streamix_l1_cache, key) end)
+    Cache.fetch_personal(user.id, kind, :timer.seconds(60), fn -> value end)
+    on_exit(fn -> Cache.invalidate_personalization(user.id) end)
   end
 
   defp put_config(nil, key, value), do: [{key, value}]

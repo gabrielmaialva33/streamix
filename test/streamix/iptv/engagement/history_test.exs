@@ -18,13 +18,14 @@ defmodule Streamix.Iptv.HistoryTest do
         })
 
       {:ok, _entry} =
-        History.add(user.id, "movie", movie.id, %{
+        History.add(library_key_fixture(user), "movie", movie.id, %{
           progress_seconds: 50,
           duration_seconds: 100,
           completed: true
         })
 
-      [entry] = History.list_for_analytics(user.id, content_type: "movie", limit: 10)
+      [entry] =
+        History.list_for_analytics(library_key_fixture(user), content_type: "movie", limit: 10)
 
       assert entry.content_type == "movie"
       assert entry.content_id == movie.id
@@ -52,14 +53,14 @@ defmodule Streamix.Iptv.HistoryTest do
       movie = movie_fixture(provider)
 
       {:ok, _entry} =
-        History.add(user.id, "movie", movie.id, %{
+        History.add(library_key_fixture(user), "movie", movie.id, %{
           progress_seconds: 50,
           duration_seconds: 100
         })
 
       Repo.delete!(movie)
 
-      assert History.list_for_analytics(user.id, limit: 10) == []
+      assert History.list_for_analytics(library_key_fixture(user), limit: 10) == []
     end
 
     test "maps episodes to their parent series and inherits its adult policy" do
@@ -96,10 +97,10 @@ defmodule Streamix.Iptv.HistoryTest do
         %{catalog_item_id: series.catalog_item_id, category_id: category.id}
       ])
 
-      {:ok, _history} = History.add(user.id, "episode", episode.id)
+      {:ok, _history} = History.add(library_key_fixture(user), "episode", episode.id)
 
-      assert History.list_for_analytics(user.id, show_adult: false) == []
-      assert [entry] = History.list_for_analytics(user.id, show_adult: true)
+      assert History.list_for_analytics(library_key_fixture(user), show_adult: false) == []
+      assert [entry] = History.list_for_analytics(library_key_fixture(user), show_adult: true)
       assert entry.content_id == episode.id
       assert entry.series_id == series.id
     end

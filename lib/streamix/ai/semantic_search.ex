@@ -290,7 +290,7 @@ defmodule Streamix.AI.SemanticSearch do
   Returns stats about indexed content.
   """
   def stats do
-    collections = [:movies, :series, :animes, :user_profiles]
+    collections = [:movies, :series, :animes]
 
     collection_stats =
       Enum.map(collections, fn col ->

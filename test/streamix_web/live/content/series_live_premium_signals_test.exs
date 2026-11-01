@@ -96,7 +96,7 @@ defmodule StreamixWeb.Content.SeriesLivePremiumSignalsTest do
 
       render_hook(view, "toggle_favorite", %{"id" => private_series.id, "type" => "series"})
 
-      refute Iptv.favorite?(user.id, "series", private_series.id)
+      refute Iptv.favorite?(library_key_fixture(user), "series", private_series.id)
     end
   end
 end

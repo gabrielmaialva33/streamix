@@ -1,7 +1,7 @@
 defmodule StreamixWeb.StreamToken.Resolver do
   @moduledoc """
-  Verifies signed stream tokens and resolves them to the actual upstream
-  URL (signing is in `StreamixWeb.StreamToken.Signer`).
+  Verifies encrypted stream tokens and resolves them to the actual upstream
+  URL (minting is in `StreamixWeb.StreamToken.Signer`).
 
   Two flows live here:
 
@@ -37,7 +37,7 @@ defmodule StreamixWeb.StreamToken.Resolver do
   def verify_and_get_url(token, opts \\ []) do
     external_bypass = Keyword.get(opts, :bypass_subscription, false)
 
-    case Phoenix.Token.verify(StreamixWeb.Endpoint, "stream", token, max_age: @token_max_age) do
+    case Phoenix.Token.decrypt(StreamixWeb.Endpoint, "stream", token, max_age: @token_max_age) do
       {:ok, claims} -> dispatch_claims(claims, external_bypass)
       {:error, :expired} -> {:error, :token_expired}
       {:error, _reason} -> {:error, :invalid_token}
@@ -47,7 +47,7 @@ defmodule StreamixWeb.StreamToken.Resolver do
   @doc false
   def authorize_embedplay_movie(token) do
     with {:ok, %{type: "movie", id: id, user_id: user_id} = claims} <-
-           Phoenix.Token.verify(StreamixWeb.Endpoint, "stream", token, max_age: @token_max_age),
+           Phoenix.Token.decrypt(StreamixWeb.Endpoint, "stream", token, max_age: @token_max_age),
          true <- is_integer(id) and id > 0,
          %{provider: %{provider_type: :embedplay, is_active: true} = provider} = movie <-
            Streamix.Playback.get_movie_for_stream(id),
@@ -191,7 +191,7 @@ defmodule StreamixWeb.StreamToken.Resolver do
   defp token_max_age(_stage), do: @token_max_age
 
   defp verify_claims(token, max_age) do
-    case Phoenix.Token.verify(StreamixWeb.Endpoint, "stream", token, max_age: max_age) do
+    case Phoenix.Token.decrypt(StreamixWeb.Endpoint, "stream", token, max_age: max_age) do
       {:ok, claims} when is_map(claims) -> {:ok, claims}
       {:ok, _claims} -> {:error, :invalid_token}
       {:error, :expired} -> {:error, :token_expired}
@@ -311,13 +311,12 @@ defmodule StreamixWeb.StreamToken.Resolver do
 
   # Subscription/premium checks were skipped for this resolve. Emitted to
   # both Logger and Telemetry so dashboards can surface bypass rates.
-  # Never log the full URL — only the metadata needed to trace the
-  # resolve back to its origin.
+  # Never log the full URL, the content or the user: together they would
+  # record who watched what (docs/privacy.md). The kind of stream and the
+  # provider are enough to trace a bypass back to its origin.
   defp audit_bypass(claims, external_bypass) do
     metadata = %{
       type: Map.get(claims, :type),
-      content_id: Map.get(claims, :id),
-      user_id: Map.get(claims, :user_id),
       provider_id: Map.get(claims, :provider_id),
       claim_bypass: Map.get(claims, :bypass, false),
       external_bypass: external_bypass

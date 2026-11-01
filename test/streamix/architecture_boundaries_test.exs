@@ -30,7 +30,15 @@ defmodule Streamix.ArchitectureBoundariesTest do
     :remove_from_watch_history,
     :clear_watch_history,
     :get_watch_progress_map,
-    :get_series_progress_map
+    :get_series_progress_map,
+    :latest_series_progress,
+    :unlock,
+    :seal_session,
+    :open_session,
+    :session_secret_bytes,
+    :change_password,
+    :forget,
+    :purge_legacy_plaintext
   ]
 
   test "the web layer does not call Repo directly" do

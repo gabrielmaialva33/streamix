@@ -225,7 +225,12 @@ defmodule StreamixWeb.WatchPartyLive.Show do
          }) do
       {:ok, _presence_ref} ->
         prewarm_upstream_redirect(socket.assigns.source_type, socket.assigns.content, user.id)
-        record_watch_history(socket.assigns.source_type, socket.assigns.content, user.id)
+
+        record_watch_history(
+          socket.assigns.source_type,
+          socket.assigns.content,
+          socket.assigns.current_scope.library_key
+        )
 
         playback_state = current_playback(room)
         presences = Presence.list(presence_topic(room.id))
@@ -454,7 +459,9 @@ defmodule StreamixWeb.WatchPartyLive.Show do
          {:ok, duration} <- normalize_duration(duration) do
       if socket.assigns.content_type not in [:live, :live_channel] do
         {type, id} = progress_ref(socket.assigns.source_type, socket.assigns.content)
-        Library.update_watch_progress(socket.assigns.user_id, type, id, current_time, duration)
+
+        socket.assigns.current_scope.library_key
+        |> Library.update_watch_progress(type, id, current_time, duration)
       end
 
       Billing.touch_playback_session(socket.assigns.playback_session)
@@ -468,7 +475,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
     case normalize_duration(duration) do
       {:ok, duration} ->
         {type, id} = progress_ref(socket.assigns.source_type, socket.assigns.content)
-        Library.update_watch_time(socket.assigns.user_id, type, id, duration)
+        Library.update_watch_time(socket.assigns.current_scope.library_key, type, id, duration)
         Billing.touch_playback_session(socket.assigns.playback_session)
         {:noreply, socket}
 
@@ -933,14 +940,8 @@ defmodule StreamixWeb.WatchPartyLive.Show do
 
   defp start_playback_session(socket, connection_id) do
     Billing.start_playback_session(socket.assigns.current_scope.user, %{
-      content_type: socket.assigns.source_type,
-      content_id: socket.assigns.content.id,
       client_id: client_id_from_socket(socket),
-      metadata: %{
-        live_view: "watch_party",
-        room_id: socket.assigns.room.id,
-        connection_id: connection_id
-      }
+      metadata: %{live_view: "watch_party", connection_id: connection_id}
     })
   end
 
@@ -965,8 +966,8 @@ defmodule StreamixWeb.WatchPartyLive.Show do
 
   defp release_playback_session(session), do: Billing.end_playback_session(session)
 
-  defp record_watch_history("torrent", content, user_id) do
-    Library.add_to_watch_history(user_id, %{
+  defp record_watch_history("torrent", content, library_key) do
+    Library.add_to_watch_history(library_key, %{
       content_type: "movie",
       content_id: content.movie_id,
       content_name: content_title(content, "torrent"),
@@ -974,8 +975,8 @@ defmodule StreamixWeb.WatchPartyLive.Show do
     })
   end
 
-  defp record_watch_history(source_type, content, user_id) do
-    Library.add_to_watch_history(user_id, %{
+  defp record_watch_history(source_type, content, library_key) do
+    Library.add_to_watch_history(library_key, %{
       content_type: canonical_content_type(source_type),
       content_id: content.id,
       content_name: content_title(content, source_type),

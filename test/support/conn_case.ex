@@ -17,7 +17,8 @@ defmodule StreamixWeb.ConnCase do
 
   use ExUnit.CaseTemplate
 
-  alias Streamix.Accounts.Scope
+  alias Streamix.{Accounts, AccountsFixtures, Library}
+  alias StreamixWeb.Plugs.BearerAuth
 
   using do
     quote do
@@ -47,8 +48,8 @@ defmodule StreamixWeb.ConnCase do
   test context.
   """
   def register_and_log_in_user(%{conn: conn} = context) do
-    user = Streamix.AccountsFixtures.user_fixture()
-    scope = Scope.for_user(user)
+    user = AccountsFixtures.user_fixture()
+    scope = AccountsFixtures.user_scope_fixture(user)
 
     opts =
       context
@@ -64,18 +65,32 @@ defmodule StreamixWeb.ConnCase do
   It returns an updated `conn`.
   """
   def log_in_user(conn, user, opts \\ []) do
-    token = Streamix.Accounts.generate_user_session_token(user)
+    library_key = AccountsFixtures.library_key_fixture(user)
+    {library_secret, sealed_library_key} = Library.seal_session(library_key)
+    token = Accounts.generate_user_session_token(user, %{}, sealed_library_key)
 
     maybe_set_token_authenticated_at(token, opts[:token_authenticated_at])
 
     conn
     |> Phoenix.ConnTest.init_test_session(%{})
     |> Plug.Conn.put_session(:user_token, token)
+    |> Plug.Conn.put_session(:library_secret, library_secret)
+  end
+
+  @doc """
+  A bearer token for the REST API, shaped like the one login returns: the
+  session token followed by its library secret.
+  """
+  def api_token_fixture(user) do
+    library_key = AccountsFixtures.library_key_fixture(user)
+    {library_secret, sealed_library_key} = Library.seal_session(library_key)
+    token = Accounts.generate_user_session_token(user, %{}, sealed_library_key)
+    BearerAuth.encode_token(token, library_secret)
   end
 
   defp maybe_set_token_authenticated_at(_token, nil), do: nil
 
   defp maybe_set_token_authenticated_at(token, authenticated_at) do
-    Streamix.AccountsFixtures.override_token_authenticated_at(token, authenticated_at)
+    AccountsFixtures.override_token_authenticated_at(token, authenticated_at)
   end
 end

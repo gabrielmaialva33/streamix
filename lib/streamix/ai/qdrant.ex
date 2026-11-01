@@ -10,7 +10,12 @@ defmodule Streamix.AI.Qdrant do
   - `movies` - Movie embeddings with metadata
   - `series` - Series embeddings with metadata
   - `animes` - Anime embeddings with metadata
-  - `user_profiles` - Aggregated taste vectors for personalized recommendations
+
+  There is deliberately no per-user collection. Taste profiles used to be
+  stored in `user_profiles`, keyed by user id; a stored taste vector can be
+  searched for the titles closest to it, which reveals what that user
+  watched. Profiles are now computed inside the user's session only, and
+  `setup_collections/0` drops the retired collection.
 
   ## Configuration
 
@@ -24,7 +29,8 @@ defmodule Streamix.AI.Qdrant do
   alias Streamix.AI.{Embeddings, ScoreThresholds}
 
   @default_url "http://localhost:6333"
-  @collections ~w(movies series animes user_profiles)
+  @collections ~w(movies series animes)
+  @retired_collections ~w(user_profiles)
 
   # Public API
 
@@ -63,6 +69,12 @@ defmodule Streamix.AI.Qdrant do
   Ensures all required collections exist with proper configuration.
   """
   def setup_collections do
+    with :ok <- ensure_collections() do
+      drop_retired_collections()
+    end
+  end
+
+  defp ensure_collections do
     Enum.reduce_while(@collections, :ok, fn collection, :ok ->
       case ensure_collection(collection) do
         :ok ->
@@ -70,6 +82,21 @@ defmodule Streamix.AI.Qdrant do
 
         {:error, reason} ->
           {:halt, {:error, {:collection_setup_failed, collection, reason}}}
+      end
+    end)
+  end
+
+  defp drop_retired_collections do
+    Enum.reduce_while(@retired_collections, :ok, fn collection, :ok ->
+      case req_delete("#{base_url()}/collections/#{collection}") do
+        {:ok, %Req.Response{status: status}} when status in [200, 404] ->
+          {:cont, :ok}
+
+        {:ok, %Req.Response{status: status}} ->
+          {:halt, {:error, {:collection_drop_failed, collection, status}}}
+
+        {:error, reason} ->
+          {:halt, {:error, {:collection_drop_failed, collection, reason}}}
       end
     end)
   end
@@ -450,6 +477,16 @@ defmodule Streamix.AI.Qdrant do
     request_if_configured(fn ->
       Req.put(url,
         body: body,
+        headers: headers(),
+        receive_timeout: 30_000,
+        retry: false
+      )
+    end)
+  end
+
+  defp req_delete(url) do
+    request_if_configured(fn ->
+      Req.delete(url,
         headers: headers(),
         receive_timeout: 30_000,
         retry: false

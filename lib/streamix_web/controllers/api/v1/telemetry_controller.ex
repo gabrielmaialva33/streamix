@@ -34,7 +34,6 @@ defmodule StreamixWeb.Api.V1.TelemetryController do
   }
   """
   def ingest(conn, params) when is_map(params) do
-    user = conn.assigns.current_user
     {batch_id, metrics} = normalize_payload(params)
 
     if metrics == [] do
@@ -42,7 +41,7 @@ defmodule StreamixWeb.Api.V1.TelemetryController do
       |> put_status(:bad_request)
       |> json(%{error: %{code: "invalid_body", message: "Expected telemetry metric payload"}})
     else
-      {:ok, result} = Qoe.ingest(user.id, batch_id, metrics)
+      {:ok, result} = Qoe.ingest(conn.assigns.current_library_key, batch_id, metrics)
 
       conn
       |> put_status(:accepted)

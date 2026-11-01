@@ -20,13 +20,14 @@ defmodule StreamixWeb.ClientTelemetryTest do
       "lcp_ms" => 900
     })
 
-    assert %Event{
-             user_id: user_id,
-             kind: "web_vital",
-             device_class: "mobile",
-             lcp_ms: 900
-           } = Repo.one!(Event)
+    assert %Event{kind: "web_vital", device_class: "mobile", lcp_ms: 900} =
+             event = Repo.one!(Event)
 
-    assert user_id == user.id
+    # The sample is kept apart per user through its keyed dedupe hash, but the
+    # row itself does not say whose it is (docs/privacy.md).
+    refute Map.has_key?(event, :user_id)
+
+    refute event.dedupe_key ==
+             Base.encode16(:crypto.hash(:sha256, "anonymous:#{event.batch_id}:0"), case: :lower)
   end
 end

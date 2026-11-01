@@ -15,11 +15,12 @@ application and REST API. The current tree includes:
 - password-based authentication and role-based access
 - personal providers plus optional system-wide global provider
 - optional GIndex ingestion for Google Drive-backed catalogs
-- live channels, movies, series, episodes, favorites, history, and watch progress
+- live channels, movies, series, episodes, favorites, history, and watch progress — history and favorites are
+  sealed per user, so the operator cannot read what anyone watched (`docs/privacy.md`)
 - AI-assisted semantic search and recommendations when embeddings + Qdrant are configured
 - watch parties with synchronized playback, presence, and room chat
 - subscription plans, premium access gates, and an admin panel
-- signed stream URLs, a Phoenix stream proxy, and a live stream multiplexer
+- encrypted stream URLs, a Phoenix stream proxy, and a live stream multiplexer
 - PWA assets, offline metadata sync hooks, and a mobile / TV-facing REST API
 
 The application release version is sourced from the root `VERSION` file (currently `0.0.100`) and consumed by
@@ -103,6 +104,7 @@ lib/streamix/
 ├── gindex/                   # GIndex transport, parsing, matching, quota, and sync
 ├── hls/                      # Shared HLS gateway: playlist rewrite, bounded fetch, registry
 ├── iptv/                     # Canonical catalog, providers, EPG, engagement, and streaming
+├── library/                  # Per-user library keys, sealing, and the legacy plaintext import
 ├── qoe/                      # Privacy-bounded playback quality events
 ├── queue/                    # RabbitMQ/Broadway integration (optional)
 ├── security/                 # Shared URL and network-boundary validation
@@ -124,11 +126,11 @@ lib/streamix_web/
 ├── live/                     # Home, catalog, admin, auth, watch party, providers
 ├── on_mount/                 # Reusable LiveView lifecycle hooks
 ├── plugs/                    # API key auth, CORS, CSP nonce, rate limiting
-├── stream_token/             # Signed stream-token resolution and signing internals
+├── stream_token/             # Encrypted stream-token resolution and minting internals
 ├── telemetry/                # Web telemetry and request measurements
 ├── presence.ex               # Watch party presence
 ├── router.ex                 # Browser + API routes
-├── stream_token.ex           # Signed URLs for stream access
+├── stream_token.ex           # Encrypted tokens for stream access
 └── user_auth.ex              # Session/auth plumbing
 
 assets/
@@ -152,7 +154,8 @@ assets/
 |-------------|-----------------------|-----------------------------------------------------------------|
 | Accounts    | `Streamix.Accounts`   | Users, password auth, roles, session tokens, settings           |
 | Access      | `Streamix.Access`     | Permissions and role/user grants                                |
-| IPTV        | `Streamix.Iptv`       | Providers, sync, catalog access, EPG, favorites, history        |
+| IPTV        | `Streamix.Iptv`       | Providers, sync, catalog access, EPG                            |
+| Library     | `Streamix.Library`    | Sealed favorites, history, progress; per-user library keys      |
 | GIndex      | `Streamix.Gindex`     | Drive discovery, quota-aware ingestion, and URL resolution      |
 | Torrent     | `Streamix.Torrent`    | Torrent sources, catalog synchronization, and stream lifecycle  |
 | AI          | `Streamix.AI`         | Embeddings, semantic search, user analytics, Qdrant integration |
@@ -198,7 +201,6 @@ API surfaces under `/api/v1`:
 | `TmdbDetailsWorker`         | daily at 04:45                 | `tmdb_details`   |
 | `EpisodeDetailsWorker`      | daily at 05:15                 | `tmdb_details`   |
 | `IndexEmbeddingsWorker`     | daily at 05:00                 | `ai`             |
-| `UpdateUserProfileWorker`   | triggered from analytics flows | `ai` / async     |
 
 ## Repo-Specific Conventions
 
@@ -214,6 +216,9 @@ API surfaces under `/api/v1`:
 ### Phoenix / LiveView
 
 - Current user lives at `@current_scope.user`, never `@current_user`.
+- Favorites, history and progress take the user's unlocked library key — `@current_scope.library_key` on the web,
+  `conn.assigns.current_library_key` on the API — never a user id. Personalization derived from them (profile,
+  insights, recommendations, personalized shelves) takes the same key.
 - Use `<Layouts.app flash={@flash} current_scope={@current_scope}>` for standard LiveViews.
 - Use `<.link navigate={}>` and `<.link patch={}>`, never `live_redirect` / `live_patch`.
 - Collections in LiveView must use streams, not raw list assigns with append/prepend DOM updates.
@@ -256,9 +261,16 @@ API surfaces under `/api/v1`:
 
 - Auth is password-based with bcrypt. Do not document or implement magic links.
 - Provider credentials are stored via `Streamix.Iptv.EncryptedField`; never log or persist plaintext passwords.
+- Never store, cache, log or emit which content a user watched or favorited in a form the operator can read. Viewing
+  data goes through `Streamix.Library` sealed with the user's key; nothing else may pair a user with content: no
+  `user_id` next to a content id in tables, Redis, Qdrant, logs, telemetry or job args, and no per-title view counts.
+  Logs do not name content either (on a personal provider the content names its owner): tag it with
+  `Streamix.SafeLog.content_ref/1`, and keep request lines on route patterns. Cache personalization with
+  `Streamix.Cache.fetch_personal/4` (node memory only). The threat model and its limits are in
+  [`docs/privacy.md`](docs/privacy.md).
 - All Xtream calls go through `Streamix.Iptv.XtreamClient`; all GIndex HTTP calls go through
   `Streamix.Gindex.Client`.
-- **Context boundaries**: `Streamix.Iptv`, `Streamix.Gindex`, `Streamix.Torrent`, `Streamix.AI`,
+- **Context boundaries**: `Streamix.Iptv`, `Streamix.Library`, `Streamix.Gindex`, `Streamix.Torrent`, `Streamix.AI`,
   `Streamix.Billing`, `Streamix.Qoe`, `Streamix.Subtitles`, `Streamix.WatchParty`, `Streamix.Queue`,
   `Streamix.Accounts`, and `Streamix.Access` are the public entry points. **Never** `alias` a schema
   or sub-module of another context from web /
@@ -291,4 +303,5 @@ API surfaces under `/api/v1`:
 - [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - [`SECURITY.md`](SECURITY.md)
 - [`docs/phoenix-guidelines.md`](docs/phoenix-guidelines.md)
+- [`docs/privacy.md`](docs/privacy.md)
 - [`docs/nginx-stream-proxy.conf`](docs/nginx-stream-proxy.conf)
