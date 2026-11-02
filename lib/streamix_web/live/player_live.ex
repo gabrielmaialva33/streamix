@@ -341,56 +341,63 @@ defmodule StreamixWeb.PlayerLive do
   def handle_event("avplayer_preference_changed", _params, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_async(:resolve_source, {:ok, {stream_url, :failed}}, socket) do
-    # The probe found nothing this server can reach or hand out, so the
-    # token proxy would only answer errors until the browser gave up and
-    # asked for another source. Ask for it now, before the player exists.
-    if socket.assigns.source_failover_enabled do
-      case PlayerSourceFailover.next(
-             socket.assigns.content_type,
+  def handle_async(:resolve_source, {:ok, {stream_url, state}}, socket)
+      when state in [:failed, :slow] do
+    # `:failed`: the probe found nothing this server can reach or hand out,
+    # so the token proxy would only answer errors until the browser gave up
+    # and asked for another source. `:slow`: it has not decided within the
+    # budget. Either way, ask for another source now, before the player
+    # exists.
+    case next_source(socket) do
+      {:ok, source, attempted_ids} ->
+        :telemetry.execute(
+          [:streamix, :player, :source_failover],
+          %{count: 1},
+          %{
+            status: :selected,
+            from_content_id: socket.assigns.content.id,
+            to_content_id: source.content.id,
+            provider_id: source.provider.id,
+            reason: if(state == :slow, do: :probe_slow, else: :probe_failed)
+          }
+        )
+
+        {:noreply,
+         socket
+         |> assign(
+           content: source.content,
+           provider: source.provider,
+           content_type: safe_content_type(source.content_type),
+           next_episode:
+             load_next_episode(
+               source.content_type,
+               source.content,
+               source.provider,
+               socket.assigns.user_id
+             ),
+           source_failover_attempted_ids: attempted_ids,
+           source_failover_count: socket.assigns.source_failover_count + 1
+         )
+         |> show_resolved_player(source.stream_url)}
+
+      {:error, attempted_ids} ->
+        socket = assign(socket, source_failover_attempted_ids: attempted_ids)
+
+        if state == :slow do
+          # Nothing to fall back on: this provider is the only way to play
+          # the title, so wait for its probe after all.
+          {:noreply,
+           resolve_source_async(
+             socket,
+             Atom.to_string(socket.assigns.content_type),
              socket.assigns.content,
-             socket.assigns.current_scope.user,
-             socket.assigns.source_failover_attempted_ids
-           ) do
-        {:ok, source, attempted_ids} ->
-          :telemetry.execute(
-            [:streamix, :player, :source_failover],
-            %{count: 1},
-            %{
-              status: :selected,
-              from_content_id: socket.assigns.content.id,
-              to_content_id: source.content.id,
-              provider_id: source.provider.id,
-              reason: :probe_failed
-            }
-          )
-
-          {:noreply,
-           socket
-           |> assign(
-             content: source.content,
-             provider: source.provider,
-             content_type: safe_content_type(source.content_type),
-             next_episode:
-               load_next_episode(
-                 source.content_type,
-                 source.content,
-                 source.provider,
-                 socket.assigns.user_id
-               ),
-             source_failover_attempted_ids: attempted_ids,
-             source_failover_count: socket.assigns.source_failover_count + 1
-           )
-           |> show_resolved_player(source.stream_url)}
-
-        {:error, :no_sources, attempted_ids} ->
-          {:noreply,
-           socket
-           |> assign(source_failover_attempted_ids: attempted_ids)
-           |> show_resolved_player(stream_url)}
-      end
-    else
-      {:noreply, show_resolved_player(socket, stream_url)}
+             socket.assigns.provider,
+             socket.assigns.user_id,
+             :infinity
+           )}
+        else
+          {:noreply, show_resolved_player(socket, stream_url)}
+        end
     end
   end
 
@@ -414,6 +421,20 @@ defmodule StreamixWeb.PlayerLive do
 
     {:noreply, show_resolved_player(socket, stream_url)}
   end
+
+  defp next_source(%{assigns: %{source_failover_enabled: true}} = socket) do
+    case PlayerSourceFailover.next(
+           socket.assigns.content_type,
+           socket.assigns.content,
+           socket.assigns.current_scope.user,
+           socket.assigns.source_failover_attempted_ids
+         ) do
+      {:ok, source, attempted_ids} -> {:ok, source, attempted_ids}
+      {:error, :no_sources, attempted_ids} -> {:error, attempted_ids}
+    end
+  end
+
+  defp next_source(socket), do: {:error, socket.assigns.source_failover_attempted_ids}
 
   defp show_resolved_player(socket, stream_url) do
     assign(socket, stream_url: stream_url, player_state: :loading)
@@ -621,14 +642,39 @@ defmodule StreamixWeb.PlayerLive do
     end
   end
 
-  defp resolve_source_async(socket, type, content, provider, user_id) do
+  defp resolve_source_async(socket, type, content, provider, user_id, budget \\ nil) do
     if connected?(socket) do
+      budget = budget || probe_budget(socket)
+
       start_async(socket, :resolve_source, fn ->
-        {:ok, stream_url} = resolve_stream_url(type, content, provider, user_id)
-        {stream_url, probe_state(type, content, provider)}
+        resolve_within(budget, type, content, provider, user_id)
       end)
     else
       socket
+    end
+  end
+
+  # With another provider of the same title to fall back on, a probe that has
+  # not decided within the budget is not worth waiting for: MegaEmbed took
+  # 10 s to give up, measured in a real browser, while the alternative
+  # played 0.9 s after it was chosen. The probe keeps running inside
+  # DeliveryProbe and caches its answer for the next viewer either way.
+  defp probe_budget(socket) do
+    if socket.assigns.source_failover_enabled,
+      do: Application.get_env(:streamix, :player_probe_budget_ms, 2_500),
+      else: :infinity
+  end
+
+  defp resolve_within(budget, type, content, provider, user_id) do
+    task =
+      Task.Supervisor.async_nolink(Streamix.TaskSupervisor, fn ->
+        resolve_stream_url(type, content, provider, user_id)
+      end)
+
+    case Task.yield(task, budget) || Task.shutdown(task, :brutal_kill) do
+      {:ok, {:ok, stream_url}} -> {stream_url, probe_state(type, content, provider)}
+      {:exit, reason} -> exit(reason)
+      nil -> {nil, :slow}
     end
   end
 
