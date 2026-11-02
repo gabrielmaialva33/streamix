@@ -1,4 +1,6 @@
 defmodule Streamix.Iptv.Content.Movies.Queries do
+  alias Streamix.Iptv.Content.VodAvailability
+
   @moduledoc false
 
   import Ecto.Query, warn: false
@@ -22,6 +24,7 @@ defmodule Streamix.Iptv.Content.Movies.Queries do
     show_adult = Keyword.get(opts, :show_adult, false)
 
     Movie
+    |> VodAvailability.exclude_dead()
     |> where(provider_id: ^provider_id)
     |> maybe_where_search(search)
     |> maybe_join_category(category_id)

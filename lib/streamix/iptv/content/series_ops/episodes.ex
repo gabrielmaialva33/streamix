@@ -1,4 +1,6 @@
 defmodule Streamix.Iptv.Content.SeriesOps.Episodes do
+  alias Streamix.Iptv.Content.VodAvailability
+
   @moduledoc false
 
   import Ecto.Query, warn: false
@@ -9,6 +11,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.Episodes do
   @spec get_for_stream(integer()) :: Episode.t() | nil
   def get_for_stream(id) do
     Episode
+    |> VodAvailability.exclude_dead()
     |> where(id: ^id)
     |> preload(season: [series: :provider])
     |> Repo.one()
@@ -55,6 +58,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.Episodes do
   @spec list_for_season(integer()) :: [Episode.t()]
   def list_for_season(season_id) do
     Episode
+    |> VodAvailability.exclude_dead()
     |> where(season_id: ^season_id)
     |> order_by(:episode_num)
     |> Repo.all()
@@ -90,37 +94,21 @@ defmodule Streamix.Iptv.Content.SeriesOps.Episodes do
   end
 
   defp find_next(episode) do
-    episode = Repo.preload(episode, season: :series)
-    season = episode.season
+    episode = Repo.preload(episode, :season)
 
-    next_in_season =
-      Episode
-      |> where([candidate], candidate.season_id == ^season.id)
-      |> where([candidate], candidate.episode_num > ^episode.episode_num)
-      |> order_by([candidate], asc: candidate.episode_num)
-      |> limit(1)
-      |> preload(season: [series: :provider])
-      |> Repo.one()
-
-    next_in_season || first_episode_in_next_season(season)
-  end
-
-  defp first_episode_in_next_season(season) do
-    next_season =
-      Season
-      |> where([candidate], candidate.series_id == ^season.series_id)
-      |> where([candidate], candidate.season_number > ^season.season_number)
-      |> order_by([candidate], asc: candidate.season_number)
-      |> limit(1)
-      |> Repo.one()
-
-    if next_season do
-      Episode
-      |> where([episode], episode.season_id == ^next_season.id)
-      |> order_by([episode], asc: episode.episode_num)
-      |> limit(1)
-      |> preload(season: [series: :provider])
-      |> Repo.one()
-    end
+    Episode
+    |> VodAvailability.exclude_dead()
+    |> join(:inner, [candidate], season in Season, on: candidate.season_id == season.id)
+    |> where([candidate, season], season.series_id == ^episode.season.series_id)
+    |> where(
+      [candidate, season],
+      season.season_number > ^episode.season.season_number or
+        (season.season_number == ^episode.season.season_number and
+           candidate.episode_num > ^episode.episode_num)
+    )
+    |> order_by([candidate, season], asc: season.season_number, asc: candidate.episode_num)
+    |> limit(1)
+    |> preload(season: [series: :provider])
+    |> Repo.one()
   end
 end

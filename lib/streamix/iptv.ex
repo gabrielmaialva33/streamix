@@ -32,6 +32,13 @@ defmodule Streamix.Iptv do
 
   alias Streamix.Iptv.Streaming.StreamErrors
 
+  @doc "Records a confirmed missing VOD file without blocking the playback request."
+  defdelegate record_vod_failure(type, id, provider_id, reason),
+    to: PlaybackBoundary
+
+  @doc "Whether an item is within the VOD quarantine window."
+  defdelegate vod_dead?(content), to: PlaybackBoundary
+
   # =============================================================================
   # Favorites (catalog_item_id)
   # =============================================================================

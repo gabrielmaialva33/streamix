@@ -25,39 +25,39 @@ defmodule StreamixWeb.PlayerSourceFailover do
   @doc "Returns the next authorized source and the expanded attempted-id set."
   @spec next(atom() | String.t(), map(), map(), MapSet.t()) ::
           {:ok, source(), MapSet.t()} | {:error, :no_sources, MapSet.t()}
-  def next(type, content, user, attempted_ids) do
+  def next(type, content, user, attempted_ids, opts \\ []) do
     attempted_ids = MapSet.put(attempted_ids, content.id)
 
     type
     |> PlayerHelpers.failover_sources(content, user.id)
     |> Enum.reduce_while(
       {:error, :no_sources, attempted_ids},
-      &select_candidate(&1, &2, user)
+      &select_candidate(&1, &2, user, opts)
     )
   end
 
-  defp select_candidate(candidate, result, user) do
+  defp select_candidate(candidate, result, user, opts) do
     attempted = elem(result, 2)
 
     if MapSet.member?(attempted, candidate.id) do
       {:cont, result}
     else
-      resolve_untried_candidate(candidate, attempted, user)
+      resolve_untried_candidate(candidate, attempted, user, opts)
     end
   end
 
-  defp resolve_untried_candidate(candidate, attempted, user) do
+  defp resolve_untried_candidate(candidate, attempted, user, opts) do
     attempted = MapSet.put(attempted, candidate.id)
 
-    case authorized_source(candidate, user) do
+    case authorized_source(candidate, user, opts) do
       {:ok, source} -> {:halt, {:ok, source, attempted}}
       {:error, _reason} -> {:cont, {:error, :no_sources, attempted}}
     end
   end
 
-  defp authorized_source(candidate, user) do
+  defp authorized_source(candidate, user, opts) do
     if Access.plays_global_content?(user, candidate.provider) do
-      resolve_candidate(candidate, user.id)
+      resolve_candidate(candidate, user.id, opts)
     else
       {:error, :unauthorized}
     end
@@ -107,27 +107,28 @@ defmodule StreamixWeb.PlayerSourceFailover do
     end
   end
 
-  defp resolve_candidate(%{content_type: "episode", id: id} = candidate, user_id) do
+  defp resolve_candidate(%{content_type: "episode", id: id} = candidate, user_id, opts) do
     case Streamix.Playback.get_playable_episode(user_id, id) do
       nil ->
         {:error, :not_found}
 
       episode ->
         provider = episode.season.series.provider
-        resolve_stream(candidate, episode, provider, user_id)
+        resolve_stream(candidate, episode, provider, user_id, opts)
     end
   end
 
-  defp resolve_candidate(candidate, user_id) do
-    resolve_stream(candidate, candidate.content, candidate.provider, user_id)
+  defp resolve_candidate(candidate, user_id, opts) do
+    resolve_stream(candidate, candidate.content, candidate.provider, user_id, opts)
   end
 
-  defp resolve_stream(candidate, content, provider, user_id) do
+  defp resolve_stream(candidate, content, provider, user_id, opts) do
     case PlayerHelpers.resolve_stream_url(
            candidate.content_type,
            content,
            provider,
-           user_id
+           user_id,
+           opts
          ) do
       {:ok, stream_url} ->
         {:ok,

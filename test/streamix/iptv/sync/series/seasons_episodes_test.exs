@@ -46,6 +46,31 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodesTest do
     %{series: series}
   end
 
+  test "unchanged sync retains quarantine and a replaced episode file clears it", %{
+    series: series
+  } do
+    payload = %{"info" => %{}, "seasons" => [], "episodes" => %{"1" => [episode(100, 1)]}}
+    assert {:ok, _} = SeasonsEpisodes.sync(series, payload)
+
+    stored =
+      Repo.one!(
+        from(e in Episode,
+          join: s in "seasons",
+          on: e.season_id == s.id,
+          where: s.series_id == ^series.id
+        )
+      )
+
+    stored |> Ecto.Changeset.change(dead_since: DateTime.utc_now(:second)) |> Repo.update!()
+    assert {:ok, _} = SeasonsEpisodes.sync(series, payload)
+    assert Repo.reload!(stored).dead_since
+
+    assert {:ok, _} =
+             SeasonsEpisodes.sync(series, put_in(payload, ["episodes", "1"], [episode(101, 1)]))
+
+    refute Repo.reload!(stored).dead_since
+  end
+
   describe "sync/2 when the provider returns an empty seasons list" do
     test "still persists the episodes grouped under each season key", %{series: series} do
       info = %{

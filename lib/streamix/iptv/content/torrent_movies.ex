@@ -1,4 +1,6 @@
 defmodule Streamix.Iptv.Content.TorrentMovies do
+  alias Streamix.Iptv.Content.VodAvailability
+
   @moduledoc false
 
   import Ecto.Query, warn: false
@@ -36,6 +38,7 @@ defmodule Streamix.Iptv.Content.TorrentMovies do
     offset = Keyword.get(opts, :offset, 0)
 
     Movie
+    |> VodAvailability.exclude_dead()
     |> join(:inner, [movie], stats in "torrent_movie_stats", on: stats.movie_id == movie.id)
     |> where([movie], movie.provider_id == ^provider_id)
     |> maybe_search(Keyword.get(opts, :search))
@@ -54,6 +57,7 @@ defmodule Streamix.Iptv.Content.TorrentMovies do
   @spec count(pos_integer(), keyword()) :: non_neg_integer()
   def count(provider_id, opts \\ []) when is_integer(provider_id) and provider_id > 0 do
     Movie
+    |> VodAvailability.exclude_dead()
     |> join(:inner, [movie], stats in "torrent_movie_stats", on: stats.movie_id == movie.id)
     |> where([movie], movie.provider_id == ^provider_id)
     |> maybe_exclude_adult(provider_id, Keyword.get(opts, :show_adult, false))
