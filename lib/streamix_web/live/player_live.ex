@@ -647,7 +647,10 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   defp load_authorized_content(socket, type, user_id, content, provider, return_to) do
-    if probe_state(type, content, provider) == :pending do
+    # A cached failure goes the same way: the token proxy cannot serve an item
+    # whose probe found nothing usable, so the resolution step moves it to
+    # another provider instead of handing the player a URL that only fails.
+    if probe_state(type, content, provider) in [:pending, :failed] do
       start_resolving_player(socket, type, user_id, content, provider, return_to)
     else
       case resolve_stream_url(type, content, provider, user_id) do

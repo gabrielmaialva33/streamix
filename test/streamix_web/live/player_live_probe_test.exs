@@ -74,7 +74,7 @@ defmodule StreamixWeb.PlayerLiveProbeTest do
     assert html =~ ~s(id="player-startup-screen")
     refute html =~ ~s(id="video-player-container")
 
-    html = render_async(view)
+    html = render_async(view, 2_000)
 
     refute html =~ ~s(id="player-startup-screen")
     assert [stream_url] = view |> render() |> LazyHTML.from_fragment() |> stream_urls()
@@ -117,13 +117,39 @@ defmodule StreamixWeb.PlayerLiveProbeTest do
     Req.Test.stub(__MODULE__, &Plug.Conn.send_resp(&1, 404, "No playable stream found."))
 
     {:ok, view, _html} = live(conn, ~p"/watch/movie/#{gone.id}")
-    render_async(view)
+    render_async(view, 2_000)
 
     document = view |> render() |> LazyHTML.from_fragment()
     assert [stream_url] = stream_urls(document)
     assert stream_url =~ "/api/stream/proxy?token="
 
     assert document
+           |> LazyHTML.query("#video-player-container")
+           |> LazyHTML.attribute("data-content-id") == [to_string(other.id)]
+  end
+
+  test "a failure already cached moves to another provider too", %{conn: conn, user: user} do
+    probing = probing_provider(user, "MegaEmbed")
+
+    plain =
+      provider_fixture(user, %{name: "Fonte B", visibility: "private", provider_type: "xtream"})
+
+    gone = movie_fixture(probing, %{title: "Em cache", year: 2023, tmdb_id: "551100"})
+    other = movie_fixture(plain, %{title: "Em cache", year: 2023, tmdb_id: "551100"})
+    Req.Test.stub(__MODULE__, &Plug.Conn.send_resp(&1, 404, "No playable stream found."))
+
+    # The first visit probes and caches the failure.
+    {:ok, first, _html} = live(conn, ~p"/watch/movie/#{gone.id}")
+    render_async(first, 2_000)
+
+    # The second finds it cached and must not hand out the token proxy URL.
+    {:ok, view, html} = live(conn, ~p"/watch/movie/#{gone.id}")
+    assert html =~ ~s(id="player-startup-screen")
+    render_async(view, 2_000)
+
+    assert view
+           |> render()
+           |> LazyHTML.from_fragment()
            |> LazyHTML.query("#video-player-container")
            |> LazyHTML.attribute("data-content-id") == [to_string(other.id)]
   end
