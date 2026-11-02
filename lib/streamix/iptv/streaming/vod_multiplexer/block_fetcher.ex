@@ -422,9 +422,9 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
     {:error, reason}
   end
 
-  defp transport_error?(%Mint.TransportError{}), do: true
+  # Finch wraps every socket failure (`:closed`, `:timeout`, a reset) in
+  # `Finch.TransportError`; an HTTP-level error is a real answer, not a drop.
   defp transport_error?(%Finch.TransportError{}), do: true
-  defp transport_error?(%Mint.HTTPError{reason: {:server_closed_connection, _, _}}), do: true
   defp transport_error?(_reason), do: false
 
   defp on_chunk({:status, status}, acc), do: {:cont, %{acc | status: status}}
