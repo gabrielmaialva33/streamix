@@ -88,6 +88,7 @@ defmodule StreamixWeb.PlayerComponents do
       # plays just fine on AVPlayer (libmedia) and we keep the bundle
       # off the critical path.
       |> assign(:uhd_hevc, Metadata.uhd_hevc?(assigns.content) |> to_string())
+      |> assign(:poster, poster_url(assigns.content, assigns.content_type))
 
     ~H"""
     <div
@@ -104,6 +105,7 @@ defmodule StreamixWeb.PlayerComponents do
       data-next-episode={@next_episode_json}
       data-expected-duration={@expected_duration}
       data-stream-type={@stream_type}
+      data-player-poster={@poster}
       data-player-lifecycle-logs={@player_lifecycle_logs}
       data-feature-avbridge={@feature_avbridge}
       data-feature-h265web={@feature_h265web}
@@ -173,7 +175,7 @@ defmodule StreamixWeb.PlayerComponents do
       <%!-- Centered buffer spinner (agy-05) --%>
       <div
         id="loading-indicator"
-        class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center hidden"
+        class="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 hidden"
         role="status"
         aria-live="polite"
         aria-label="Carregando vídeo"
@@ -653,4 +655,7 @@ defmodule StreamixWeb.PlayerComponents do
     </div>
     """
   end
+
+  defp poster_url(content, content_type),
+    do: content |> Metadata.poster(content_type) |> ImageProxy.proxy()
 end

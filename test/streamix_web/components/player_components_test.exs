@@ -62,6 +62,43 @@ defmodule StreamixWeb.PlayerComponentsTest do
     assert Floki.find(document, "#player-next-episode-btn") == []
   end
 
+  test "hands the player a picture to show until the first frame" do
+    movie =
+      render_component(&PlayerComponents.video_player/1,
+        content: %{
+          id: 42,
+          name: "Filme",
+          stream_icon: "https://image.tmdb.org/t/p/w500/poster.jpg",
+          assets: [
+            %{asset_type: "backdrop", position: 1, url: "https://image.tmdb.org/t/p/w1280/b.jpg"},
+            %{asset_type: "image", position: 0, url: "https://image.tmdb.org/t/p/w500/i.jpg"}
+          ]
+        },
+        content_type: :movie,
+        stream_url: "/stream/movie/42"
+      )
+
+    assert [poster] =
+             movie
+             |> Floki.parse_fragment!()
+             |> Floki.attribute("#video-player-container", "data-player-poster")
+
+    # The wide backdrop wins over the portrait cover, through the image proxy.
+    assert poster =~ "b.jpg"
+    refute poster =~ "poster.jpg"
+
+    channel =
+      render_component(&PlayerComponents.video_player/1,
+        content: %{id: 7, name: "Canal", stream_icon: "https://example.com/logo.png"},
+        content_type: :live_channel,
+        stream_url: "/stream/live/7"
+      )
+
+    assert channel
+           |> Floki.parse_fragment!()
+           |> Floki.attribute("#video-player-container", "data-player-poster") == []
+  end
+
   test "pause screen reminds what is playing, with the synopsis" do
     document =
       render_component(&PlayerComponents.video_player/1,

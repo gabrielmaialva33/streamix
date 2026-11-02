@@ -329,6 +329,49 @@
     transform: scale(1);
 }
 
+/* Startup: the title's picture, blurred, stays up until the first decoded
+   frame (the JS owns the element and its timing); the stage line under the
+   spinner says what is happening in plain words. */
+[data-player-startup-cover] {
+    animation: player-cover-in 0.35s ease-out both;
+}
+
+[data-player-startup-cover][hidden] {
+    display: none;
+}
+
+@keyframes player-cover-in {
+    from {
+        opacity: 0;
+    }
+}
+
+[data-player-stage-text] {
+    max-width: 18rem;
+    padding: 0 1rem;
+    color: rgb(255 255 255 / 0.85);
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    text-align: center;
+    text-shadow: 0 1px 6px rgb(0 0 0 / 0.6);
+}
+
+[data-player-stage-text]:empty {
+    display: none;
+}
+
+#video-player-container[data-player-stage="slow"] [data-player-stage-text],
+#video-player-container[data-player-stage="reconnecting"] [data-player-stage-text] {
+    color: #fff;
+}
+
+@media (min-width: 640px) {
+    [data-player-stage-text] {
+        font-size: 1.05rem;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     #player-pause-info,
     #player-center-controls,
@@ -336,7 +379,8 @@
         transition: none;
     }
 
-    #video-player-container[data-player-panel="episodes"] #player-episodes-panel {
+    #video-player-container[data-player-panel="episodes"] #player-episodes-panel,
+    [data-player-startup-cover] {
         animation: none;
     }
 }
