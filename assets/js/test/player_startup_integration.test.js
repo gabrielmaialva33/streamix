@@ -100,6 +100,69 @@ test("automatic restarts retain TTFF origin and the global deadline; terminal ca
   assert.equal(payload.ttff_ms, undefined);
 });
 
+test("a terminal error emits its session immediately and cannot later become cancelled", () => {
+  const { hook, calls, timerApi } = harness();
+  hook.initPlayer();
+  hook.playbackMetrics.selectEngine("avplayer");
+  timerApi.advance(1200);
+  hook.showPlaybackError("Synthetic terminal failure");
+  const samples = () =>
+    calls.filter((call) => Array.isArray(call) && call[0] === "client_telemetry");
+  assert.equal(samples().length, 1);
+  assert.equal(samples()[0][1].outcome, "error");
+  assert.equal(samples()[0][1].engine, "avplayer");
+  assert.equal(samples()[0][1].ttff_ms, undefined);
+  assert.equal(samples()[0][1].session_duration_ms, 1200);
+  hook.flushPlaybackMetrics("cancelled");
+  timerApi.advance(30000);
+  assert.equal(samples().length, 1, "unmount/deadline cannot duplicate the terminal sample");
+  hook.recoveryGuard.destroy();
+});
+
+test("manual retry starts a fresh session without relabeling the previous terminal error", () => {
+  const { hook, calls, timerApi } = harness();
+  hook.initPlayer();
+  const firstBatch = hook.playbackMetrics.active.batchId;
+  timerApi.advance(500);
+  hook.showPlaybackError("Synthetic terminal failure");
+  hook.startupPresentation.begin = () => {};
+  hook.retryPlaybackFromError();
+  assert.notEqual(hook.playbackMetrics.active.batchId, firstBatch);
+  timerApi.advance(500);
+  hook.playbackMetrics.markFirstFrame();
+  hook.flushPlaybackMetrics("cancelled");
+  const samples = calls
+    .filter((call) => Array.isArray(call) && call[0] === "client_telemetry")
+    .map((call) => call[1]);
+  assert.deepEqual(
+    samples.map((sample) => sample.outcome),
+    ["error", "cancelled"],
+  );
+  assert.equal(samples[0].batch_id, firstBatch);
+  assert.equal(samples[1].ttff_ms, 500);
+  hook.recoveryGuard.destroy();
+});
+
+test("recovery deadline emits one error after twenty seconds while retaining the first frame", () => {
+  const { hook, calls, timerApi } = harness();
+  hook.initPlayer();
+  timerApi.advance(1000);
+  hook.playbackMetrics.markFirstFrame();
+  hook.recoveryGuard.playing();
+  hook.recoveryGuard.attempt();
+  timerApi.advance(19999);
+  assert.equal(
+    calls.filter((call) => Array.isArray(call) && call[0] === "client_telemetry").length,
+    0,
+  );
+  timerApi.advance(1);
+  const samples = calls.filter((call) => Array.isArray(call) && call[0] === "client_telemetry");
+  assert.equal(samples.length, 1);
+  assert.equal(samples[0][1].outcome, "error");
+  assert.equal(samples[0][1].ttff_ms, 1000);
+  assert.equal(samples[0][1].session_duration_ms, 21000);
+});
+
 test("all native-element engines preserve retry budgets until 20 seconds of stable playback", () => {
   for (const engine of [ENGINE_ID.NATIVE, ENGINE_ID.HLS, ENGINE_ID.MPEGTS]) {
     const { hook, timerApi } = harness();

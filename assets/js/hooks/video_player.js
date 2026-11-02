@@ -201,7 +201,6 @@ const VideoPlayer = {
       onExhausted: () => {
         this.cleanup();
         this.presentTerminalPlaybackError("Não foi possível iniciar o vídeo. Tente novamente.");
-        this.flushPlaybackMetrics("error");
       },
     });
     this.recoveryGuard.begin();
@@ -1355,6 +1354,7 @@ const VideoPlayer = {
     this._terminalPlaybackError = true;
     this.observePlaybackState(PLAYBACK_STATE.TERMINAL, "terminal_error");
     this.setPlaybackSystemState("none");
+    this.flushPlaybackMetrics("error");
     this.playerUIController?.showError(message, hint);
   },
 
