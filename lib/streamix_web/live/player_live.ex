@@ -20,7 +20,7 @@ defmodule StreamixWeb.PlayerLive do
 
   require Logger
 
-  alias Streamix.{Access, Accounts, Billing, Library}
+  alias Streamix.{Access, Accounts, Billing, Library, Playback}
   import StreamixWeb.PlayerComponents
   import StreamixWeb.PlayerHelpers
 
@@ -341,6 +341,85 @@ defmodule StreamixWeb.PlayerLive do
   def handle_event("avplayer_preference_changed", _params, socket), do: {:noreply, socket}
 
   @impl true
+  def handle_async(:resolve_source, {:ok, {stream_url, :failed}}, socket) do
+    # The probe found nothing this server can reach or hand out, so the
+    # token proxy would only answer errors until the browser gave up and
+    # asked for another source. Ask for it now, before the player exists.
+    if socket.assigns.source_failover_enabled do
+      case PlayerSourceFailover.next(
+             socket.assigns.content_type,
+             socket.assigns.content,
+             socket.assigns.current_scope.user,
+             socket.assigns.source_failover_attempted_ids
+           ) do
+        {:ok, source, attempted_ids} ->
+          :telemetry.execute(
+            [:streamix, :player, :source_failover],
+            %{count: 1},
+            %{
+              status: :selected,
+              from_content_id: socket.assigns.content.id,
+              to_content_id: source.content.id,
+              provider_id: source.provider.id,
+              reason: :probe_failed
+            }
+          )
+
+          {:noreply,
+           socket
+           |> assign(
+             content: source.content,
+             provider: source.provider,
+             content_type: safe_content_type(source.content_type),
+             next_episode:
+               load_next_episode(
+                 source.content_type,
+                 source.content,
+                 source.provider,
+                 socket.assigns.user_id
+               ),
+             source_failover_attempted_ids: attempted_ids,
+             source_failover_count: socket.assigns.source_failover_count + 1
+           )
+           |> show_resolved_player(source.stream_url)}
+
+        {:error, :no_sources, attempted_ids} ->
+          {:noreply,
+           socket
+           |> assign(source_failover_attempted_ids: attempted_ids)
+           |> show_resolved_player(stream_url)}
+      end
+    else
+      {:noreply, show_resolved_player(socket, stream_url)}
+    end
+  end
+
+  def handle_async(:resolve_source, {:ok, {stream_url, _probe_state}}, socket) do
+    {:noreply, show_resolved_player(socket, stream_url)}
+  end
+
+  # The probe has its own deadline, so this is a crash, not a slow source.
+  # The token proxy reports whatever is wrong to the player.
+  def handle_async(:resolve_source, {:exit, reason}, socket) do
+    Logger.warning("[PlayerLive] source resolution failed: #{inspect(reason)}")
+
+    {:ok, stream_url} =
+      resolve_stream_url(
+        Atom.to_string(socket.assigns.content_type),
+        socket.assigns.content,
+        socket.assigns.provider,
+        socket.assigns.user_id,
+        probe: false
+      )
+
+    {:noreply, show_resolved_player(socket, stream_url)}
+  end
+
+  defp show_resolved_player(socket, stream_url) do
+    assign(socket, stream_url: stream_url, player_state: :loading)
+  end
+
+  @impl true
   def handle_info({:torrent_session_ready, {:ok, %{file_idx: file_idx}}}, socket) do
     {:noreply, start_torrent_player(socket, file_idx)}
   end
@@ -379,8 +458,14 @@ defmodule StreamixWeb.PlayerLive do
   def render(assigns) do
     ~H"""
     <div class="fixed inset-0 h-[100dvh] w-[100dvw] overflow-hidden bg-black">
+      <.player_startup_screen
+        :if={@player_state == :resolving_source}
+        content={@content}
+        content_type={@content_type}
+        on_close="close_player"
+      />
       <.video_player
-        :if={@player_state != :torrent_buffering}
+        :if={@player_state not in [:torrent_buffering, :resolving_source]}
         content={@content}
         content_type={@content_type}
         stream_url={@stream_url}
@@ -504,17 +589,60 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   defp load_authorized_content(socket, type, user_id, content, provider, return_to) do
-    case resolve_stream_url(type, content, provider, user_id, probe: connected?(socket)) do
-      {:ok, stream_url} ->
-        start_authorized_player(socket, type, user_id, content, provider, stream_url, return_to)
+    if probe_state(type, content, provider) == :pending do
+      start_resolving_player(socket, type, user_id, content, provider, return_to)
+    else
+      case resolve_stream_url(type, content, provider, user_id) do
+        {:ok, stream_url} ->
+          start_authorized_player(socket, type, user_id, content, provider, stream_url, return_to)
 
-      {:error, :not_found} ->
-        {:ok,
-         socket
-         |> put_flash(:error, "Conteúdo não encontrado")
-         |> redirect(to: ~p"/")}
+        {:error, :not_found} ->
+          {:ok,
+           socket
+           |> put_flash(:error, "Conteúdo não encontrado")
+           |> redirect(to: ~p"/")}
+      end
     end
   end
+
+  # A provider that probes each item can take as long as its slowest source
+  # to name a URL (measured: 11 s for a MegaEmbed episode). Probing inside
+  # mount kept the page blank, and past ten seconds the LiveView client gave
+  # up on the join, so the first try of a title never played. The page now
+  # renders the player's startup screen at once and the probe runs here,
+  # off the mount.
+  defp start_resolving_player(socket, type, user_id, content, provider, return_to) do
+    with {:ok, socket} <-
+           start_authorized_player(socket, type, user_id, content, provider, nil, return_to) do
+      {:ok,
+       socket
+       |> assign(player_state: :resolving_source)
+       |> resolve_source_async(type, content, provider, user_id)}
+    end
+  end
+
+  defp resolve_source_async(socket, type, content, provider, user_id) do
+    if connected?(socket) do
+      start_async(socket, :resolve_source, fn ->
+        {:ok, stream_url} = resolve_stream_url(type, content, provider, user_id)
+        {stream_url, probe_state(type, content, provider)}
+      end)
+    else
+      socket
+    end
+  end
+
+  defp probe_state(type, content, provider) do
+    case delivery_type(type) do
+      nil -> :not_probed
+      delivery_type -> Playback.xtream_probe_state(provider, delivery_type, content)
+    end
+  end
+
+  defp delivery_type("movie"), do: :movie
+  defp delivery_type("episode"), do: :episode
+  defp delivery_type("live_channel"), do: :channel
+  defp delivery_type(_type), do: nil
 
   defp start_authorized_player(socket, type, user_id, content, provider, stream_url, return_to) do
     case reserve_playback_session(socket, type, content, user_id) do

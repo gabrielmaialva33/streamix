@@ -128,6 +128,12 @@ defmodule Streamix.Playback do
   defdelegate xtream_route(provider, type, content, opts \\ []), to: XtreamDelivery, as: :route
 
   @doc """
+  Where an Xtream item stands with the delivery probe, without probing:
+  `:not_probed`, `:pending`, `:decided` or `:failed`.
+  """
+  defdelegate xtream_probe_state(provider, type, content), to: XtreamDelivery, as: :probe_state
+
+  @doc """
   The upstream a gateway serves an Xtream item from: `{:ok, {:hls, root_url}}`
   (credential-bearing, server-side only) or `{:ok, {:direct, client_url,
   extension}}` (safe to hand to the client).

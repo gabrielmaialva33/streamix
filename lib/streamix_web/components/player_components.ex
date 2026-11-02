@@ -656,6 +656,60 @@ defmodule StreamixWeb.PlayerComponents do
     """
   end
 
+  @doc """
+  The player's first frame while its source is still being chosen: the
+  title's picture, dimmed, the same spinner and stage line the player shows
+  while it starts, and a way back. It stands in for `video_player/1` until a
+  provider that probes each item has named a URL, so the page never sits
+  blank on that decision.
+  """
+  attr :content, :map, required: true
+  attr :content_type, :atom, required: true
+  attr :on_close, :string, default: nil
+
+  def player_startup_screen(assigns) do
+    assigns =
+      assigns
+      |> assign(:poster, poster_url(assigns.content, assigns.content_type))
+      |> assign(:media_title, Metadata.title(assigns.content, assigns.content_type))
+
+    ~H"""
+    <div
+      id="player-startup-screen"
+      class="relative h-full w-full overflow-hidden bg-black"
+      data-player-stage="connecting"
+    >
+      <img
+        :if={@poster}
+        src={@poster}
+        alt=""
+        aria-hidden="true"
+        data-player-startup-cover
+        class="absolute inset-0 size-full object-cover blur-lg brightness-40"
+      />
+      <button
+        :if={@on_close}
+        id="player-startup-close-btn"
+        type="button"
+        phx-click={@on_close}
+        aria-label="Voltar"
+        class="absolute left-3 top-3 z-20 flex size-12 items-center justify-center rounded-full bg-black/35 text-white/90 backdrop-blur-xs transition hover:bg-black/50 hover:text-white active:scale-95 sm:left-5 sm:top-5"
+      >
+        <.icon name="hero-arrow-left" class="size-7" aria-hidden="true" />
+      </button>
+      <div
+        class="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 px-6 text-center"
+        role="status"
+        aria-live="polite"
+      >
+        <div class="size-12 animate-spin rounded-full border-4 border-white/20 border-t-brand drop-shadow-md sm:size-14" />
+        <span data-player-stage-text>Conectando…</span>
+        <p class="max-w-md truncate text-sm text-white/60">{@media_title}</p>
+      </div>
+    </div>
+    """
+  end
+
   defp poster_url(content, content_type),
     do: content |> Metadata.poster(content_type) |> ImageProxy.proxy()
 end
