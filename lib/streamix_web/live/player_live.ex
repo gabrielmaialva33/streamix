@@ -501,7 +501,7 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   defp load_authorized_content(socket, type, user_id, content, provider, return_to) do
-    case resolve_stream_url(type, content, provider, user_id) do
+    case resolve_stream_url(type, content, provider, user_id, probe: connected?(socket)) do
       {:ok, stream_url} ->
         start_authorized_player(socket, type, user_id, content, provider, stream_url, return_to)
 

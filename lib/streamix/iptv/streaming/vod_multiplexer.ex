@@ -30,6 +30,10 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
   # `moov` plus the first seconds of playback in one response, small enough
   # that the provider slot is not held for the whole movie.
   @default_open_range_window_bytes 16 * 1_024 * 1_024
+  # Longest gap tolerated between two pieces of a block in flight. The fetcher
+  # gives up on its own by its 25 s deadline, so this only fires if it died
+  # without saying so.
+  @stall_timeout 28_000
 
   @doc "Size of one cache block, in bytes."
   @spec block_size() :: pos_integer()
@@ -121,6 +125,11 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
   @doc """
   Streams `url` to `conn` through the block cache.
 
+  Bytes reach the viewer as they arrive from the provider: the `206` goes out
+  as soon as the first block's upstream response reveals the resource length,
+  and every block is relayed while it downloads rather than after. A cached
+  block is served straight from disk.
+
   Falls back to the caller's `on_miss` function when the multiplexer cannot
   serve the request — a provider with no free slot, or an upstream that does
   not support ranges — so playback degrades to the direct proxy instead of
@@ -136,8 +145,8 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
     size = block_size()
     first_index = div(range_start, size)
 
-    case fetch_block(key, first_index, url, opts) do
-      {:ok, %{body: body, total_size: total_size}} when is_integer(total_size) ->
+    case open_block(key, first_index, url, opts) do
+      {:ok, source, total_size} when is_integer(total_size) ->
         deliver(
           conn,
           key,
@@ -145,10 +154,11 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
           opts,
           {range_start, requested_end},
           total_size,
-          {first_index, body}
+          {first_index, source}
         )
 
-      {:ok, _incomplete} ->
+      {:ok, source, _unknown} ->
+        close_source(source)
         Logger.warning("[VodMux] upstream did not report a length; using the direct proxy")
         on_miss.(conn)
 
@@ -165,9 +175,10 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
          opts,
          {range_start, requested_end},
          total_size,
-         {first_index, first_body}
+         {first_index, first_source}
        ) do
     if range_start >= total_size do
+      close_source(first_source)
       StreamErrors.halt(conn, :upstream_not_found)
     else
       range_end = resolve_range_end(requested_end, range_start, total_size)
@@ -184,7 +195,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
       Enum.reduce_while(
         blocks,
         conn,
-        &write_next_block(&1, &2, {key, url, opts, last_index}, {first_index, first_body})
+        &write_next_block(&1, &2, {key, url, opts, last_index}, {first_index, first_source})
       )
     end
   end
@@ -210,19 +221,19 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
     Application.get_env(:streamix, :vod_open_range_window_bytes, @default_open_range_window_bytes)
   end
 
-  # The first block was already fetched to learn the resource length, so it is
-  # threaded through instead of being read twice.
+  # The first block was already opened to learn the resource length, so it is
+  # threaded through instead of being opened twice.
   defp write_next_block(
          {index, offset, length},
          conn,
          {key, url, opts, last_index},
-         {first_index, first_body}
+         {first_index, first_source}
        ) do
-    body =
+    source =
       if index == first_index do
-        {:ok, %{body: first_body}}
+        {:ok, first_source}
       else
-        fetch_block(key, index, url, opts)
+        with {:ok, source, _total_size} <- open_block(key, index, url, opts), do: {:ok, source}
       end
 
     # Warm the next block while this one is still being written to the socket,
@@ -230,7 +241,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
     # boundary.
     prefetch_next(key, index, url, opts, last_index)
 
-    write_block(conn, body, offset, length)
+    write_block(conn, source, offset, length)
   end
 
   defp prefetch_next(key, index, url, opts, last_index) do
@@ -258,7 +269,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
     Application.get_env(:streamix, :vod_readahead_blocks, @default_readahead_blocks)
   end
 
-  defp write_block(conn, {:ok, %{body: body}}, offset, length) do
+  defp write_block(conn, {:ok, {:body, body}}, offset, length) do
     slice = binary_slice(body, offset, length)
 
     if slice == "" do
@@ -271,7 +282,70 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
     end
   end
 
+  defp write_block(conn, {:ok, {:stream, ref, received}}, offset, length) do
+    relay(conn, ref, {0, offset, offset + length}, received)
+  end
+
   defp write_block(conn, {:error, reason}, _offset, _length) do
+    stop_after_block_error(conn, reason)
+  end
+
+  # Relays one in-flight block: `position` is how far into the block the
+  # bytes seen so far reach, and only the part of each chunk that falls inside
+  # `[from, to)` is written.
+  defp relay(conn, ref, {position, from, to}, chunk) do
+    chunk_end = position + byte_size(chunk)
+
+    case write_span(conn, chunk, position, from, to) do
+      {:ok, conn} when chunk_end >= to ->
+        BlockFetcher.unsubscribe(ref)
+        {:cont, conn}
+
+      {:ok, conn} ->
+        await_chunk(conn, ref, {chunk_end, from, to})
+
+      {:error, _reason} ->
+        BlockFetcher.unsubscribe(ref)
+        {:halt, conn}
+    end
+  end
+
+  defp await_chunk(conn, ref, span) do
+    receive do
+      {:vod_block, ^ref, {:data, chunk}} ->
+        relay(conn, ref, span, chunk)
+
+      {:vod_block, ^ref, {:head, _total_size}} ->
+        await_chunk(conn, ref, span)
+
+      {:vod_block, ^ref, {:done, _total_size}} ->
+        # The block ended before the bytes this response promised; the
+        # `Content-Range` already sent cannot be honoured any more.
+        BlockFetcher.unsubscribe(ref)
+        stop_after_block_error(conn, :short_block)
+
+      {:vod_block, ^ref, {:error, reason}} ->
+        BlockFetcher.unsubscribe(ref)
+        stop_after_block_error(conn, reason)
+    after
+      @stall_timeout ->
+        BlockFetcher.unsubscribe(ref)
+        stop_after_block_error(conn, :block_timeout)
+    end
+  end
+
+  defp write_span(conn, chunk, position, from, to) do
+    span_start = max(from, position)
+    span_end = min(to, position + byte_size(chunk))
+
+    if span_end > span_start do
+      Conn.chunk(conn, binary_part(chunk, span_start - position, span_end - span_start))
+    else
+      {:ok, conn}
+    end
+  end
+
+  defp stop_after_block_error(conn, reason) do
     Logger.warning(
       "[VodMux] stopping stream after block error: #{SafeLog.redact_inspect(reason)}"
     )
@@ -293,37 +367,77 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
     |> Conn.send_chunked(206)
   end
 
-  defp fetch_block(key, index, url, opts) do
+  # Opens a block for reading: `{:body, binary}` when it is on disk or the
+  # fetcher already finished, `{:stream, ref, received}` while it is still
+  # downloading. The resource length comes back with it — for a block in
+  # flight, as soon as the upstream's response headers arrive.
+  defp open_block(key, index, url, opts) do
     block_key = {key, index}
 
     case BlockStore.read(block_key) do
       {:ok, body} ->
-        {:ok, %{body: body, total_size: BlockStore.total_size(key)}}
+        {:ok, {:body, body}, BlockStore.total_size(key)}
 
       :miss ->
         size = block_size()
         range_start = index * size
 
-        block_key
-        |> BlockFetcher.await(
+        fetch_opts = [
           url: url,
           domain_policy: Keyword.get(opts, :domain_policy),
           provider_id: Keyword.get(opts, :provider_id),
           range_start: range_start,
           range_end: range_start + size - 1
-        )
-        |> retry_from_store(block_key, key)
+        ]
+
+        block_key
+        |> BlockFetcher.subscribe(fetch_opts)
+        |> opened(block_key, key)
     end
   end
 
+  defp opened({:streaming, ref, %{total_size: nil, data: received}}, _block_key, _key) do
+    await_head(ref, received)
+  end
+
+  defp opened({:streaming, ref, %{total_size: total_size, data: received}}, _block_key, _key),
+    do: {:ok, {:stream, ref, received}, total_size}
+
+  defp opened({:finished, {:ok, %{body: body, total_size: total_size}}}, _block_key, _key),
+    do: {:ok, {:body, body}, total_size}
+
+  defp opened({:finished, {:error, reason}}, _block_key, _key), do: {:error, reason}
+
   # A fetcher that finished and was reaped between our lookup and our call has
   # still done the work — the bytes are on disk.
-  defp retry_from_store({:error, :fetcher_gone}, block_key, key) do
+  defp opened({:error, :fetcher_gone}, block_key, key) do
     case BlockStore.read(block_key) do
-      {:ok, body} -> {:ok, %{body: body, total_size: BlockStore.total_size(key)}}
+      {:ok, body} -> {:ok, {:body, body}, BlockStore.total_size(key)}
       :miss -> {:error, :fetcher_gone}
     end
   end
 
-  defp retry_from_store(result, _block_key, _key), do: result
+  defp opened({:error, reason}, _block_key, _key), do: {:error, reason}
+
+  defp await_head(ref, received) do
+    receive do
+      {:vod_block, ^ref, {:head, total_size}} ->
+        {:ok, {:stream, ref, received}, total_size}
+
+      {:vod_block, ^ref, {:done, total_size}} ->
+        BlockFetcher.unsubscribe(ref)
+        {:ok, {:body, received}, total_size}
+
+      {:vod_block, ^ref, {:error, reason}} ->
+        BlockFetcher.unsubscribe(ref)
+        {:error, reason}
+    after
+      @stall_timeout ->
+        BlockFetcher.unsubscribe(ref)
+        {:error, :block_timeout}
+    end
+  end
+
+  defp close_source({:stream, ref, _received}), do: BlockFetcher.unsubscribe(ref)
+  defp close_source(_source), do: :ok
 end

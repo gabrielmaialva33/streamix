@@ -406,6 +406,64 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
     end
   end
 
+  describe "streaming a block while it downloads" do
+    test "answers the viewer before the provider finishes sending the block" do
+      {:ok, port} = start_plug(__MODULE__.HalfwayPlug, test: self())
+      url = "http://127.0.0.1:#{port}/slow.mp4"
+
+      # Built here so this process owns it and sees the response go out.
+      conn =
+        conn(:get, "/proxy")
+        |> Plug.Conn.put_req_header("range", "bytes=0-#{@block_size - 1}")
+
+      task = Task.async(fn -> pipe(conn, url, provider_id: 7_100, content_id: 1) end)
+
+      # The provider has sent the length and half the block, and is holding
+      # the rest back. Waiting for the whole block before answering is what
+      # kept viewers of slow providers on a black screen.
+      assert_receive {:halfway, stub}, 2_000
+      assert_receive {:plug_conn, :sent}, 2_000
+
+      send(stub, :finish)
+      conn = Task.await(task)
+
+      assert conn.status == 206
+      assert conn.resp_body == binary_part(expected_body(), 0, @block_size)
+    end
+
+    test "resumes from the first missing byte when the provider drops the connection" do
+      # No readahead, so every upstream request counted is for block 0.
+      previous = Application.get_env(:streamix, :vod_readahead_blocks)
+      Application.put_env(:streamix, :vod_readahead_blocks, 0)
+      on_exit(fn -> restore(:vod_readahead_blocks, previous) end)
+
+      requests = :counters.new(1, [:atomics])
+      {:ok, port} = start_plug(__MODULE__.DroppingPlug, requests: requests)
+      url = "http://127.0.0.1:#{port}/flaky.mp4"
+
+      conn =
+        conn(:get, "/proxy")
+        |> Plug.Conn.put_req_header("range", "bytes=0-#{@block_size - 1}")
+        |> pipe(url, provider_id: 7_101, content_id: 1)
+
+      assert conn.status == 206
+      assert conn.resp_body == binary_part(expected_body(), 0, @block_size)
+      # One request that dropped, one that asked only for the missing bytes.
+      assert :counters.get(requests, 1) == 2
+
+      # The viewer can get the last byte before the fetcher has written the
+      # block to disk; its answer to `:await` comes after the write.
+      content_key = VodMultiplexer.content_key(provider_id: 7_101, content_id: 1)
+
+      case Registry.lookup(Streamix.StreamRegistry, {:vod_block, content_key, 0}) do
+        [{fetcher, _}] -> assert {:ok, _block} = GenServer.call(fetcher, :await)
+        [] -> :ok
+      end
+
+      assert {:ok, _path} = BlockStore.lookup({content_key, 0})
+    end
+  end
+
   defp pipe(conn, url, opts) do
     VodMultiplexer.pipe(conn, url, opts, fn conn ->
       Plug.Conn.send_resp(conn, 555, "fallback")
@@ -459,6 +517,100 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
         :release_stalled_request -> conn
       after
         2_000 -> conn
+      end
+    end
+  end
+
+  defp start_plug(plug, opts) do
+    {:ok, server} =
+      start_supervised({Bandit, plug: {plug, opts}, port: 0, startup_log: false}, id: plug)
+
+    {:ok, {_address, port}} = ThousandIsland.listener_info(server)
+    {:ok, port}
+  end
+
+  defmodule HalfwayPlug do
+    @moduledoc false
+
+    import Plug.Conn
+
+    @body_size 4_096
+
+    def init(opts), do: opts
+
+    # Sends the length and the first half of the requested range, then waits
+    # for the test before sending the rest — a provider slower than the
+    # viewer's patience.
+    def call(conn, opts) do
+      body = for index <- 0..(@body_size - 1), into: <<>>, do: <<rem(index, 256)>>
+
+      case get_req_header(conn, "range") do
+        ["bytes=" <> spec] ->
+          [range_start, range_end] = spec |> String.split("-") |> Enum.map(&String.to_integer/1)
+          slice = binary_part(body, range_start, range_end - range_start + 1)
+          half = div(byte_size(slice), 2)
+
+          conn =
+            conn
+            |> put_resp_header("content-range", "bytes #{range_start}-#{range_end}/#{@body_size}")
+            |> send_chunked(206)
+
+          {:ok, conn} = chunk(conn, binary_part(slice, 0, half))
+          send(Keyword.fetch!(opts, :test), {:halfway, self()})
+
+          receive do
+            :finish -> :ok
+          after
+            2_000 -> :ok
+          end
+
+          {:ok, conn} = chunk(conn, binary_part(slice, half, byte_size(slice) - half))
+          conn
+
+        _ ->
+          send_resp(conn, 200, body)
+      end
+    end
+  end
+
+  defmodule DroppingPlug do
+    @moduledoc false
+
+    import Plug.Conn
+
+    @body_size 4_096
+    @dropped_after 300
+
+    def init(opts), do: opts
+
+    # The first ranged request sends a few hundred bytes and then the socket
+    # dies, the way an overloaded provider sheds connections; every later
+    # request is served normally.
+    def call(conn, opts) do
+      body = for index <- 0..(@body_size - 1), into: <<>>, do: <<rem(index, 256)>>
+
+      case get_req_header(conn, "range") do
+        ["bytes=" <> spec] ->
+          requests = Keyword.fetch!(opts, :requests)
+          :counters.add(requests, 1, 1)
+          [range_start, range_end] = spec |> String.split("-") |> Enum.map(&String.to_integer/1)
+          slice = binary_part(body, range_start, range_end - range_start + 1)
+
+          conn =
+            conn
+            |> put_resp_header("content-range", "bytes #{range_start}-#{range_end}/#{@body_size}")
+            |> send_chunked(206)
+
+          if :counters.get(requests, 1) == 1 do
+            {:ok, _conn} = chunk(conn, binary_part(slice, 0, @dropped_after))
+            Process.exit(self(), :kill)
+          end
+
+          {:ok, conn} = chunk(conn, slice)
+          conn
+
+        _ ->
+          send_resp(conn, 200, body)
       end
     end
   end
