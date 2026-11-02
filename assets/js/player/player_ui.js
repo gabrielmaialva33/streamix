@@ -198,7 +198,8 @@ export class PlayerUI {
     }, 10000);
   }
 
-  hideLoading() {
+  hideLoading({ force = false } = {}) {
+    if (!force && this.container?.dataset?.playerAwaitingFrame === "true") return;
     if (this._loadingShowTimeout) {
       clearTimeout(this._loadingShowTimeout);
       this._loadingShowTimeout = null;
@@ -211,7 +212,7 @@ export class PlayerUI {
   }
 
   showError(message, hint = null) {
-    this.hideLoading();
+    this.hideLoading({ force: true });
     if (this.elements.errorMessage) {
       this.elements.errorMessage.textContent = message;
     }
@@ -793,7 +794,7 @@ export class PlayerUI {
   }
 
   showAutoplayBlocked() {
-    this.hideLoading();
+    this.hideLoading({ force: true });
     const overlay = this.container.querySelector("#autoplay-overlay");
     if (overlay) {
       overlay.classList.remove("hidden");

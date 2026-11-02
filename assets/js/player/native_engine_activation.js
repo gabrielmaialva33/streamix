@@ -72,6 +72,7 @@ const defaultDependencies = {
   recordPlayerSuccess,
   scheduleLowPriority,
   timerApi: globalThis,
+  now: () => performance.now(),
   waitForNativeReady,
   waitForNativeSeek,
 };
@@ -220,12 +221,14 @@ export class NativeEngineActivation {
     if (resumeTime > 0) {
       this.logger.debug("Resuming from saved position before play:", resumeTime);
       this.trace("native_resume_prepare", sessionId, { resume_time: resumeTime });
-      await this.deps.waitForNativeReady({ video, isCurrent });
+      const deadline = this.deps.now() + 2_500;
+      await this.deps.waitForNativeReady({ video, isCurrent, timeoutMs: 2_500 });
       if (!isCurrent()) return;
       this.trace("native_resume_ready", sessionId, { resume_time: resumeTime });
       await this.deps.waitForNativeSeek({
         video,
         targetTime: resumeTime,
+        timeoutMs: Math.max(0, deadline - this.deps.now()),
         isCurrent,
         onSeekError: (error) =>
           this.logger.debug("[VideoPlayer] Native seek before play failed:", error.message),

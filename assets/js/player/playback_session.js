@@ -13,10 +13,16 @@ export class PlaybackSession {
     this.active = null;
   }
 
-  begin({ contentType = "unknown", streamType = "unknown", displayMode = "browser" } = {}) {
+  begin({
+    contentType = "unknown",
+    streamType = "unknown",
+    displayMode = "browser",
+    startedAt = this.now(),
+  } = {}) {
     this.active = {
       batchId: this.batchId(),
-      startedAt: this.now(),
+      startedAt: Number.isFinite(startedAt) ? Math.min(startedAt, this.now()) : this.now(),
+      marks: {},
       playingAt: null,
       bufferingAt: null,
       bufferingDurationMs: 0,
@@ -39,7 +45,18 @@ export class PlaybackSession {
 
   markPlaying() {
     if (!this.active) return;
+    if (this.active.playingAt !== null) this.setBuffering(false);
+  }
+
+  markStage(stage) {
+    if (!this.active || !["url", "manifest", "metadata", "play", "frame"].includes(stage)) return;
+    this.active.marks[stage] ??= Math.max(0, Math.round(this.now() - this.active.startedAt));
+  }
+
+  markFirstFrame() {
+    if (!this.active) return;
     this.active.playingAt ??= this.now();
+    this.markStage("frame");
     this.setBuffering(false);
   }
 
@@ -48,7 +65,7 @@ export class PlaybackSession {
 
     if (buffering && this.active.bufferingAt === null) {
       this.active.bufferingAt = this.now();
-      this.active.bufferCount += 1;
+      if (this.active.playingAt !== null) this.active.bufferCount += 1;
     } else if (!buffering && this.active.bufferingAt !== null) {
       this.active.bufferingDurationMs += this.now() - this.active.bufferingAt;
       this.active.bufferingAt = null;

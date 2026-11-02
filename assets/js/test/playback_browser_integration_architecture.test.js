@@ -21,7 +21,7 @@ test("VideoPlayer composes browser integration and keeps compatibility delegates
   );
   assert.ok(
     hook.includes(
-      "this.initUI(); this.initPlaybackCommandController(); this.initPlaybackBrowserIntegration();",
+      "this.initUI(); this.initStartupPresentation(); this.initPlaybackCommandController(); this.initPlaybackBrowserIntegration();",
     ),
   );
 

@@ -461,3 +461,25 @@ test("native inline playback keeps gesture controls available on Apple touch dev
   assert.deepEqual(h.calls.touchControls, [false]);
   h.activation.destroy();
 });
+
+test("resume metadata and seek share one 2500ms deadline", async () => {
+  let now = 0;
+  const waits = [];
+  const { activation, video } = createHarness({
+    deps: {
+      now: () => now,
+      waitForNativeReady: async ({ timeoutMs }) => {
+        waits.push(timeoutMs);
+        now += 2400;
+      },
+      waitForNativeSeek: async ({ timeoutMs, targetTime }) => {
+        waits.push(timeoutMs);
+        video.currentTime = targetTime;
+      },
+    },
+  });
+  await activation.playAfterResume(9, 80);
+  assert.deepEqual(waits, [2500, 100]);
+  assert.equal(video.currentTime, 80);
+  assert.equal(video.playCalls, 1);
+});

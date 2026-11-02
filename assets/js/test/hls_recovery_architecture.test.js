@@ -34,7 +34,7 @@ test("the VideoPlayer composes the recovery policy while delegating HLS recovery
   );
   assert.match(
     hook,
-    /handleStreamError\(type, data\) \{\s*return this\.engineRecoveryPolicy\?\.handleStreamError\(type, data\);/,
+    /handleStreamError\(type, data\) \{[\s\S]*?return this\.engineRecoveryPolicy\?\.handleStreamError\(type, data\);/,
   );
   assert.match(
     hook,

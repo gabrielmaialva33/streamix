@@ -150,6 +150,7 @@ export class StreamTransport {
         if (!current(sessionId)) return;
         if (!host.adoptHlsEngine(sessionId)) return;
 
+        host.getPresentation()?.markStartupStage?.("manifest");
         this.logger.info("Manifest parsed, levels:", data?.levels?.length);
         const presentation = host.getPresentation();
         presentation?.hideLoading();
