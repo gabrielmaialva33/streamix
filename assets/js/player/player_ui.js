@@ -258,15 +258,10 @@ export class PlayerUI {
   updatePlayPauseUI(paused) {
     const { playIcon, pauseIcon } = this.elements;
 
-    if (playIcon && pauseIcon) {
-      if (paused) {
-        playIcon.classList.remove("hidden");
-        pauseIcon.classList.add("hidden");
-      } else {
-        playIcon.classList.add("hidden");
-        pauseIcon.classList.remove("hidden");
-      }
-    }
+    const playIcons = this.container?.querySelectorAll?.(".play-icon") ?? [playIcon];
+    const pauseIcons = this.container?.querySelectorAll?.(".pause-icon") ?? [pauseIcon];
+    for (const icon of playIcons) icon?.classList.toggle("hidden", !paused);
+    for (const icon of pauseIcons) icon?.classList.toggle("hidden", paused);
   }
 
   // ============================================

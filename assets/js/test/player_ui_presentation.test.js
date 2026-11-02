@@ -382,3 +382,30 @@ test("showEndedOverlay and hideEndedOverlay bind replay and back actions (AGY-11
   assert.equal(backed, true);
   assert.equal(overlay.classList.contains("hidden"), true);
 });
+
+test("play and pause icons stay synchronized in the bar and centre touch controls", () => {
+  const plays = [elementDouble(), elementDouble()];
+  const pauses = [elementDouble(["hidden"]), elementDouble(["hidden"])];
+  const ui = {
+    container: { querySelectorAll: (selector) => (selector === ".play-icon" ? plays : pauses) },
+    elements: { playIcon: plays[0], pauseIcon: pauses[0] },
+  };
+  PlayerUI.prototype.updatePlayPauseUI.call(ui, false);
+  assert.deepEqual(
+    plays.map((el) => el.classList.contains("hidden")),
+    [true, true],
+  );
+  assert.deepEqual(
+    pauses.map((el) => el.classList.contains("hidden")),
+    [false, false],
+  );
+  PlayerUI.prototype.updatePlayPauseUI.call(ui, true);
+  assert.deepEqual(
+    plays.map((el) => el.classList.contains("hidden")),
+    [false, false],
+  );
+  assert.deepEqual(
+    pauses.map((el) => el.classList.contains("hidden")),
+    [true, true],
+  );
+});

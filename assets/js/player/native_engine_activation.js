@@ -12,7 +12,7 @@ import {
   assertActivationHost,
   PLAYBACK_ENGINE_ACTIVATION_HOST_METHODS,
 } from "./playback_engine_activation.js";
-import { isAppleTouchDevice, scheduleLowPriority } from "./playback_environment.js";
+import { scheduleLowPriority } from "./playback_environment.js";
 import { loadAVPlayer } from "./playback_module_loader.js";
 import { recordPlayerSuccess } from "./player_preferences.js";
 
@@ -68,7 +68,6 @@ const defaultDependencies = {
   configureNativePlaybackElement,
   createNativeBufferManager: (video, callbacks) => new NativeBufferManager(video, callbacks),
   createNativePlaybackEngine,
-  isAppleTouchDevice,
   loadAVPlayer,
   recordPlayerSuccess,
   scheduleLowPriority,
@@ -126,7 +125,9 @@ export class NativeEngineActivation {
     this.host.syncPiPAvailability();
     const resumeTime = this.host.takeResumeTime();
     this.logger.info("Playing with native video element, url:", url);
-    this.host.setNativeTouchControls(this.deps.isAppleTouchDevice());
+    // Inline playback uses the same gesture chrome on every device. Safari's
+    // native fullscreen remains owned by PlaybackBrowserIntegration.
+    this.host.setNativeTouchControls(false);
     this.deps.configureNativePlaybackElement(video, { resumeTime });
 
     const nativeEngine =

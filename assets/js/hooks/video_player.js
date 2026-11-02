@@ -18,7 +18,7 @@ import {
 import { isWebCodecsSupported } from "../media/webcodecs_decoder";
 import { isMSEInWorkersSupported } from "../media/worker_mse";
 import { createAspectRatioController } from "../player/aspect_ratio_controller";
-import { createAudioController } from "../player/audio_controller";
+import { createAudioController, usesNativeAudioControls } from "../player/audio_controller";
 import { audioOutputVolume } from "../player/audio_state";
 import { createAvbridgeEngineActivation } from "../player/avbridge_engine_activation.js";
 import { createAvPlayerEngineActivation } from "../player/avplayer_engine_activation.js";
@@ -76,6 +76,7 @@ import {
 } from "../player/playback_environment";
 import { createPlaybackOrchestrator } from "../player/playback_orchestrator.js";
 import { createPlayerDiagnosticsController } from "../player/player_diagnostics_controller.js";
+import { createPlayerInteractions } from "../player/player_interactions.js";
 import {
   getPlaybackPosition,
   getPreferences,
@@ -111,7 +112,7 @@ import { createWatchPartyPlayerPolicy } from "../watch_party/player_policy.js";
  * - Network monitoring with automatic adaptation
  * - Progress tracking for VOD content
  * - Preferences persistence (volume, tracks)
- * - Keyboard shortcuts (YouTube-style)
+ * - Keyboard shortcuts (Netflix-style)
  * - Circuit breaker for fallback loops
  */
 const VideoPlayer = {
@@ -526,6 +527,7 @@ const VideoPlayer = {
       getCanvasPlaybackActive: () => this.isCanvasPlaybackActive(),
       getContentType: () => this.contentType,
       getMuted: () => this.canonicalAudioState().muted,
+      nextEpisode: () => this.nextEpisodeController?.play(),
       isPlayerDestroyed: () => this._destroyed,
       metadata: {
         title: this.mediaTitle,
@@ -1066,59 +1068,6 @@ const VideoPlayer = {
     }
   },
 
-  setupIosPwaTapControls() {
-    if (!this.iosPwaMode) return;
-
-    this.el.classList.add("ios-pwa-tap-playback");
-    this._onIosPwaTap = (event) => {
-      if (!this.shouldHandleIosPwaTap(event)) return;
-
-      const now = Date.now();
-      if (now - this._lastIosPwaTapAt < 350) return;
-      this._lastIosPwaTapAt = now;
-
-      if (!this.playerUIController.controlsVisible) {
-        this.playerUIController.revealControls();
-        this.reportIosPwaTelemetry("controls_revealed", {
-          target: event.target?.tagName || "unknown",
-        });
-        return;
-      }
-
-      const pausedBefore = this.isPaused();
-      this.reportIosPwaTelemetry("center_tap_play_pause", {
-        paused_before: pausedBefore,
-        target: event.target?.tagName || "unknown",
-      });
-      this.togglePlayPause();
-    };
-    this.lifecycle.listen(this.el, "click", this._onIosPwaTap);
-  },
-
-  shouldHandleIosPwaTap(event) {
-    if (event.defaultPrevented || event.button !== 0) return false;
-
-    const target = event.target;
-    if (!(target instanceof Element)) return false;
-
-    return !target.closest(
-      [
-        "button",
-        "a",
-        "input",
-        "select",
-        "textarea",
-        "label",
-        "[role='button']",
-        "#player-controls",
-        "#progress-container",
-        "#settings-menu",
-        "#tracks-menu",
-        ".no-ios-pwa-tap",
-      ].join(","),
-    );
-  },
-
   reportIosPwaTelemetry(event, extra = {}) {
     if (!this.iosPwaMode) return;
 
@@ -1232,7 +1181,6 @@ const VideoPlayer = {
         this.play();
       });
     }
-    this.setupIosPwaTapControls();
     this.setupMobileControls();
     this.mediaEventBindings.bindMediaEvents();
     this.mediaEventBindings.bindPageLifecycle();
@@ -1273,13 +1221,26 @@ const VideoPlayer = {
   },
 
   setupMobileControls() {
+    this.playerInteractions?.destroy();
+    this.mobileControls?.destroy();
+    this.playerInteractions = createPlayerInteractions({
+      root: this.el,
+      video: this.video,
+      isPaused: () => this.isPaused(),
+      getContentType: () => this.contentType,
+      seek: (seconds) => this.seek(seconds),
+      togglePlayPause: () => this.togglePlayPause(),
+      nextEpisode: () => this.nextEpisodeController?.play(),
+    });
     this.mobileControls = createMobileControls({
       root: this.el,
       controls: this.el.querySelector("#player-controls"),
       video: this.video,
       presentation: this.playerUIController,
-      shouldUseNativeControls: () => this.nativeTouchControls || this.iosPwaMode,
-      toggleFullscreen: () => this.toggleFullscreen(),
+      shouldUseNativeControls: () => this.nativeTouchControls,
+      getContentType: () => this.contentType,
+      seek: (seconds) => this.playerInteractions.seekBy(seconds),
+      togglePlayPause: () => this.togglePlayPause(),
     });
   },
 
@@ -1372,7 +1333,12 @@ const VideoPlayer = {
   },
 
   handleNativeVolumeChange() {
-    if (!this.video || this.usingAVPlayer || this.usingH265web || !this.nativeTouchControls) {
+    if (
+      !usesNativeAudioControls(this.video, {
+        nativeControls: this.nativeTouchControls,
+        canvasPlayback: this.usingAVPlayer || this.usingH265web,
+      })
+    ) {
       this.updateVolumeUI();
       return;
     }
@@ -2358,10 +2324,11 @@ const VideoPlayer = {
     this.aspectRatioController = null;
     this.mobileControls?.destroy();
     this.mobileControls = null;
+    this.playerInteractions?.destroy();
+    this.playerInteractions = null;
 
     this.mediaEventBindings = null;
     this.engineRecoveryPolicy = null;
-    this._onIosPwaTap = null;
 
     this.nextEpisodeController?.destroy();
     this.nextEpisodeController = null;

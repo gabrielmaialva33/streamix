@@ -1,7 +1,7 @@
 /**
  * Keyboard Manager
  *
- * Handles YouTube-style keyboard shortcuts for the video player.
+ * Handles Netflix-style keyboard shortcuts for the video player.
  * Extracted from video_player.js for better separation of concerns.
  */
 
@@ -38,6 +38,7 @@ export class KeyboardManager {
     this.contentType = options.contentType || "live";
     this.documentRef = options.documentRef || globalThis.document;
     this.actions = options.actions;
+    this.root = options.root;
     this.showFeedback = options.showFeedback || (() => {});
 
     this.keyHandler = null;
@@ -82,7 +83,12 @@ export class KeyboardManager {
    */
   handleKeyDown(e) {
     // Ignore if typing in an input field
-    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
+    if (
+      e.defaultPrevented ||
+      this.root?.dataset?.playerLocked !== undefined ||
+      ["INPUT", "TEXTAREA", "SELECT"].includes(e.target?.tagName) ||
+      e.target?.isContentEditable
+    ) {
       return;
     }
 
@@ -91,7 +97,44 @@ export class KeyboardManager {
       return;
     }
 
+    // Let focused controls activate once through their own click handler.
+    if ([" ", "Enter"].includes(e.key) && e.target?.closest?.("button, a, [role='button']")) return;
+
+    const viewer = this.root?.dataset?.partyRole === "viewer";
+    const transportKey = [
+      " ",
+      "Enter",
+      "k",
+      "K",
+      "ArrowLeft",
+      "ArrowRight",
+      "j",
+      "J",
+      "l",
+      "L",
+      "n",
+      "N",
+      "<",
+      ">",
+      ..."0123456789",
+    ].includes(e.key);
+    if (viewer && transportKey) return;
+
     switch (e.key) {
+      case "Escape":
+        e.preventDefault();
+        if (this.root?.dataset?.playerPanel) {
+          delete this.root.dataset.playerPanel;
+        } else {
+          this.actions.exitFullscreen?.();
+        }
+        break;
+
+      case "n":
+      case "N":
+        e.preventDefault();
+        this.actions.nextEpisode?.();
+        break;
       // Fullscreen
       case "f":
       case "F":
@@ -101,6 +144,7 @@ export class KeyboardManager {
 
       // Play/Pause
       case " ":
+      case "Enter":
       case "k":
       case "K":
         e.preventDefault();
@@ -218,6 +262,7 @@ export class KeyboardManager {
   destroy() {
     this.stop();
     this.actions = null;
+    this.root = null;
     this.documentRef = null;
     this.showFeedback = null;
   }

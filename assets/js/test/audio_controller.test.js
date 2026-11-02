@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createAudioController } from "../player/audio_controller.js";
+import { createAudioController, usesNativeAudioControls } from "../player/audio_controller.js";
 
 function buildController(initialPreferences = {}) {
   const applied = [];
@@ -138,4 +138,18 @@ test("replacing restored state does not rewrite preferences", () => {
     lastAudibleVolume: 0.6,
   });
   assert.deepEqual(persisted, []);
+});
+
+test("Safari fullscreen audio remains native-controlled with custom inline chrome", () => {
+  assert.equal(
+    usesNativeAudioControls({ webkitDisplayingFullscreen: true }, { nativeControls: false }),
+    true,
+  );
+  assert.equal(usesNativeAudioControls({}, { nativeControls: true }), true);
+  assert.equal(usesNativeAudioControls({}, { nativeControls: false }), false);
+  assert.equal(
+    usesNativeAudioControls({ webkitDisplayingFullscreen: true }, { canvasPlayback: true }),
+    false,
+  );
+  assert.equal(usesNativeAudioControls(null, { nativeControls: true }), false);
 });

@@ -454,3 +454,10 @@ test("playAfterResume prefers the registered native engine and defaults the resu
 
   assert.deepEqual(plays, ["engine"]);
 });
+
+test("native inline playback keeps gesture controls available on Apple touch devices", () => {
+  const h = createHarness({ deps: { isAppleTouchDevice: () => true } });
+  h.activation.activate(h.request());
+  assert.deepEqual(h.calls.touchControls, [false]);
+  h.activation.destroy();
+});

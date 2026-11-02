@@ -72,6 +72,7 @@ export class PlaybackBrowserIntegration {
     isPlayerDestroyed,
     metadata = {},
     navigatorRef = globalThis.navigator,
+    nextEpisode = () => {},
     onError = () => {},
     presentation,
     root,
@@ -91,6 +92,7 @@ export class PlaybackBrowserIntegration {
     this.isPlayerDestroyed = requiredFunction(isPlayerDestroyed, "isPlayerDestroyed");
     this.metadata = metadata;
     this.navigatorRef = navigatorRef;
+    this.nextEpisode = nextEpisode;
     this.onError = requiredFunction(onError, "onError");
     this.presentation = requiredObject(presentation, "presentation");
     this.root = requiredObject(root, "root");
@@ -145,10 +147,13 @@ export class PlaybackBrowserIntegration {
     this.keyboardManager = this.deps.createKeyboardManager({
       contentType: this.getContentType(),
       documentRef: this.documentRef,
+      root: this.root,
       actions: {
         togglePlayPause: () => this.commands.togglePlayPause(),
         toggleMute: () => this.commands.toggleMute(),
         toggleFullscreen: () => this.toggleFullscreen(),
+        exitFullscreen: () => this.exitFullscreen(),
+        nextEpisode: () => this.nextEpisode(),
         togglePiP: () => this.togglePiP(),
         toggleSubtitles: () => this.commands.toggleSubtitles?.(),
         adjustVolume: (delta) => this.commands.adjustVolume(delta),
@@ -182,6 +187,13 @@ export class PlaybackBrowserIntegration {
     }
 
     return this.root.requestFullscreen?.() || this.video?.requestFullscreen?.();
+  }
+
+  exitFullscreen() {
+    if (this.destroyed) return false;
+    if (this.documentRef?.fullscreenElement) return this.documentRef.exitFullscreen?.();
+    if (this.video?.webkitDisplayingFullscreen) return this.video.webkitExitFullscreen?.();
+    return false;
   }
 
   async togglePiP() {
