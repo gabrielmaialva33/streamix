@@ -1,4 +1,6 @@
 defmodule Streamix.Iptv.Content.GindexMovies do
+  alias Streamix.Iptv.Content.VodAvailability
+
   @moduledoc """
   GIndex-backed movie queries.
   """
@@ -20,6 +22,7 @@ defmodule Streamix.Iptv.Content.GindexMovies do
     show_adult = Keyword.get(opts, :show_adult, false)
 
     Movie
+    |> VodAvailability.exclude_dead()
     |> where([m], not is_nil(m.gindex_path))
     |> order_by(desc: :year, asc: :name)
     |> maybe_search(search)
@@ -36,6 +39,7 @@ defmodule Streamix.Iptv.Content.GindexMovies do
   """
   def count do
     Movie
+    |> VodAvailability.exclude_dead()
     |> where([m], not is_nil(m.gindex_path))
     |> Repo.aggregate(:count)
   end

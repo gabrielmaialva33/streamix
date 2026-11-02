@@ -432,7 +432,7 @@ defmodule StreamixWeb.PlayerLive do
 
   defp handle_loaded_content(socket, type, user_id, content, provider, return_to) do
     if Access.plays_global_content?(socket.assigns.current_scope.user, provider) do
-      load_authorized_content(socket, type, user_id, content, provider, return_to)
+      load_available_content(socket, type, user_id, content, provider, return_to)
     else
       target_path = return_to || ~p"/watch/#{type}/#{content.id}"
 
@@ -443,6 +443,40 @@ defmodule StreamixWeb.PlayerLive do
          "Você precisa de uma assinatura ativa ou permissão para assistir conteúdo global."
        )
        |> redirect(to: ~p"/plans?return_to=#{target_path}")}
+    end
+  end
+
+  defp load_available_content(socket, type, user_id, content, provider, return_to) do
+    if Streamix.Playback.vod_dead?(content) do
+      case PlayerSourceFailover.next(
+             type,
+             content,
+             socket.assigns.current_scope.user,
+             MapSet.new(),
+             probe: connected?(socket)
+           ) do
+        {:ok, source, _attempted} ->
+          start_authorized_player(
+            socket,
+            source.content_type,
+            user_id,
+            source.content,
+            source.provider,
+            source.stream_url,
+            return_to
+          )
+
+        {:error, :no_sources, _attempted} ->
+          {:ok,
+           socket
+           |> put_flash(
+             :error,
+             "Este vídeo está indisponível no momento. Tente outra versão nos detalhes."
+           )
+           |> redirect(to: ~p"/")}
+      end
+    else
+      load_authorized_content(socket, type, user_id, content, provider, return_to)
     end
   end
 

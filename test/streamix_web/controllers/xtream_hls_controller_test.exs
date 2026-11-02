@@ -262,6 +262,13 @@ defmodule StreamixWeb.XtreamHlsControllerTest do
       assert response.status == 404
       assert json_response(response, 404)["error"]["code"] == "upstream_not_found"
       refute response.resp_body =~ "No playable stream"
+
+      for pid <- Task.Supervisor.children(Streamix.TaskSupervisor) do
+        ref = Process.monitor(pid)
+        assert_receive {:DOWN, ^ref, :process, ^pid, _}, 5_000
+      end
+
+      assert Repo.reload!(context.movie).dead_since
     end)
   end
 

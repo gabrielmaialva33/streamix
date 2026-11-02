@@ -1,4 +1,6 @@
 defmodule Streamix.Iptv.Content.SeriesOps.Details do
+  alias Streamix.Iptv.Content.VodAvailability
+
   @moduledoc false
 
   import Ecto.Query, warn: false
@@ -48,5 +50,6 @@ defmodule Streamix.Iptv.Content.SeriesOps.Details do
 
   defp public_episodes_query do
     from(episode in Episode, order_by: episode.episode_num)
+    |> VodAvailability.exclude_dead()
   end
 end

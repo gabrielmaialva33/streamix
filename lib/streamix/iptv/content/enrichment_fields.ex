@@ -1,4 +1,6 @@
 defmodule Streamix.Iptv.Content.EnrichmentFields do
+  alias Streamix.Iptv.Content.VodAvailability
+
   @moduledoc """
   Shared metadata ownership for provider ingestion within the IPTV context.
 
@@ -56,6 +58,7 @@ defmodule Streamix.Iptv.Content.EnrichmentFields do
         updates
       end
 
+    updates = VodAvailability.conflict_update(updates, schema)
     from(content in schema, update: [set: ^updates])
   end
 

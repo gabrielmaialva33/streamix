@@ -1,4 +1,6 @@
 defmodule Streamix.Iptv.Movies do
+  alias Streamix.Iptv.Content.VodAvailability
+
   @moduledoc """
   Movie operations.
 
@@ -248,6 +250,7 @@ defmodule Streamix.Iptv.Movies do
   @spec get_for_stream(integer()) :: Movie.t() | nil
   def get_for_stream(id) do
     Movie
+    |> VodAvailability.exclude_dead()
     |> where(id: ^id)
     |> preload(:provider)
     |> Repo.one()
@@ -262,6 +265,7 @@ defmodule Streamix.Iptv.Movies do
 
   def get_by_ids(ids) when is_list(ids) do
     from(m in Movie, where: m.id in ^ids)
+    |> VodAvailability.exclude_dead()
     |> preload(^@search_result_preloads)
     |> Repo.all()
   end

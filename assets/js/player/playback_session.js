@@ -61,7 +61,7 @@ export class PlaybackSession {
   }
 
   setBuffering(buffering) {
-    if (!this.active) return;
+    if (!this.active || this.active.playingAt === null) return;
 
     if (buffering && this.active.bufferingAt === null) {
       this.active.bufferingAt = this.now();

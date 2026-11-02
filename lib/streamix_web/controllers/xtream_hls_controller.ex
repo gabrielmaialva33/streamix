@@ -142,6 +142,8 @@ defmodule StreamixWeb.XtreamHlsController do
   defp master_error(reason), do: reason
 
   defp log_master_failure(%{content: {type, id}, provider_id: provider_id}, reason) do
+    Playback.record_vod_failure(type, id, provider_id, reason)
+
     Logger.warning(
       "[XtreamHls] master unavailable type=#{type} id=#{id} provider=#{provider_id} " <>
         "reason=#{inspect(reason)}"

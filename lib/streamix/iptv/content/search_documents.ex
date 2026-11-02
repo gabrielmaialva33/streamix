@@ -1,4 +1,6 @@
 defmodule Streamix.Iptv.SearchDocuments do
+  alias Streamix.Iptv.Content.VodAvailability
+
   @moduledoc """
   Read projection used by search indexers.
 
@@ -29,6 +31,7 @@ defmodule Streamix.Iptv.SearchDocuments do
     kind
     |> schema_for()
     |> base_query(after_id)
+    |> VodAvailability.exclude_dead()
     |> scope_to_kind(kind)
     |> maybe_filter_provider(provider_id)
     |> Repo.all()
