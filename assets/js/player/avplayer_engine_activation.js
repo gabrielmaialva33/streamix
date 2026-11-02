@@ -9,7 +9,11 @@ import {
 import { createPlaybackEngineAdapter } from "./playback_engine_adapter.js";
 import { resolvePlaybackResumeTime } from "./playback_engine_lifecycle.js";
 import { loadAVPlayer } from "./playback_module_loader.js";
-import { forgetRecommendedPlayer, recordPlayerSuccess } from "./player_preferences.js";
+import {
+  forgetRecommendedPlayer,
+  playerRecommendationKey,
+  recordPlayerSuccess,
+} from "./player_preferences.js";
 
 export const AVPLAYER_FALLBACK_BLOCKED_MESSAGE =
   "Formato de audio nao suportado. Tente novamente mais tarde.";
@@ -36,6 +40,7 @@ export const AVPLAYER_ENGINE_ACTIVATION_HOST_METHODS = Object.freeze([
   "getPresentation",
   "getProxyUrl",
   "getSourceType",
+  "getProviderId",
   "getStreamType",
   "getStreamUrl",
   "getSubtitleOffsetMs",
@@ -392,6 +397,7 @@ export class AvPlayerEngineActivation {
           : "[VideoPlayer] AVPlayer ready",
       );
     });
+    let successRecorded = false;
     avPlayer.on(ENGINE_EVENT.PLAYING, () => {
       if (!isCurrent()) return;
       const presentation = this.host.getPresentation();
@@ -402,10 +408,13 @@ export class AvPlayerEngineActivation {
       this.host.markPlaying();
       this.host.emitPlaybackEvent("play");
 
-      if (recordSuccess) {
+      if (recordSuccess && !successRecorded) {
         const sourceType = this.host.getSourceType();
         const streamType = this.host.getStreamType();
-        this.deps.recordPlayerSuccess(this.contentKey(), "avplayer", { sourceType, streamType });
+        const contentKey = this.contentKey();
+        if (contentKey)
+          this.deps.recordPlayerSuccess(contentKey, "avplayer", { sourceType, streamType });
+        successRecorded = true;
       }
     });
     avPlayer.on(ENGINE_EVENT.PAUSED, () => {
@@ -537,7 +546,7 @@ export class AvPlayerEngineActivation {
     // GIndex 4K MKV is the only path that genuinely needs the heavier
     // load profile: large `moov`, MKV cluster probe, and the BEAM-side
     // proxy adds latency on top of upstream redirects. 2-min ceiling +
-    // 8 MB preload + aggressive retry keeps the player alive on flaky
+    // 8 MB preload keeps the player alive on flaky
     // links. Everything else — including Xtream VOD MP4 — keeps the
     // libmedia defaults: a single blocking prefetch sits in TCP
     // slow-start while the upstream throttles, so playback waits for the
@@ -553,8 +562,6 @@ export class AvPlayerEngineActivation {
         maxProbeDuration: 10,
         ioLoaderOptions: {
           preload: 8 * 1024 * 1024,
-          retryCount: 8,
-          retryInterval: 1,
         },
       };
     }
@@ -633,7 +640,10 @@ export class AvPlayerEngineActivation {
   }
 
   contentKey() {
-    return this.host.getSourceType() === "gindex" ? "gindex" : this.host.getStreamType();
+    return playerRecommendationKey({
+      providerId: this.host.getProviderId(),
+      streamType: this.host.getStreamType(),
+    });
   }
 }
 

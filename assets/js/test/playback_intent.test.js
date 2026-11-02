@@ -5,6 +5,7 @@ import {
   createEngineWarmup,
   installPlaybackIntent,
 } from "../player/playback_intent.js";
+import { recordPlayerSuccess } from "../player/player_preferences.js";
 
 function button(dataset = {}, href = "") {
   return {
@@ -42,6 +43,36 @@ test("intent imports only the likely engine and deduplicates concurrent hover/fo
   assert.deepEqual(calls, ["hls", "mpegts", "avplayer", "native"]);
 });
 
+test("intent warms the remembered provider/container engine without affecting other providers or TS", async (t) => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  const values = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key),
+  };
+  t.after(() => {
+    if (previous) Object.defineProperty(globalThis, "localStorage", previous);
+    else delete globalThis.localStorage;
+  });
+  recordPlayerSuccess("provider:3:mp4", "avplayer");
+  recordPlayerSuccess("provider:3:mp4", "avplayer");
+  const calls = [];
+  const warm = createEngineWarmup({
+    loaders: Object.fromEntries(
+      ["native", "hls", "mpegts", "avplayer"].map((engine) => [
+        engine,
+        async () => calls.push(engine),
+      ]),
+    ),
+  });
+  await warm(button({ streamType: "mp4", providerId: "3" }));
+  assert.deepEqual(calls, ["avplayer"]);
+  await warm(button({ streamType: "mp4", providerId: "4" }));
+  await warm(button({ streamType: "ts", providerId: "3" }));
+  assert.deepEqual(calls, ["avplayer", "native", "mpegts"]);
+});
+
 test("hover/focus warm code without recording a click; matched click is consumed once", async () => {
   const listeners = new Map();
   const documentRef = {
@@ -55,7 +86,7 @@ test("hover/focus warm code without recording a click; matched click is consumed
     now: () => now,
     warm: (el) => warmed.push(el),
   });
-  const target = button({ contentId: "42", cover: "/cover.jpg" });
+  const target = button({ contentId: "42", providerId: "3", cover: "/cover.jpg" });
   listeners.get("pointerover")({ target });
   listeners.get("focusin")({ target });
   assert.equal(warmed.length, 2);
@@ -65,6 +96,7 @@ test("hover/focus warm code without recording a click; matched click is consumed
   assert.deepEqual(consumePlaybackIntent({ contentId: "42", now: () => now }), {
     startedAt: 100,
     cover: "/cover.jpg",
+    providerId: "3",
   });
   assert.equal(consumePlaybackIntent({ now: () => now }), null);
   listeners.get("click")({ target, button: 0 });

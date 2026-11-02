@@ -1,5 +1,6 @@
 import { getHls, getMpegts } from "../media/player_libs.js";
 import { loadAVPlayer } from "./playback_module_loader.js";
+import { getRecommendedPlayer, playerRecommendationKey } from "./player_preferences.js";
 
 const PLAY_SELECTOR =
   'a[href*="/watch/"],[phx-click^="play_"],[phx-click="play"],[data-action="play"],[data-player-play]';
@@ -14,7 +15,13 @@ export function createEngineWarmup({
   loaders = {
     hls: getHls,
     mpegts: getMpegts,
-    avplayer: loadAVPlayer,
+    avplayer: async (dataset) => {
+      const { preloadAVPlayerRuntime } = await loadAVPlayer();
+      await preloadAVPlayerRuntime({
+        stream_type: dataset.streamType,
+        source_type: dataset.sourceType,
+      });
+    },
     native: () => import("./native_playback_engine.js"),
   },
 } = {}) {
@@ -25,18 +32,23 @@ export function createEngineWarmup({
     const type =
       dataset.streamType ||
       (href.includes("/live_channel/") ? "ts" : dataset.sourceType === "gindex" ? "mkv" : "mp4");
+    const providerId =
+      element?.closest?.("[data-provider-id]")?.dataset?.providerId || dataset.providerId;
+    const recommended = getRecommendedPlayer(
+      playerRecommendationKey({ providerId, streamType: type }),
+    );
     const engine = ["hls", "m3u8"].includes(type)
       ? "hls"
       : ["ts", "xtream", "flv"].includes(type)
         ? "mpegts"
-        : dataset.sourceType === "gindex" && type !== "mp4"
+        : recommended === "avplayer" || (dataset.sourceType === "gindex" && type !== "mp4")
           ? "avplayer"
           : "native";
     if (!pending.has(engine)) {
       pending.set(
         engine,
         Promise.resolve()
-          .then(() => loaders[engine]())
+          .then(() => loaders[engine](dataset))
           .catch(() => pending.delete(engine)),
       );
     }
@@ -69,6 +81,10 @@ export function installPlaybackIntent({
       startedAt: now(),
       contentId: context?.dataset?.contentId || element.getAttribute?.("phx-value-id") || null,
       cover: coverContext?.dataset?.cover || coverContext?.querySelector?.("img")?.src || null,
+      providerId:
+        element.closest?.("[data-provider-id]")?.dataset?.providerId ||
+        context?.dataset?.providerId ||
+        null,
     };
   };
   documentRef.addEventListener("pointerover", warmOnIntent, true);
@@ -91,5 +107,9 @@ export function consumePlaybackIntent({ contentId, now = nowDefault } = {}) {
     (contentId && selected.contentId && String(contentId) !== String(selected.contentId))
   )
     return null;
-  return { startedAt: selected.startedAt, cover: selected.cover };
+  return {
+    startedAt: selected.startedAt,
+    cover: selected.cover,
+    ...(selected.providerId ? { providerId: selected.providerId } : {}),
+  };
 }

@@ -84,6 +84,7 @@ import {
   getPlaybackPosition,
   getPreferences,
   getRecommendedPlayer,
+  playerRecommendationKey,
   saveAudioTrack,
   saveMuted,
   savePlaybackPosition,
@@ -169,6 +170,7 @@ const VideoPlayer = {
 
   initStartupPresentation() {
     const intent = consumePlaybackIntent({ contentId: this.contentId });
+    this.providerId = this.el.dataset.providerId || intent?.providerId || null;
     this._playbackMountedAt = intent?.startedAt ?? this._playbackMountedAt ?? performance.now();
     this.startupPresentation = new PlaybackStartupController({
       root: this.el,
@@ -621,6 +623,7 @@ const VideoPlayer = {
       getProxyUrl: () => this.proxyUrl,
       getSessionId: () => this.playbackSessionId,
       getSourceType: () => this.sourceType,
+      getProviderId: () => this.providerId,
       getStreamLoader: () => this.streamTransport?.current ?? null,
       getStreamType: () => this.currentStreamType,
       getStreamUrl: () => this.streamUrl,
@@ -1182,6 +1185,7 @@ const VideoPlayer = {
     this.streamUrl = streamUrl;
     this.proxyUrl = payload.proxy_url || streamUrl;
     this.sourceType = payload.source_type || this.sourceType;
+    this.providerId = payload.provider_id ? String(payload.provider_id) : null;
     this.contentId = String(payload.content_id);
     this.useProxy = true;
     this.currentUrl = null;
@@ -1190,6 +1194,7 @@ const VideoPlayer = {
     this.el.dataset.streamUrl = this.streamUrl;
     this.el.dataset.proxyUrl = this.proxyUrl;
     this.el.dataset.sourceType = this.sourceType;
+    this.el.dataset.providerId = this.providerId || "";
     this.el.dataset.contentId = this.contentId;
     if (payload.stream_type) this.el.dataset.streamType = payload.stream_type;
 
@@ -2036,7 +2041,10 @@ const VideoPlayer = {
     });
 
     // Check Device Codec Memory for recommended player (Netflix pattern)
-    const contentKey = this.sourceType === "gindex" ? "gindex" : this.currentStreamType;
+    const contentKey = playerRecommendationKey({
+      providerId: this.providerId,
+      streamType: this.currentStreamType,
+    });
     const recommendedPlayer = getRecommendedPlayer(contentKey);
     const engineContext = this.buildEngineContext(recommendedPlayer);
     const engine = assertEngineSelection(selectEngine(engineContext));

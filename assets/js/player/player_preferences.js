@@ -19,12 +19,25 @@ const MAX_POSITIONS = 100; // Max number of positions to store
 // longer applies). Reads with a stale schema are wiped on the next
 // access — much cheaper than asking every user to clear localStorage by
 // hand.
-// Bumped to 3 (2026-05-24): a deploy broke AVPlayer for MP4/xtream and
-// users who'd previously recorded 30+ AVPlayer successes were stuck on
-// `open stream failed, ret: -2` because the cached recommendation kept
-// short-circuiting the native engine. Schema bump wipes every client's
-// memory on next load so engine_selector re-evaluates from scratch.
-const DEVICE_COMPAT_SCHEMA = 3;
+// Version 4 discards format-global recommendations. A successful MP4
+// must only influence that provider/container, never every other provider.
+const DEVICE_COMPAT_SCHEMA = 4;
+const RECOMMENDATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function playerRecommendationKey({ providerId, streamType } = {}) {
+  if (!/^[1-9]\d*$/.test(String(providerId)) || !/^[a-z0-9]{2,12}$/.test(streamType || ""))
+    return null;
+  return `provider:${providerId}:${streamType}`;
+}
+
+function validRecommendationKey(key) {
+  return typeof key === "string" && /^provider:[1-9]\d*:[a-z0-9]{2,12}$/.test(key);
+}
+
+function freshRecommendation(data) {
+  const age = Date.now() - data?.lastSuccess;
+  return Number.isFinite(age) && age >= 0 && age <= RECOMMENDATION_TTL_MS;
+}
 
 // ============================================
 // Device Fingerprint & Codec Compatibility
@@ -99,6 +112,7 @@ function saveDeviceCompatibility(compat) {
  * next playback attempt falls back to engine_selector defaults.
  */
 export function forgetRecommendedPlayer(contentType) {
+  if (!validRecommendationKey(contentType)) return;
   const compat = getDeviceCompatibility();
   if (compat.players[contentType]) {
     delete compat.players[contentType];
@@ -108,18 +122,23 @@ export function forgetRecommendedPlayer(contentType) {
 }
 
 /**
- * Record which player worked for a specific content type
- * @param {string} contentType - Content type (e.g., 'mkv', 'gindex', 'hls')
+ * Record which player worked for an identified provider/container.
+ * @param {string} contentType - Scoped key returned by playerRecommendationKey
  * @param {string} player - Player that worked ('native', 'avplayer', 'hls', 'mpegts')
  * @param {object} context - Additional context (codecs detected, etc.)
  */
 export function recordPlayerSuccess(contentType, player, context = {}) {
+  if (!validRecommendationKey(contentType)) return;
   const compat = getDeviceCompatibility();
+  const previous = compat.players[contentType];
 
   compat.players[contentType] = {
     recommendedPlayer: player,
     context,
-    successCount: (compat.players[contentType]?.successCount || 0) + 1,
+    successCount:
+      (previous?.recommendedPlayer === player && freshRecommendation(previous)
+        ? previous.successCount || 0
+        : 0) + 1,
     lastSuccess: Date.now(),
   };
 
@@ -128,19 +147,18 @@ export function recordPlayerSuccess(contentType, player, context = {}) {
 }
 
 /**
- * Get recommended player for a content type based on past experience
- * @param {string} contentType - Content type to check
+ * Get a recent recommendation for an identified provider/container.
+ * @param {string} contentType - Scoped key returned by playerRecommendationKey
  * @returns {string|null} Recommended player or null if no data
  */
 export function getRecommendedPlayer(contentType) {
+  if (!validRecommendationKey(contentType)) return null;
   const compat = getDeviceCompatibility();
   const playerData = compat.players[contentType];
 
   if (!playerData) return null;
 
-  // Only trust recommendations from the last 30 days
-  const thirtyDays = 30 * 24 * 60 * 60 * 1000;
-  if (Date.now() - playerData.lastSuccess > thirtyDays) {
+  if (!freshRecommendation(playerData)) {
     return null;
   }
 

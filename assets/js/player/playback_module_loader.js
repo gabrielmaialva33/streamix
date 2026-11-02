@@ -35,7 +35,11 @@ export function createLazyModuleLoader({ label, load, select = (module) => modul
 export const loadAVPlayer = createLazyModuleLoader({
   label: "AVPlayer",
   load: () => import("../media/avplayer_wrapper.js"),
-  select: ({ AVPlayerWrapper, detectAudioIssue }) => ({ AVPlayerWrapper, detectAudioIssue }),
+  select: ({ AVPlayerWrapper, detectAudioIssue, preloadAVPlayerRuntime }) => ({
+    AVPlayerWrapper,
+    detectAudioIssue,
+    preloadAVPlayerRuntime,
+  }),
 });
 
 export const loadAvbridge = createLazyModuleLoader({

@@ -14,7 +14,7 @@ import {
 } from "./playback_engine_activation.js";
 import { scheduleLowPriority } from "./playback_environment.js";
 import { loadAVPlayer } from "./playback_module_loader.js";
-import { recordPlayerSuccess } from "./player_preferences.js";
+import { playerRecommendationKey, recordPlayerSuccess } from "./player_preferences.js";
 
 export const NATIVE_PLAYBACK_MESSAGES = Object.freeze({
   ABORTED: "Reproducao cancelada",
@@ -42,6 +42,7 @@ export const NATIVE_ENGINE_ACTIVATION_HOST_METHODS = Object.freeze([
   "getNativePlaybackEngine",
   "getPresentation",
   "getSourceType",
+  "getProviderId",
   "getStreamType",
   "getVideo",
   "isAVPlayerAttempted",
@@ -428,8 +429,12 @@ export class NativeEngineActivation {
 
       const sourceType = this.host.getSourceType();
       const streamType = this.host.getStreamType();
-      const contentKey = sourceType === "gindex" ? "gindex" : streamType;
-      this.deps.recordPlayerSuccess(contentKey, "native", { sourceType, streamType });
+      const contentKey = playerRecommendationKey({
+        providerId: this.host.getProviderId(),
+        streamType,
+      });
+      if (contentKey)
+        this.deps.recordPlayerSuccess(contentKey, "native", { sourceType, streamType });
     }, NATIVE_SUCCESS_CONFIRM_MS);
   }
 

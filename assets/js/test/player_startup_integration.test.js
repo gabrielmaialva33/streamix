@@ -5,13 +5,14 @@ import vm from "node:vm";
 import { ENGINE_ID, PLAYBACK_STATE } from "../player/engine_contract.js";
 import { PlaybackRecoveryGuard } from "../player/playback_recovery_guard.js";
 import { PlaybackSession } from "../player/playback_session.js";
+import { playerRecommendationKey } from "../player/player_preferences.js";
 import { clock } from "./support/playback_clock.js";
 
 // Execute the production hook methods with browser/transport boundaries supplied explicitly.
 const source = readFileSync(new URL("../hooks/video_player.js", import.meta.url), "utf8")
   .replace(/^import[\s\S]*?;\n/gm, "")
   .replace("export default VideoPlayer;", "globalThis.hook = VideoPlayer;");
-function harness() {
+function harness({ intent = null, streamType = "hls" } = {}) {
   const timerApi = clock();
   const calls = [];
   const bindings = {
@@ -28,10 +29,18 @@ function harness() {
     engineIdFromRuntime: () => "avbridge",
     isWebCodecsSupported: () => false,
     isMSEInWorkersSupported: () => false,
-    resolveStreamType: () => "hls",
+    resolveStreamType: () => streamType,
     getCapabilitySummary: () => ({}),
     isStandalonePwa: () => false,
-    getRecommendedPlayer: () => null,
+    getRecommendedPlayer: (key) => {
+      calls.push(["recommendation", key]);
+      return null;
+    },
+    playerRecommendationKey,
+    consumePlaybackIntent: () => intent,
+    PlaybackStartupController: class {
+      begin() {}
+    },
     selectEngine: () => "native",
     assertEngineSelection: (value) => value,
   };
@@ -166,5 +175,41 @@ test("avbridge waits on the shared video frame callback, like native/HLS/mpegts"
   hook.startupPresentation = { attach: (options) => selected.push(options.native) };
   productionHook.reportPlayerLifecycle.call(hook, "player_engine_selected", { engine: "avbridge" });
   assert.deepEqual(selected, [true]);
+  hook.recoveryGuard.destroy();
+});
+
+test("server provider overrides click context and source failover cannot reuse the old provider memory", () => {
+  const { hook, calls } = harness({ intent: { providerId: "3" }, streamType: "mp4" });
+  hook.el.dataset.providerId = "4";
+  hook.initStartupPresentation();
+  hook.initPlayer();
+  assert.ok(calls.some((call) => call[0] === "recommendation" && call[1] === "provider:4:mp4"));
+  hook.applySourceFailover({
+    stream_url: "/api/stream/vod.mp4",
+    content_id: 11,
+    provider_id: 6,
+    stream_type: "mp4",
+  });
+  assert.equal(hook.providerId, "6");
+  assert.equal(hook.el.dataset.providerId, "6");
+  assert.ok(calls.some((call) => call[0] === "recommendation" && call[1] === "provider:6:mp4"));
+  hook.applySourceFailover({
+    stream_url: "/api/stream/vod.mp4",
+    content_id: 12,
+    stream_type: "mp4",
+  });
+  assert.equal(hook.providerId, null);
+  assert.equal(hook.el.dataset.providerId, "");
+  assert.deepEqual(calls.filter((call) => call[0] === "recommendation").at(-1), [
+    "recommendation",
+    null,
+  ]);
+  hook.recoveryGuard.destroy();
+});
+
+test("an identified click supplies the provider when the server mount omits it", () => {
+  const { hook } = harness({ intent: { providerId: "3" } });
+  hook.initStartupPresentation();
+  assert.equal(hook.providerId, "3");
   hook.recoveryGuard.destroy();
 });
