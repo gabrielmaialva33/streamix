@@ -464,6 +464,53 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
     end
   end
 
+  describe "evidence for choosing between providers" do
+    test "a served block tells source selection how fast the provider answered" do
+      counter = :counters.new(1, [:atomics])
+      {:ok, port} = start_stub(counter)
+      url = "http://127.0.0.1:#{port}/movie.mp4"
+
+      conn(:get, "/proxy")
+      |> Plug.Conn.put_req_header("range", "bytes=0-#{@block_size - 1}")
+      |> pipe(url, provider_id: 7_300, content_id: 1)
+
+      vod = ProviderRuntime.snapshot(7_300).dimensions.vod
+      assert vod.successes >= 1
+      assert is_number(vod.ewma_latency_ms)
+    end
+
+    test "a failing provider is recorded, a title it no longer has is not" do
+      {:ok, port} = start_plug(__MODULE__.StatusPlug, [])
+
+      for {provider_id, path} <- [{7_301, "/503.mp4"}, {7_302, "/404.mp4"}] do
+        conn(:get, "/proxy")
+        |> Plug.Conn.put_req_header("range", "bytes=0-#{@block_size - 1}")
+        |> pipe("http://127.0.0.1:#{port}#{path}", provider_id: provider_id, content_id: 1)
+      end
+
+      assert ProviderRuntime.snapshot(7_301).dimensions.vod.failures >= 1
+      assert ProviderRuntime.snapshot(7_302).dimensions.vod.failures == 0
+    end
+  end
+
+  defmodule StatusPlug do
+    @moduledoc false
+
+    import Plug.Conn
+
+    def init(opts), do: opts
+
+    # The redirect resolver probes without a Range and must see media to
+    # accept the URL; the block fetch carries a Range and gets the status.
+    def call(conn, _opts) do
+      case {get_req_header(conn, "range"), conn.request_path} do
+        {[], _path} -> conn |> put_resp_content_type("video/mp4") |> send_resp(200, "media")
+        {_range, "/503.mp4"} -> send_resp(conn, 503, "")
+        {_range, "/404.mp4"} -> send_resp(conn, 404, "")
+      end
+    end
+  end
+
   defp pipe(conn, url, opts) do
     VodMultiplexer.pipe(conn, url, opts, fn conn ->
       Plug.Conn.send_resp(conn, 555, "fallback")

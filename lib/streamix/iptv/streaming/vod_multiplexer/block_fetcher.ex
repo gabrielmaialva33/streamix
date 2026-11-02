@@ -205,7 +205,8 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
       total_size: nil,
       chunks: [],
       task: nil,
-      deadline: nil
+      deadline: nil,
+      started_at: nil
     }
 
     {:ok, state, {:continue, :download}}
@@ -224,7 +225,8 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
     task = Task.Supervisor.async_nolink(Streamix.TaskSupervisor, fn -> download(job, fetcher) end)
     deadline = Process.send_after(self(), :deadline, download_deadline_ms())
 
-    {:noreply, %{state | task: task, deadline: deadline}}
+    {:noreply,
+     %{state | task: task, deadline: deadline, started_at: System.monotonic_time(:millisecond)}}
   end
 
   @impl true
@@ -253,6 +255,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
 
   @impl true
   def handle_info({:block_head, total_size}, %{result: nil} = state) do
+    record_success(state)
     broadcast(state, {:head, total_size})
     {:noreply, %{state | total_size: total_size}}
   end
@@ -293,6 +296,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
     if state.deadline, do: Process.cancel_timer(state.deadline)
 
     result = result_for(state, outcome)
+    record_failure(state, result)
     Enum.each(state.pending, &GenServer.reply(&1, result))
 
     case result do
@@ -319,6 +323,34 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
   end
 
   defp result_for(_state, {:error, reason}), do: {:error, reason}
+
+  # Source selection ranks equivalent providers by this evidence. Without it
+  # the VOD dimension of every provider stayed `:unknown` — this is the path
+  # that serves VOD — so the fastest provider of a title never won on speed.
+  # The latency is the provider's time to answer, which is what a viewer
+  # waits for before the first frame.
+  defp record_success(%{provider_id: provider_id, started_at: started_at})
+       when is_integer(provider_id) and is_integer(started_at) do
+    latency_ms = System.monotonic_time(:millisecond) - started_at
+    ProviderRuntime.record_success(provider_id, :vod, latency_ms)
+  end
+
+  defp record_success(_state), do: :ok
+
+  # A title the provider no longer has says nothing about the provider, and
+  # running out of our own slots says nothing about the upstream at all.
+  defp record_failure(%{provider_id: provider_id}, {:error, reason})
+       when is_integer(provider_id) do
+    if provider_fault?(reason),
+      do: ProviderRuntime.record_failure(provider_id, :vod, reason),
+      else: :ok
+  end
+
+  defp record_failure(_state, _result), do: :ok
+
+  defp provider_fault?({:unexpected_status, status}) when status in [404, 410], do: false
+  defp provider_fault?(:capacity_exhausted), do: false
+  defp provider_fault?(_reason), do: true
 
   defp received(state), do: state.chunks |> Enum.reverse() |> IO.iodata_to_binary()
 
