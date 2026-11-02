@@ -35,6 +35,18 @@ defmodule Streamix.Workers.SyncGamesWorkerTest do
     refute Repo.get(Streamix.Iptv.SportsMatch, old.id)
   end
 
+  test "an unavailable feed waits for the next dispatch instead of retrying" do
+    provider = global_provider_fixture(%{games_enabled: true, url: "https://93.184.216.34"})
+    previous = Application.get_env(:streamix, :games_http_options, [])
+    Application.put_env(:streamix, :games_http_options, plug: {Req.Test, __MODULE__})
+    on_exit(fn -> Application.put_env(:streamix, :games_http_options, previous) end)
+
+    Req.Test.stub(__MODULE__, fn conn -> Plug.Conn.send_resp(conn, 503, "") end)
+
+    assert {:cancel, :games_unavailable} =
+             perform_job(SyncGamesWorker, %{provider_id: provider.id})
+  end
+
   test "queued jobs recheck opt-in and sync only safe data" do
     provider =
       global_provider_fixture(%{

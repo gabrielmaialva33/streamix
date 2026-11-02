@@ -93,11 +93,17 @@ defmodule StreamixWeb.Telemetry.Handlers do
   def handle_event([:oban, :job, :stop], measurements, meta, _) do
     duration_ms = native_to_ms(measurements[:duration])
 
-    if meta[:state] in [:failure, :snoozed, :discard, :cancelled] do
-      Logger.warning(
-        "[Oban] #{meta[:state]} worker=#{meta[:worker]} queue=#{meta[:queue]} " <>
-          "attempt=#{meta[:attempt]} duration=#{duration_ms}ms reason=#{inspect(meta[:reason])}"
-      )
+    case meta[:state] do
+      state when state in [:failure, :discard, :cancelled] ->
+        Logger.warning(job_outcome(meta, duration_ms))
+
+      # Orchestrators poll by snoozing (every minute or so while a sync is
+      # paused), which is routine and was most of the warning volume.
+      :snoozed ->
+        Logger.debug(job_outcome(meta, duration_ms))
+
+      _ ->
+        :ok
     end
   end
 
@@ -191,5 +197,10 @@ defmodule StreamixWeb.Telemetry.Handlers do
 
   defp native_to_seconds(native) do
     System.convert_time_unit(native, :native, :second)
+  end
+
+  defp job_outcome(meta, duration_ms) do
+    "[Oban] #{meta[:state]} worker=#{meta[:worker]} queue=#{meta[:queue]} " <>
+      "attempt=#{meta[:attempt]} duration=#{duration_ms}ms reason=#{inspect(meta[:reason])}"
   end
 end

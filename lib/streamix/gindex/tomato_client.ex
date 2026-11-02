@@ -19,11 +19,36 @@ defmodule Streamix.Gindex.TomatoClient do
   require Logger
 
   @timeout :timer.seconds(10)
+  # Tomato answers a banned account with `status_code` 12 on every call. The
+  # ban outlives any retry, so the client stands down for a day instead of
+  # spending a paced request (and a log line) on each anime it enriches;
+  # AniList and TMDB carry on as the fallbacks they already are.
+  @banned_status_code 12
+  @ban_pause_ms :timer.hours(24)
+  @suspension_key {__MODULE__, :suspended_until}
 
   @spec enabled?() :: boolean()
   def enabled? do
     cfg = config()
-    cfg[:enabled] == true and is_binary(cfg[:bearer_token]) and cfg[:bearer_token] != ""
+
+    cfg[:enabled] == true and is_binary(cfg[:bearer_token]) and cfg[:bearer_token] != "" and
+      not suspended?()
+  end
+
+  @doc "True while a ban answer keeps the client paused."
+  @spec suspended?() :: boolean()
+  def suspended? do
+    case :persistent_term.get(@suspension_key, nil) do
+      nil -> false
+      until -> System.monotonic_time(:millisecond) < until
+    end
+  end
+
+  @doc false
+  @spec reset_suspension() :: :ok
+  def reset_suspension do
+    :persistent_term.erase(@suspension_key)
+    :ok
   end
 
   @type search_result :: %{
@@ -79,27 +104,38 @@ defmodule Streamix.Gindex.TomatoClient do
   # --- HTTP ---
 
   defp post(path, body) do
-    url(path)
-    |> Req.post(
-      json: body,
-      headers: headers(),
-      receive_timeout: @timeout,
-      finch: [name: Streamix.Finch]
+    Req.post(
+      url(path),
+      req(
+        json: body,
+        headers: headers(),
+        receive_timeout: @timeout,
+        finch: [name: Streamix.Finch]
+      )
     )
   end
 
+  # Tests route the client to a stub through `config :streamix, :tomato,
+  # req_options: [plug: ...]`.
+  defp req(opts), do: Keyword.merge(opts, config()[:req_options] || [])
+
   defp get(path) do
-    url(path)
-    |> Req.get(
-      headers: headers(),
-      receive_timeout: @timeout,
-      finch: [name: Streamix.Finch]
+    Req.get(
+      url(path),
+      req(headers: headers(), receive_timeout: @timeout, finch: [name: Streamix.Finch])
     )
   end
 
   defp handle_search({:ok, %{status: 200, body: %{"status" => true, "result" => list}}})
        when is_list(list) do
     {:ok, Enum.map(list, &normalize_search/1)}
+  end
+
+  defp handle_search(
+         {:ok, %{status: 200, body: %{"status" => false, "status_code" => @banned_status_code}}}
+       ) do
+    suspend()
+    {:error, :banned}
   end
 
   defp handle_search({:ok, %{status: 200, body: %{"status" => false} = body}}) do
@@ -122,6 +158,18 @@ defmodule Streamix.Gindex.TomatoClient do
   defp handle_details({:ok, %{status: 429}}), do: {:error, :rate_limited}
   defp handle_details({:ok, %{status: status}}), do: {:error, {:http_error, status}}
   defp handle_details({:error, reason}), do: {:error, reason}
+
+  defp suspend do
+    unless suspended?() do
+      :persistent_term.put(@suspension_key, System.monotonic_time(:millisecond) + @ban_pause_ms)
+
+      Logger.warning(
+        "[Tomato] the API reports this account as banned; pausing Tomato enrichment for 24h"
+      )
+    end
+
+    :ok
+  end
 
   # --- normalization ---
 
