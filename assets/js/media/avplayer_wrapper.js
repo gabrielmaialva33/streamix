@@ -11,6 +11,7 @@ import {
   createSynchronousErrorNotifier,
   stopThenDestroyPlaybackEngine,
 } from "../player/playback_engine_lifecycle.js";
+import { getPlaybackResourcePolicy } from "../player/playback_environment.js";
 import {
   hasPlayableSubtitleTimeBase,
   initialAVPlayerPlayOptions,
@@ -322,6 +323,7 @@ function loadScript(src, id = null) {
     };
     script.onerror = () => {
       scriptLoadPromises.delete(key);
+      script.remove();
       reject(new Error(`Failed to load script: ${src}`));
     };
     document.head.appendChild(script);
@@ -329,6 +331,22 @@ function loadScript(src, id = null) {
 
   scriptLoadPromises.set(key, promise);
   return promise;
+}
+
+/** Warm static dependencies on intent; AudioContext and media remain owned by activation. */
+export async function preloadAVPlayerRuntime(context = {}, dependencies = {}) {
+  const policy = dependencies.getResourcePolicy || getPlaybackResourcePolicy;
+  if (policy().avoidSpeculativeWork) return;
+  const configure = dependencies.configureRuntime || configureWebpackPublicPath;
+  const scripts = dependencies.getScriptUrls || getAvPlayerScriptUrls;
+  const load = dependencies.loadScript || loadScript;
+  const wasm = dependencies.preloadWasm || preloadCommonWasm;
+  configure();
+  const urls = scripts();
+  await Promise.all([
+    load(urls.polyfill, "cheap-polyfill").then(() => load(urls.player, "avplayer-script")),
+    wasm(context),
+  ]);
 }
 
 /**
@@ -382,74 +400,6 @@ export function getAVPlayerAccelerationConfig() {
 /**
  * AVPlayer wrapper class
  */
-// libmedia's FetchIOLoader has a bug: HTTP-level errors like 502/503/504
-// are logged as fatal and never retried. Its `retryCount: 20` default
-// only kicks in for fetch() *exceptions* (network drops), not for
-// non-2xx responses. Choki sometimes returns transient 502/504 on
-// vauth chain hops, and we'd see the player freeze on every burst.
-//
-// Patch `window.fetch` once, *only* for requests that target our IPTV
-// proxy hosts, to retry on 5xx with exponential backoff. Other fetches
-// on the page (LiveView, image proxy, TMDB) are untouched.
-function installRetryingFetch() {
-  if (!globalThis.window?.fetch) return;
-  if (window.__streamixFetchPatched) return;
-  window.__streamixFetchPatched = true;
-
-  const RETRYABLE = new Set([502, 503, 504]);
-  // 4 attempts with 200ms base = up to 1.4s total (200 + 400 + 800ms).
-  // Originally 6×250ms (≈16s of spinner). The choki vauth hop usually
-  // recovers within the first or second retry; if it doesn't, the
-  // user is better served by getting an error fast and letting AVPlayer
-  // restart from a fresh URL than staring at a frozen frame for 16s.
-  const MAX_ATTEMPTS = 4;
-  const BASE_BACKOFF_MS = 200;
-  const SHOULD_INTERCEPT = (url) => {
-    try {
-      const u = typeof url === "string" ? url : url.url;
-      return /\/proxy\?url=|source\d?\.mahina\.cloud|streamix\.mahina\.cloud\/api\/stream\//.test(
-        u,
-      );
-    } catch {
-      return false;
-    }
-  };
-
-  const originalFetch = window.fetch.bind(window);
-  window.fetch = async function patchedFetch(input, init) {
-    if (!SHOULD_INTERCEPT(input)) {
-      return originalFetch(input, init);
-    }
-
-    let lastResponse = null;
-    let attempt = 0;
-    while (attempt < MAX_ATTEMPTS) {
-      const res = await originalFetch(input, init);
-      if (!RETRYABLE.has(res.status)) {
-        return res;
-      }
-      lastResponse = res;
-      // Drain body so the connection can be reused.
-      try {
-        await res.arrayBuffer();
-      } catch {}
-      attempt++;
-      if (attempt >= MAX_ATTEMPTS) break;
-      const delay = BASE_BACKOFF_MS * 2 ** (attempt - 1);
-      log.warn(
-        `[StreamFetch] ${res.status} from upstream, retry ${attempt}/${MAX_ATTEMPTS} in ${delay}ms`,
-      );
-      await new Promise((r) => setTimeout(r, delay));
-    }
-    log.error(
-      `[StreamFetch] gave up after ${MAX_ATTEMPTS} retries, returning last ${lastResponse?.status}`,
-    );
-    return lastResponse;
-  };
-}
-
-installRetryingFetch();
-
 export class AVPlayerDestroyedError extends Error {
   constructor() {
     super("Player has been destroyed");
@@ -800,9 +750,15 @@ export class AVPlayerWrapper {
       if (options.maxProbeDuration) {
         loadOptions.maxProbeDuration = options.maxProbeDuration;
       }
-      if (options.ioLoaderOptions) {
-        loadOptions.ioLoaderOptions = options.ioLoaderOptions;
-      }
+      // Configure the actual IO task, including worker IO. A window.fetch patch
+      // cannot reach workers and multiplies retries when IO also retries. This
+      // per-stream policy works on any origin: at most four attempts, 200ms
+      // between failures (libmedia expresses retryInterval in seconds).
+      loadOptions.ioLoaderOptions = {
+        ...options.ioLoaderOptions,
+        retryCount: 3,
+        retryInterval: 0.2,
+      };
       this._isLive = !!options.isLive;
 
       const loadResult = player.load(url, loadOptions);

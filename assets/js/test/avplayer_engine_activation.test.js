@@ -213,6 +213,7 @@ function createHarness({ state: stateOverrides = {}, hostOverrides = {}, wrapper
     getProxyUrl: () => state.proxyUrl,
     getSessionId: () => state.sessionId,
     getSourceType: () => state.sourceType,
+    getProviderId: () => "3",
     getStreamType: () => state.streamType,
     getStreamUrl: () => state.streamUrl,
     getSubtitleOffsetMs: () => state.subtitleOffsetMs,
@@ -355,7 +356,7 @@ test("startup activation runs the full transaction on the initPlayer session", a
       isLive: false,
       loadTimeoutMs: 120000,
       maxProbeDuration: 10,
-      ioLoaderOptions: { preload: 8 * 1024 * 1024, retryCount: 8, retryInterval: 1 },
+      ioLoaderOptions: { preload: 8 * 1024 * 1024 },
     },
   ]);
   assert.deepEqual(wrapper.calls[2], ["setVolume", 0.8]);
@@ -375,7 +376,7 @@ test("startup activation runs the full transaction on the initPlayer session", a
   assert.deepEqual(calls.playback, ["started", "markPlaying"]);
   assert.deepEqual(calls.emitted, ["play"]);
   assert.deepEqual(calls.successes, [
-    ["gindex", "avplayer", { sourceType: "gindex", streamType: "mkv" }],
+    ["provider:3:mkv", "avplayer", { sourceType: "gindex", streamType: "mkv" }],
   ]);
   assert.ok(calls.presentation.includes("playPause:false"));
 
@@ -437,7 +438,7 @@ test("fallback applies circuit breaker, attempt bookkeeping and pauses the nativ
 
   wrapper.options.onPlay();
   assert.deepEqual(calls.successes, [
-    ["mp4", "avplayer", { sourceType: "xtream", streamType: "mp4" }],
+    ["provider:3:mp4", "avplayer", { sourceType: "xtream", streamType: "mp4" }],
   ]);
 });
 
@@ -481,7 +482,7 @@ test("a failed load rolls back the provisional engine and recovers to native", a
     "rollback releases once; a provisional engine has no source to release again",
   );
   assert.equal(state.usingAVPlayer, false);
-  assert.deepEqual(calls.forgotten, ["gindex"]);
+  assert.deepEqual(calls.forgotten, ["provider:3:mkv"]);
   assert.deepEqual(calls.savedPositions, [12]);
   assert.deepEqual(calls.recorded, ["error"]);
   assert.equal(video.classList.contains("hidden"), false);

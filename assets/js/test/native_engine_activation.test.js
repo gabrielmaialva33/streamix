@@ -108,6 +108,7 @@ function createHarness({ state: stateOverrides = {}, hostOverrides = {}, deps = 
     }),
     getSessionId: () => state.sessionId,
     getSourceType: () => state.sourceType,
+    getProviderId: () => "3",
     getStreamType: () => state.streamType,
     getVideo: () => video,
     isAVPlayerAttempted: () => state.avPlayerAttempted,
@@ -271,7 +272,7 @@ test("confirmed native playback starts buffer monitoring and records codec memor
 
   await timerApi.fire(5000);
   assert.deepEqual(calls.successes, [
-    ["mp4", "native", { sourceType: "xtream", streamType: "mp4" }],
+    ["provider:3:mp4", "native", { sourceType: "xtream", streamType: "mp4" }],
   ]);
 });
 
