@@ -18,7 +18,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
   """
 
   alias Plug.Conn
-  alias Streamix.Iptv.Streaming.StreamErrors
+  alias Streamix.Iptv.Streaming.{ProviderRuntime, StreamErrors}
   alias Streamix.Iptv.Streaming.VodMultiplexer.{BlockFetcher, BlockStore}
   alias Streamix.SafeLog
 
@@ -26,6 +26,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
 
   @default_block_size 4 * 1_024 * 1_024
   @default_readahead_blocks 1
+  @max_readahead_blocks 3
   # Window served for an open-ended range. Large enough to carry a faststart
   # `moov` plus the first seconds of playback in one response, small enough
   # that the provider slot is not held for the whole movie.
@@ -245,7 +246,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
   end
 
   defp prefetch_next(key, index, url, opts, last_index) do
-    Enum.each(1..readahead_blocks()//1, fn ahead ->
+    Enum.each(1..readahead_blocks(Keyword.get(opts, :provider_id))//1, fn ahead ->
       next_index = index + ahead
 
       if next_index <= last_index do
@@ -263,11 +264,40 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
     end)
   end
 
-  @doc "How many blocks ahead of the current one to warm."
+  @doc "How many blocks ahead of the current one to warm, at least."
   @spec readahead_blocks() :: non_neg_integer()
   def readahead_blocks do
     Application.get_env(:streamix, :vod_readahead_blocks, @default_readahead_blocks)
   end
+
+  @doc """
+  How many blocks ahead to warm for `provider_id`.
+
+  A provider CDN measured at ~2.4 s to answer each range and ~12 Mbit/s per
+  connection takes ~5.2 s to deliver a 4 MiB block — under 4 s of an
+  8 Mbit/s movie. One block of readahead therefore falls behind playback,
+  while ranges in parallel scale (three at once ran at full speed). The
+  provider's measured VOD latency (recorded by BlockFetcher) raises the
+  configured readahead to two or three blocks; a configured 0 still turns
+  prefetching off.
+  """
+  @spec readahead_blocks(integer() | nil) :: non_neg_integer()
+  def readahead_blocks(provider_id) do
+    case readahead_blocks() do
+      0 -> 0
+      configured -> min(max(configured, latency_readahead(provider_id)), @max_readahead_blocks)
+    end
+  end
+
+  defp latency_readahead(provider_id) when is_integer(provider_id) do
+    case ProviderRuntime.snapshot(provider_id) do
+      %{dimensions: %{vod: %{ewma_latency_ms: ms}}} when is_number(ms) and ms >= 1_500 -> 3
+      %{dimensions: %{vod: %{ewma_latency_ms: ms}}} when is_number(ms) and ms >= 700 -> 2
+      _unknown_or_fast -> 1
+    end
+  end
+
+  defp latency_readahead(_provider_id), do: 1
 
   defp write_block(conn, {:ok, {:body, body}}, offset, length) do
     slice = binary_slice(body, offset, length)

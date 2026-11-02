@@ -320,6 +320,18 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
       assert warmed?(key, 1), "expected block 1 to have been prefetched"
     end
 
+    test "warms more blocks ahead for a provider that is slow to answer", %{url: url} do
+      opts = [provider_id: 7_015, content_id: 15]
+      key = VodMultiplexer.content_key(opts ++ [url: url])
+      for _sample <- 1..5, do: ProviderRuntime.record_success(7_015, :vod, 2_400)
+
+      conn(:get, "/proxy")
+      |> Plug.Conn.put_req_header("range", "bytes=0-1023")
+      |> pipe(url, opts)
+
+      for index <- 1..3, do: assert(warmed?(key, index), "expected block #{index} to be warm")
+    end
+
     test "does not warm past the end of the resource", %{url: url} do
       opts = [provider_id: 7_014, content_id: 14]
       key = VodMultiplexer.content_key(opts ++ [url: url])
@@ -461,6 +473,24 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
       end
 
       assert {:ok, _path} = BlockStore.lookup({content_key, 0})
+    end
+  end
+
+  describe "readahead_blocks/1" do
+    test "follows the provider's measured latency, within the configured bounds" do
+      assert VodMultiplexer.readahead_blocks(nil) == 1
+      assert VodMultiplexer.readahead_blocks(7_500) == 1
+
+      for _sample <- 1..5, do: ProviderRuntime.record_success(7_501, :vod, 1_000)
+      assert VodMultiplexer.readahead_blocks(7_501) == 2
+
+      for _sample <- 1..5, do: ProviderRuntime.record_success(7_502, :vod, 3_000)
+      assert VodMultiplexer.readahead_blocks(7_502) == 3
+
+      previous = Application.get_env(:streamix, :vod_readahead_blocks)
+      Application.put_env(:streamix, :vod_readahead_blocks, 0)
+      on_exit(fn -> restore(:vod_readahead_blocks, previous) end)
+      assert VodMultiplexer.readahead_blocks(7_502) == 0
     end
   end
 
