@@ -467,6 +467,7 @@ defmodule Streamix.Iptv do
   defdelegate xtream_live_mode(provider), to: PlaybackBoundary
   defdelegate xtream_route(provider, type, content, opts \\ []), to: PlaybackBoundary
   defdelegate xtream_probe_state(provider, type, content), to: PlaybackBoundary
+  defdelegate warm_vod_start(url, opts), to: PlaybackBoundary
   defdelegate resolve_xtream_delivery(provider, type, content), to: PlaybackBoundary
   defdelegate open_xtream_hls(content, provider_id, url), to: PlaybackBoundary
 

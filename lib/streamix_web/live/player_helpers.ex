@@ -365,27 +365,53 @@ defmodule StreamixWeb.PlayerHelpers do
   an error and we no-op. Gindex content has direct URLs and skips
   prewarm.
   """
-  def prewarm_upstream_redirect(type, content, user_id) when is_map(content) do
+  def prewarm_upstream_redirect(type, content, user_id, provider_id \\ nil)
+
+  def prewarm_upstream_redirect(type, content, user_id, provider_id) when is_map(content) do
     if gindex_content?(content) do
       :ok
     else
       case content_id(content) do
         nil -> :ok
-        id -> do_prewarm(type, id, user_id, Map.get(content, :provider_id))
+        id -> do_prewarm(type, id, user_id, provider_id || Map.get(content, :provider_id))
       end
     end
   end
 
-  def prewarm_upstream_redirect(_type, _content, _user_id), do: :ok
+  def prewarm_upstream_redirect(_type, _content, _user_id, _provider_id), do: :ok
 
   defp do_prewarm(type, id, user_id, provider_id) do
     with {:ok, upstream_type} <- prewarmable_upstream_type(type),
          {:ok, url} <- StreamToken.upstream_url(upstream_type, id, user_id) do
       Streamix.Playback.prewarm_stream_url(url, provider_id: provider_id)
+      maybe_warm_vod_start(upstream_type, url, id, provider_id)
     else
       _ -> :ok
     end
   end
+
+  # The first block too, through the same cache the player will read. Not for
+  # a provider whose CDN refuses this server (direct-client playback hands the
+  # browser the CDN URL instead), nor for live channels.
+  defp maybe_warm_vod_start(type, url, id, provider_id)
+       when type in ["movie", "episode"] and is_integer(provider_id) do
+    case Streamix.Providers.get_provider(provider_id) do
+      %{direct_client_playback: true} ->
+        :ok
+
+      %{} ->
+        Streamix.Playback.warm_vod_start(url,
+          provider_id: provider_id,
+          content_id: id,
+          media_type: type
+        )
+
+      nil ->
+        :ok
+    end
+  end
+
+  defp maybe_warm_vod_start(_type, _url, _id, _provider_id), do: :ok
 
   defp prewarmable_upstream_type("live_channel"), do: {:ok, "channel"}
   defp prewarmable_upstream_type("movie"), do: {:ok, "movie"}

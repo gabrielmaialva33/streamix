@@ -476,6 +476,44 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
     end
   end
 
+  describe "warming a title's start before the play" do
+    test "the first block is served from the cache the warm-up filled" do
+      for {key, value} <- [vod_multiplexer_enabled: true, vod_readahead_blocks: 0] do
+        previous = Application.get_env(:streamix, key)
+        Application.put_env(:streamix, key, value)
+        on_exit(fn -> restore(key, previous) end)
+      end
+
+      counter = :counters.new(1, [:atomics])
+      {:ok, port} = start_stub(counter)
+      url = "http://127.0.0.1:#{port}/movie.mp4"
+      opts = [provider_id: 7_600, content_id: 60, media_type: "movie"]
+
+      # No X-Domain policy for the stub; given explicitly so the provider is
+      # not looked up.
+      assert :ok = Streamix.Playback.warm_vod_start(url, [domain_policy: nil] ++ opts)
+
+      key = VodMultiplexer.content_key(Keyword.put(opts, :url, url))
+
+      case Registry.lookup(Streamix.StreamRegistry, {:vod_block, key, 0}) do
+        [{fetcher, _}] -> assert {:ok, _block} = GenServer.call(fetcher, :await)
+        [] -> :ok
+      end
+
+      assert :counters.get(counter, 1) == 1
+
+      conn =
+        conn(:get, "/proxy")
+        |> Plug.Conn.put_req_header("range", "bytes=0-#{@block_size - 1}")
+        |> pipe(url, opts)
+
+      assert conn.status == 206
+      assert conn.resp_body == binary_part(expected_body(), 0, @block_size)
+      # The play itself asked the provider for nothing.
+      assert :counters.get(counter, 1) == 1
+    end
+  end
+
   describe "readahead_blocks/1" do
     test "follows the provider's measured latency, within the configured bounds" do
       assert VodMultiplexer.readahead_blocks(nil) == 1

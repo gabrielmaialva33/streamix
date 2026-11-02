@@ -762,7 +762,7 @@ defmodule StreamixWeb.PlayerLive do
     # Mount runs twice (static HTTP + WS upgrade). Writing watch history on
     # the static pass duplicated every play into the timeline.
     if connected?(socket), do: record_watch_history(user_id, type, content)
-    prepare_connected_player(socket, type, content, user_id)
+    prepare_connected_player(socket, type, content, user_id, provider)
 
     next_episode = load_next_episode(type, content, provider, user_id)
 
@@ -827,7 +827,7 @@ defmodule StreamixWeb.PlayerLive do
 
   defp load_season_episodes(_socket, _type, _content), do: []
 
-  defp prepare_connected_player(socket, type, content, user_id) do
+  defp prepare_connected_player(socket, type, content, user_id, provider) do
     if connected?(socket) do
       topic = "user:#{user_id}:progress"
       # Defensive idempotent subscribe: unsubscribe first so a re-mount on
@@ -835,7 +835,7 @@ defmodule StreamixWeb.PlayerLive do
       # stack subscriptions and trigger duplicate handle_info callbacks.
       Phoenix.PubSub.unsubscribe(Streamix.PubSub, topic)
       Phoenix.PubSub.subscribe(Streamix.PubSub, topic)
-      prewarm_upstream_redirect(type, content, user_id)
+      prewarm_upstream_redirect(type, content, user_id, provider && provider.id)
     end
   end
 

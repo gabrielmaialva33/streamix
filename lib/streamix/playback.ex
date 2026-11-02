@@ -134,6 +134,35 @@ defmodule Streamix.Playback do
     end
   end
 
+  @doc """
+  Starts fetching the first block of a VOD title into the block cache, so
+  the play that usually follows (a title page, or the player mounting just
+  before the browser's first range) begins from disk instead of waiting on
+  the provider. The provider CDNs measured here take ~2 s to answer any
+  request. Same cache key as `pipe_vod_stream/3`; a no-op when the
+  multiplexer is off or the block is already cached or in flight.
+
+  `opts` takes `:provider_id`, `:content_id` and `:media_type`.
+  """
+  @spec warm_vod_start(String.t(), keyword()) :: :ok
+  def warm_vod_start(url, opts) when is_binary(url) do
+    if Application.get_env(:streamix, :vod_multiplexer_enabled, false) do
+      opts = UpstreamPolicy.with_domain_policy(opts)
+      key = VodMultiplexer.content_key(Keyword.put(opts, :url, url))
+      size = VodMultiplexer.block_size()
+
+      VodMultiplexer.BlockFetcher.prefetch({key, 0},
+        url: url,
+        domain_policy: Keyword.get(opts, :domain_policy),
+        provider_id: Keyword.get(opts, :provider_id),
+        range_start: 0,
+        range_end: size - 1
+      )
+    end
+
+    :ok
+  end
+
   def head_stream(conn, url, opts \\ []) do
     VodProxy.head(conn, url, UpstreamPolicy.with_domain_policy(opts))
   end
