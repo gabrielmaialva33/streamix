@@ -99,6 +99,20 @@ defmodule StreamixWeb.PlayerComponentsTest do
            |> Floki.attribute("#video-player-container", "data-player-poster") == []
   end
 
+  test "tells the player which provider the title comes from" do
+    html =
+      render_component(&PlayerComponents.video_player/1,
+        content: %{id: 42, name: "Filme"},
+        content_type: :movie,
+        stream_url: "/stream/movie/42",
+        provider_id: 3
+      )
+
+    assert html
+           |> Floki.parse_fragment!()
+           |> Floki.attribute("#video-player-container", "data-provider-id") == ["3"]
+  end
+
   test "pause screen reminds what is playing, with the synopsis" do
     document =
       render_component(&PlayerComponents.video_player/1,

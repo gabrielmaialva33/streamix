@@ -29,6 +29,9 @@ defmodule StreamixWeb.PlayerComponents do
   attr :on_close, :string, default: nil
   attr :show_controls, :boolean, default: true
   attr :provider_type, :string, default: nil
+  # Lets the player remember which engine a provider's files need (AC3 audio
+  # in MP4 means AVPlayer), so the next title of that provider starts on it.
+  attr :provider_id, :integer, default: nil
   attr :next_episode, :map, default: nil
   attr :season_episodes, :list, default: []
   attr :synopsis, :string, default: nil
@@ -106,6 +109,7 @@ defmodule StreamixWeb.PlayerComponents do
       data-expected-duration={@expected_duration}
       data-stream-type={@stream_type}
       data-player-poster={@poster}
+      data-provider-id={@provider_id}
       data-player-lifecycle-logs={@player_lifecycle_logs}
       data-feature-avbridge={@feature_avbridge}
       data-feature-h265web={@feature_h265web}

@@ -492,6 +492,7 @@ defmodule StreamixWeb.PlayerLive do
         stream_url={@stream_url}
         streaming_mode={@streaming_mode}
         provider_type={@provider.provider_type}
+        provider_id={@provider.id}
         fullscreen={true}
         on_close="close_player"
         show_controls={true}
