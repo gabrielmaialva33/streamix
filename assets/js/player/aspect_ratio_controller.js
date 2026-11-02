@@ -114,9 +114,10 @@ export function createAspectRatioController({
     });
   };
 
-  // Every new player starts from the media's intrinsic ratio. Manual choices
-  // remain available, but only for this mounted playback session.
-  apply("auto");
+  // Every new player fills the screen, phones included, the way streaming
+  // apps open. The intrinsic ratio ("Automático"/"Original") stays one tap
+  // or pinch away, and a manual choice lasts only for this playback session.
+  apply("cover");
 
   root?.querySelectorAll(".aspect-option").forEach((button) => {
     const onClick = () => apply(button.dataset.aspectMode);
