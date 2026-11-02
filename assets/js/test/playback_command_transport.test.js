@@ -146,3 +146,33 @@ test("keeps native VOD and live seek policies distinct", () => {
   assert.equal(harness.controller.seekTo(100, { remote: true }), true);
   assert.ok(Math.abs(harness.video.currentTime - 59.95) < 0.000_001);
 });
+test("managed seeks suspend memory evidence until the seek operation settles", async () => {
+  const events = [];
+  let finish;
+  const seeking = new Promise((resolve) => {
+    finish = resolve;
+  });
+  const harness = createPlaybackCommandHarness({
+    boundaries: {
+      onSeekStart: () => {
+        events.push("start");
+        return () => events.push("end");
+      },
+    },
+  });
+  harness.state.managedEngine = {
+    getCurrentTime: () => 0,
+    getDuration: () => 100,
+    seek: () => {
+      events.push("seek");
+      return seeking;
+    },
+  };
+  harness.controller.seekTo(30);
+  assert.deepEqual(events, ["start"]);
+  await settleCommands();
+  assert.deepEqual(events, ["start", "seek"]);
+  finish();
+  await settleCommands();
+  assert.deepEqual(events, ["start", "seek", "end"]);
+});

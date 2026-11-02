@@ -338,7 +338,7 @@ test("startup activation runs the full transaction on the initPlayer session", a
   assert.deepEqual(calls.debug[0], ["start_avplayer_selected", { session_id: 3 }]);
   assert.deepEqual(calls.lifecycle[0], [
     "player_engine_selected",
-    { engine: "avplayer", fallback: false, session_id: 3 },
+    { engine: "avplayer", fallback: false, reason: undefined, session_id: 3 },
   ]);
   assert.equal(calls.nativeReset, 1);
   assert.equal(calls.nativeSubtitlesReset, 1);
@@ -375,9 +375,7 @@ test("startup activation runs the full transaction on the initPlayer session", a
   wrapper.options.onPlay();
   assert.deepEqual(calls.playback, ["started", "markPlaying"]);
   assert.deepEqual(calls.emitted, ["play"]);
-  assert.deepEqual(calls.successes, [
-    ["provider:3:mkv", "avplayer", { sourceType: "gindex", streamType: "mkv" }],
-  ]);
+  assert.deepEqual(calls.successes, [], "playing alone cannot teach provider memory");
   assert.ok(calls.presentation.includes("playPause:false"));
 
   wrapper.options.onPause();
@@ -421,7 +419,12 @@ test("fallback applies circuit breaker, attempt bookkeeping and pauses the nativ
   assert.equal(calls.nativeErrorDetached, 1);
   assert.equal(video.pauseCalls, 1);
   assert.deepEqual(calls.debug.at(-1), ["try_avplayer_fallback", { fallback_attempts: 1 }]);
-  assert.deepEqual(calls.lifecycle[0][1], { engine: "avplayer", fallback: true, session_id: 4 });
+  assert.deepEqual(calls.lifecycle[0][1], {
+    engine: "avplayer",
+    fallback: true,
+    reason: "fallback_codec",
+    session_id: 4,
+  });
 
   const wrapper = instances[0];
   assert.deepEqual(wrapper.calls[0], [
@@ -437,9 +440,7 @@ test("fallback applies circuit breaker, attempt bookkeeping and pauses the nativ
   );
 
   wrapper.options.onPlay();
-  assert.deepEqual(calls.successes, [
-    ["provider:3:mp4", "avplayer", { sourceType: "xtream", streamType: "mp4" }],
-  ]);
+  assert.deepEqual(calls.successes, [], "playing alone cannot teach provider memory");
 });
 
 test("track switches restore the selected track after registration", async () => {

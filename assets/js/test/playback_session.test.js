@@ -33,6 +33,9 @@ test("summarizes one playback session without retaining stream URLs", () => {
     kind: "playback",
     event: "playback_session",
     outcome: "completed",
+    end_reason: "completed",
+    engine_reason: "unknown",
+    client_revision: undefined,
     engine: "avplayer",
     content_type: "vod",
     stream_type: "mkv",
@@ -101,4 +104,23 @@ test("startup waits without a first frame never count as rebuffer duration", () 
   assert.equal(payload.buffer_count, 0);
   assert.equal(payload.buffer_duration_ms, 0);
   assert.equal(payload.ttff_ms, undefined);
+});
+
+test("session records bounded engine/end reasons and the served build rather than error text", () => {
+  const session = new PlaybackSession({ now: () => 30000 });
+  session.begin({ clientRevision: "a".repeat(40) });
+  session.selectEngine("avplayer", "provider_memory");
+  const sample = session.finish("error", "startup_deadline");
+  assert.equal(sample.end_reason, "startup_deadline");
+  assert.equal(sample.engine_reason, "provider_memory");
+  assert.equal(sample.client_revision, "a".repeat(40));
+
+  session.begin({ clientRevision: "https://invalid.test/secret" });
+  session.selectEngine("native", "person@example.test");
+  assert.equal(session.finish("error", "https://invalid.test/secret").end_reason, "unknown");
+  session.begin();
+  session.markFirstFrame();
+  const left = session.finish("cancelled");
+  assert.equal(left.end_reason, "first_frame_then_user_left");
+  assert.equal(left.client_revision, undefined);
 });

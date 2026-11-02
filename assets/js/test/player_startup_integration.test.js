@@ -6,6 +6,7 @@ import { ENGINE_ID, PLAYBACK_STATE } from "../player/engine_contract.js";
 import { PlaybackRecoveryGuard } from "../player/playback_recovery_guard.js";
 import { PlaybackSession } from "../player/playback_session.js";
 import { playerRecommendationKey } from "../player/player_preferences.js";
+import { ProviderEngineMemory } from "../player/provider_engine_memory.js";
 import { clock } from "./support/playback_clock.js";
 
 // Execute the production hook methods with browser/transport boundaries supplied explicitly.
@@ -37,11 +38,23 @@ function harness({ intent = null, streamType = "hls" } = {}) {
       return null;
     },
     playerRecommendationKey,
+    recordPlayerSuccess: (...args) => calls.push(["memory_success", ...args]),
+    ProviderEngineMemory: class extends ProviderEngineMemory {
+      constructor(options) {
+        super({ ...options, timerApi });
+      }
+    },
     consumePlaybackIntent: () => intent,
     PlaybackStartupController: class {
+      constructor(options) {
+        this.options = options;
+      }
       begin() {}
+      attach() {}
+      stop() {}
+      recover() {}
     },
-    selectEngine: () => "native",
+    selectEngineDecision: () => ({ engine: "native", reason: "capability" }),
     assertEngineSelection: (value) => value,
   };
   vm.runInNewContext(source, bindings);
@@ -54,6 +67,7 @@ function harness({ intent = null, streamType = "hls" } = {}) {
     playbackMetrics: new PlaybackSession({ now: timerApi.now }),
     playerUIController: {
       showLoading() {},
+      hideLoading() {},
       showRecovery() {},
       hideAutoplayBlocked() {},
       hideEndedOverlay() {},
@@ -68,6 +82,8 @@ function harness({ intent = null, streamType = "hls" } = {}) {
       return ++this.playbackSessionId;
     },
     getEffectiveUrl: () => "/api/hls/master.m3u8",
+    isPaused: () => false,
+    getCurrentTime: () => 0,
     ensureStreamLoader() {},
     pushEventSafe: (event, payload) => calls.push([event, payload]),
     reportPlayerLifecycle() {},
@@ -97,6 +113,7 @@ test("automatic restarts retain TTFF origin and the global deadline; terminal ca
   assert.equal(calls.filter((call) => call === "activated").length, activations);
   const payload = calls.find((call) => Array.isArray(call) && call[0] === "client_telemetry")[1];
   assert.equal(payload.outcome, "error");
+  assert.equal(payload.end_reason, "startup_deadline");
   assert.equal(payload.ttff_ms, undefined);
 });
 
@@ -159,6 +176,7 @@ test("recovery deadline emits one error after twenty seconds while retaining the
   const samples = calls.filter((call) => Array.isArray(call) && call[0] === "client_telemetry");
   assert.equal(samples.length, 1);
   assert.equal(samples[0][1].outcome, "error");
+  assert.equal(samples[0][1].end_reason, "recovery_deadline");
   assert.equal(samples[0][1].ttff_ms, 1000);
   assert.equal(samples[0][1].session_duration_ms, 21000);
 });
@@ -274,5 +292,95 @@ test("an identified click supplies the provider when the server mount omits it",
   const { hook } = harness({ intent: { providerId: "3" } });
   hook.initStartupPresentation();
   assert.equal(hook.providerId, "3");
+  hook.recoveryGuard.destroy();
+});
+
+test("hook learns native and AVPlayer only after their presented frame and stable window, preserving explanation", () => {
+  const { hook, calls, timerApi, productionHook } = harness({ streamType: "mp4" });
+  let position = 0;
+  hook.getCurrentTime = () => position;
+  hook.el.dataset.providerId = "3";
+  hook.clientRevision = "d".repeat(40);
+  hook.initStartupPresentation();
+  hook.initPlayer();
+  productionHook.reportPlayerLifecycle.call(hook, "player_engine_selected", { engine: "native" });
+  timerApi.advance(1000);
+  assert.equal(calls.filter((call) => call[0] === "memory_success").length, 0);
+  hook.startupPresentation.options.onFrame();
+  position = 5;
+  timerApi.advance(5000);
+  const learned = () => calls.filter((call) => call[0] === "memory_success");
+  assert.equal(learned().length, 1);
+  assert.equal(learned()[0][1], "provider:3:mp4");
+  assert.equal(learned()[0][2], "native");
+  productionHook.reportPlayerLifecycle.call(hook, "player_engine_selected", {
+    engine: "avplayer",
+    fallback: true,
+    reason: "fallback_audio",
+  });
+  position = 10;
+  timerApi.advance(5000);
+  assert.equal(learned().length, 1, "new engine needs its own presented frame");
+  hook.startupPresentation.options.onFrame();
+  position = 15;
+  timerApi.advance(5000);
+  assert.equal(learned().length, 2);
+  assert.equal(learned()[1][2], "avplayer");
+  hook.flushPlaybackMetrics("cancelled");
+  const payload = calls.find((call) => Array.isArray(call) && call[0] === "client_telemetry")[1];
+  assert.equal(payload.engine_reason, "fallback_audio");
+  assert.equal(payload.end_reason, "first_frame_then_user_left");
+  assert.equal(payload.client_revision, "d".repeat(40));
+  hook.providerEngineMemory.clear();
+  hook.recoveryGuard.destroy();
+});
+
+test("retry exhaustion carries its bounded reason even without an engine exception", () => {
+  const { hook, calls } = harness();
+  hook.initPlayer();
+  for (let n = 0; n < 7; n++) hook.initPlayer();
+  const samples = calls.filter((call) => Array.isArray(call) && call[0] === "client_telemetry");
+  assert.equal(samples.length, 1);
+  assert.equal(samples[0][1].end_reason, "retry_budget");
+  assert.equal(samples[0][1].error_count, 0);
+});
+
+test("overlapping managed seeks require a new presented frame and stale seek completion cannot affect a new engine", () => {
+  const { hook, calls, timerApi, productionHook } = harness({ streamType: "mp4" });
+  let position = 0;
+  hook.getCurrentTime = () => position;
+  hook.el.dataset.providerId = "3";
+  hook.initStartupPresentation();
+  hook.initPlayer();
+  productionHook.reportPlayerLifecycle.call(hook, "player_engine_selected", { engine: "avplayer" });
+  hook.startupPresentation.options.onFrame();
+  const first = hook.beginMemorySeek();
+  const second = hook.beginMemorySeek();
+  first();
+  assert.equal(hook._memorySeekTokens.size, 1);
+  position = 30;
+  hook.startupPresentation.options.onFrame();
+  timerApi.advance(5000);
+  assert.equal(calls.filter((call) => call[0] === "memory_success").length, 0);
+  second();
+  hook.providerEngineMemory.progress();
+  position = 35;
+  timerApi.advance(5000);
+  assert.equal(
+    calls.filter((call) => call[0] === "memory_success").length,
+    0,
+    "post-seek frame still required",
+  );
+  hook.startupPresentation.options.onFrame();
+  position = 40;
+  timerApi.advance(5000);
+  assert.equal(calls.filter((call) => call[0] === "memory_success").length, 1);
+  const stale = hook.beginMemorySeek();
+  productionHook.reportPlayerLifecycle.call(hook, "player_engine_selected", { engine: "native" });
+  const current = hook.beginMemorySeek();
+  stale();
+  assert.equal(hook._memorySeekTokens.size, 1);
+  current();
+  hook.providerEngineMemory.clear();
   hook.recoveryGuard.destroy();
 });

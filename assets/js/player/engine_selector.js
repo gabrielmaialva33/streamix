@@ -162,3 +162,17 @@ export function selectEngine(ctx) {
       return ENGINE_SELECTION.NATIVE;
   }
 }
+
+export function selectEngineDecision(ctx) {
+  const engine = selectEngine(ctx);
+  let reason = "capability";
+  if (
+    engine === ENGINE_SELECTION.AVPLAYER &&
+    !["hls", "m3u8", "ts", "xtream"].includes(ctx.streamType)
+  ) {
+    if (ctx.recommendedPlayer === "avplayer") reason = "provider_memory";
+    else if (ctx.preferAVPlayer && (ctx.sourceType === "gindex" || ctx.streamType === "mkv"))
+      reason = "user_choice";
+  }
+  return { engine, reason };
+}

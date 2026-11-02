@@ -1,4 +1,5 @@
 import { ENGINE_ID, normalizeEngineId } from "./engine_contract.js";
+import { clientRevision, endReason, engineReason } from "./playback_reasons.js";
 
 const defaultNow = () => globalThis.performance?.now?.() ?? Date.now();
 
@@ -18,6 +19,7 @@ export class PlaybackSession {
     streamType = "unknown",
     displayMode = "browser",
     startedAt = this.now(),
+    clientRevision: revision,
   } = {}) {
     this.active = {
       batchId: this.batchId(),
@@ -31,6 +33,8 @@ export class PlaybackSession {
       fallbackCount: 0,
       mutedMismatch: false,
       engine: ENGINE_ID.UNKNOWN,
+      engineReason: "unknown",
+      clientRevision: clientRevision(revision),
       contentType,
       streamType,
       displayMode,
@@ -39,8 +43,11 @@ export class PlaybackSession {
     return this.active.batchId;
   }
 
-  selectEngine(engine) {
-    if (this.active) this.active.engine = normalizeEngineId(engine);
+  selectEngine(engine, reason) {
+    if (this.active) {
+      this.active.engine = normalizeEngineId(engine);
+      if (reason !== undefined) this.active.engineReason = engineReason(reason);
+    }
   }
 
   markPlaying() {
@@ -76,19 +83,20 @@ export class PlaybackSession {
     if (this.active) this.active.errorCount += 1;
   }
 
-  recordFallback(engine) {
+  recordFallback(engine, reason) {
     if (!this.active) return;
 
     const target = normalizeEngineId(engine);
     if (this.active.engine !== target) this.active.fallbackCount += 1;
     this.active.engine = target;
+    if (reason !== undefined) this.active.engineReason = engineReason(reason);
   }
 
   markMutedMismatch() {
     if (this.active) this.active.mutedMismatch = true;
   }
 
-  finish(outcome = "completed") {
+  finish(outcome = "completed", reason) {
     if (!this.active) return null;
 
     this.setBuffering(false);
@@ -101,6 +109,20 @@ export class PlaybackSession {
       kind: "playback",
       event: "playback_session",
       outcome,
+      end_reason: endReason(
+        reason ??
+          (outcome === "completed"
+            ? "completed"
+            : outcome === "restarted"
+              ? "user_retry"
+              : outcome === "cancelled"
+                ? session.playingAt === null
+                  ? "navigation"
+                  : "first_frame_then_user_left"
+                : "unknown"),
+      ),
+      engine_reason: session.engineReason,
+      client_revision: session.clientRevision,
       engine: session.engine,
       content_type: session.contentType,
       stream_type: session.streamType,

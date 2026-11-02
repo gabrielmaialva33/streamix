@@ -258,7 +258,7 @@ test("an existing native engine is reused instead of being recreated", () => {
   assert.deepEqual(calls.engines, []);
 });
 
-test("confirmed native playback starts buffer monitoring and records codec memory for Xtream MP4", async () => {
+test("native playing starts buffer monitoring but cannot teach provider memory before a frame", async () => {
   const { activation, calls, request, state, timerApi, video } = createHarness();
 
   activation.activate(request());
@@ -268,12 +268,10 @@ test("confirmed native playback starts buffer monitoring and records codec memor
   assert.ok(state.bufferManager, "buffer manager created for VOD");
   assert.equal(state.bufferManager.started, 1);
   assert.deepEqual(calls.presentation.slice(0, 2), ["hideLoading", "hideError"]);
-  assert.deepEqual(timerApi.pending(), [5000], "no audio probe for Xtream MP4, only success timer");
+  assert.deepEqual(timerApi.pending(), [], "playing alone starts no memory timer");
 
   await timerApi.fire(5000);
-  assert.deepEqual(calls.successes, [
-    ["provider:3:mp4", "native", { sourceType: "xtream", streamType: "mp4" }],
-  ]);
+  assert.deepEqual(calls.successes, []);
 });
 
 test("live content never creates a buffer manager and a paused element records no success", async () => {
@@ -285,7 +283,7 @@ test("live content never creates a buffer manager and a paused element records n
   video.dispatchEvent(new Event("playing"));
 
   assert.equal(state.bufferManager, null);
-  assert.deepEqual(timerApi.pending(), [5000], "live still confirms native success");
+  assert.deepEqual(timerApi.pending(), [], "live playing alone does not teach memory");
 
   video.paused = true;
   await timerApi.fire(5000);

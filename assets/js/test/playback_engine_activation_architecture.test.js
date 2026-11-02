@@ -144,7 +144,7 @@ test("extracted engine entrypoints stay thin compatibility delegates on the hook
     "playNative() { return ( this.playbackEngineActivation?.activate(ENGINE_SELECTION.NATIVE) ?? Promise.resolve(false) ); }",
     "playNativeAfterResume(sessionId, resumeTime) { return this.nativeEngineActivation?.playAfterResume(sessionId, resumeTime) ?? Promise.resolve(); }",
     "startWithAVPlayer(sessionId) { return ( this.playbackEngineActivation?.activate(ENGINE_SELECTION.AVPLAYER, { sessionId }) ?? Promise.resolve(false) ); }",
-    "tryAVPlayerFallback() { return this.avPlayerEngineActivation?.tryFallback() ?? Promise.resolve(false); }",
+    'tryAVPlayerFallback(reason = "fallback_codec") { return this.avPlayerEngineActivation?.tryFallback(reason) ?? Promise.resolve(false); }',
     "switchToAVPlayerWithTrack(trackType, trackIndex, seekTime, shouldPlay) { return ( this.avPlayerEngineActivation?.switchWithTrack(trackType, trackIndex, seekTime, shouldPlay) ?? Promise.resolve(false) ); }",
     "stopAVPlayerTimeUpdates() { return this.avPlayerEngineActivation?.stopTimeUpdates() ?? false; }",
     "playWithAvbridge() { return ( this.playbackEngineActivation?.activate(ENGINE_SELECTION.AVBRIDGE) ?? Promise.resolve(false) ); }",

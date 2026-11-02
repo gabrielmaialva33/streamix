@@ -86,6 +86,19 @@ test("showError always presents the playback error without forcing diagnostics",
   assert.equal(diagnoseCalls, 0);
 });
 
+test("typed HLS network failures preserve a bounded network reason without reading the message", async () => {
+  const shown = [];
+  const harness = createHarness({ showPlaybackError: (...args) => shown.push(args) });
+  await harness.controller.showError(
+    "Synthetic",
+    { type: "network", message: "https://invalid.test/secret" },
+    false,
+  );
+  assert.deepEqual(shown[0], ["Synthetic", null, "network_error"]);
+  await harness.controller.showError("Synthetic network text", { type: "arbitrary" }, false);
+  assert.deepEqual(shown[1], ["Synthetic network text", null, "fatal_media_error"]);
+});
+
 test("showError emits a safe non-native player suggestion", async () => {
   const observedContexts = [];
   const diagnosis = {

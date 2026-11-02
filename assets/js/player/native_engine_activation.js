@@ -14,7 +14,6 @@ import {
 } from "./playback_engine_activation.js";
 import { scheduleLowPriority } from "./playback_environment.js";
 import { loadAVPlayer } from "./playback_module_loader.js";
-import { playerRecommendationKey, recordPlayerSuccess } from "./player_preferences.js";
 
 export const NATIVE_PLAYBACK_MESSAGES = Object.freeze({
   ABORTED: "Reproducao cancelada",
@@ -24,7 +23,6 @@ export const NATIVE_PLAYBACK_MESSAGES = Object.freeze({
 });
 
 export const NATIVE_AUDIO_CHECK_DELAY_MS = 2_000;
-export const NATIVE_SUCCESS_CONFIRM_MS = 5_000;
 export const NATIVE_METADATA_PROBE_TIMEOUT_MS = 5_000;
 
 // HTMLMediaElement error codes. Spelled out so the activation stays usable
@@ -42,7 +40,6 @@ export const NATIVE_ENGINE_ACTIVATION_HOST_METHODS = Object.freeze([
   "getNativePlaybackEngine",
   "getPresentation",
   "getSourceType",
-  "getProviderId",
   "getStreamType",
   "getVideo",
   "isAVPlayerAttempted",
@@ -70,7 +67,6 @@ const defaultDependencies = {
   createNativeBufferManager: (video, callbacks) => new NativeBufferManager(video, callbacks),
   createNativePlaybackEngine,
   loadAVPlayer,
-  recordPlayerSuccess,
   scheduleLowPriority,
   timerApi: globalThis,
   now: () => performance.now(),
@@ -99,7 +95,6 @@ export class NativeEngineActivation {
     this.audioCheckTimer = null;
     this.errorHandler = null;
     this.metadataProbeCancel = null;
-    this.successTimer = null;
   }
 
   get id() {
@@ -163,10 +158,6 @@ export class NativeEngineActivation {
       if (this.host.getSourceType() === "gindex") {
         this.scheduleMetadataProbe();
       }
-
-      if (!this.shouldCheckAudio()) {
-        this.scheduleSuccessConfirmation(sessionId, video);
-      }
     };
 
     const errorHandler = () => {
@@ -182,7 +173,11 @@ export class NativeEngineActivation {
       const message = this.resolveMediaError(video.error);
       if (message == null) return;
 
-      this.host.showPlaybackError(message);
+      this.host.showPlaybackError(
+        message,
+        null,
+        video.error?.code === MEDIA_ERR_NETWORK ? "network_error" : "fatal_media_error",
+      );
       video.removeEventListener("error", errorHandler);
     };
 
@@ -330,7 +325,7 @@ export class NativeEngineActivation {
 
         if (hasAudioIssue) {
           this.logger.debug("[VideoPlayer] Audio issue detected, auto-switching to AVPlayer");
-          this.host.tryAVPlayerFallback();
+          this.host.tryAVPlayerFallback("fallback_audio");
         } else {
           this.logger.debug("[VideoPlayer] Audio working correctly");
         }
@@ -351,10 +346,6 @@ export class NativeEngineActivation {
     this.cancelAudioCheck();
     this.metadataProbeCancel?.();
     this.metadataProbeCancel = null;
-    if (this.successTimer != null) {
-      this.deps.timerApi.clearTimeout(this.successTimer);
-      this.successTimer = null;
-    }
   }
 
   detachErrorHandler() {
@@ -415,27 +406,6 @@ export class NativeEngineActivation {
       },
       { timeout: NATIVE_METADATA_PROBE_TIMEOUT_MS },
     );
-  }
-
-  scheduleSuccessConfirmation(sessionId, video) {
-    // Record successful native playback after a short confirmation window so
-    // Device Codec Memory learns that native works for this content type.
-    if (this.successTimer != null) this.deps.timerApi.clearTimeout(this.successTimer);
-    this.successTimer = this.deps.timerApi.setTimeout(() => {
-      this.successTimer = null;
-      if (!this.host.isSessionCurrent(sessionId) || this.host.isUsingAVPlayer() || video.paused) {
-        return;
-      }
-
-      const sourceType = this.host.getSourceType();
-      const streamType = this.host.getStreamType();
-      const contentKey = playerRecommendationKey({
-        providerId: this.host.getProviderId(),
-        streamType,
-      });
-      if (contentKey)
-        this.deps.recordPlayerSuccess(contentKey, "native", { sourceType, streamType });
-    }, NATIVE_SUCCESS_CONFIRM_MS);
   }
 
   resolveMediaError(error) {

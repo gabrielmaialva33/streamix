@@ -146,7 +146,11 @@ export class PlayerDiagnosticsController {
   }
 
   async showError(message, error = null, runDiagnostics = false) {
-    this.showPlaybackError(message);
+    this.showPlaybackError(
+      message,
+      null,
+      error?.type === "network" ? "network_error" : "fatal_media_error",
+    );
 
     if (!runDiagnostics || !error) return null;
 

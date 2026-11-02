@@ -13,6 +13,10 @@
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
     <meta name="csrf-token" content={get_csrf_token()} />
+    <meta
+      name="streamix-client-revision"
+      content={Streamix.Qoe.client_revision(Streamix.BuildInfo.revision())}
+    />
     <meta name="format-detection" content="telephone=no, date=no, email=no, address=no" />
 
     <!-- PWA Meta Tags -->

@@ -9,11 +9,7 @@ import {
 import { createPlaybackEngineAdapter } from "./playback_engine_adapter.js";
 import { resolvePlaybackResumeTime } from "./playback_engine_lifecycle.js";
 import { loadAVPlayer } from "./playback_module_loader.js";
-import {
-  forgetRecommendedPlayer,
-  playerRecommendationKey,
-  recordPlayerSuccess,
-} from "./player_preferences.js";
+import { forgetRecommendedPlayer, playerRecommendationKey } from "./player_preferences.js";
 
 export const AVPLAYER_FALLBACK_BLOCKED_MESSAGE =
   "Formato de audio nao suportado. Tente novamente mais tarde.";
@@ -95,7 +91,6 @@ const defaultDependencies = {
   },
   getFileExtension,
   loadAVPlayer,
-  recordPlayerSuccess,
   resolvePlaybackResumeTime,
   timerApi: globalThis,
 };
@@ -157,12 +152,11 @@ export class AvPlayerEngineActivation {
       key: "startup-avplayer",
       sessionId,
       initializeEngine: true,
-      recordSuccess: true,
       capture: () => this.captureNativePlayback(),
     });
   }
 
-  async tryFallback() {
+  async tryFallback(reason = "fallback_codec") {
     const controller = this.host.getTransitionController();
     if (this.host.isSwitchingToAVPlayer() || controller?.active) {
       this.logger.debug("[VideoPlayer] Already switching to AVPlayer, skipping fallback");
@@ -198,6 +192,7 @@ export class AvPlayerEngineActivation {
     return this.transition({
       key: "native-to-avplayer-fallback",
       fallback: true,
+      reason,
       capture: () => this.captureNativePlayback(),
     });
   }
@@ -228,9 +223,9 @@ export class AvPlayerEngineActivation {
   transition({
     capture,
     fallback = false,
+    reason,
     initializeEngine = false,
     key,
-    recordSuccess = fallback,
     sessionId = null,
     showLoading = false,
     trackIndex = null,
@@ -251,6 +246,7 @@ export class AvPlayerEngineActivation {
         this.host.reportLifecycle("player_engine_selected", {
           engine: "avplayer",
           fallback,
+          reason,
           session_id: sessionId,
         });
 
@@ -276,7 +272,6 @@ export class AvPlayerEngineActivation {
       },
       createEngine: (context) =>
         this.createEngine(context, {
-          recordSuccess,
           resumeTime: context.capture?.resumeTime ?? 0,
           trackSwitch: Boolean(trackType),
         }),
@@ -373,7 +368,7 @@ export class AvPlayerEngineActivation {
     });
   }
 
-  async createEngine(context, { recordSuccess = false, resumeTime = 0, trackSwitch = false } = {}) {
+  async createEngine(context, { resumeTime = 0, trackSwitch = false } = {}) {
     const { AVPlayerWrapper } = await this.deps.loadAVPlayer();
     const mount = this.host.getAVPlayerMount();
     if (!mount) throw new Error("AVPlayer mount element (#avplayer-mount) not found in template");
@@ -397,7 +392,6 @@ export class AvPlayerEngineActivation {
           : "[VideoPlayer] AVPlayer ready",
       );
     });
-    let successRecorded = false;
     avPlayer.on(ENGINE_EVENT.PLAYING, () => {
       if (!isCurrent()) return;
       const presentation = this.host.getPresentation();
@@ -407,15 +401,6 @@ export class AvPlayerEngineActivation {
       this.host.handlePlaybackStarted();
       this.host.markPlaying();
       this.host.emitPlaybackEvent("play");
-
-      if (recordSuccess && !successRecorded) {
-        const sourceType = this.host.getSourceType();
-        const streamType = this.host.getStreamType();
-        const contentKey = this.contentKey();
-        if (contentKey)
-          this.deps.recordPlayerSuccess(contentKey, "avplayer", { sourceType, streamType });
-        successRecorded = true;
-      }
     });
     avPlayer.on(ENGINE_EVENT.PAUSED, () => {
       if (!isCurrent()) return;

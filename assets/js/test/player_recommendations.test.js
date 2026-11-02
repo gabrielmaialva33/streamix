@@ -2,6 +2,25 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as preferences from "../player/player_preferences.js";
 
+test("old provider memory learned from playing events does not count as frame-confirmed evidence", (t) => {
+  storage(t);
+  globalThis.localStorage.setItem(
+    "streamix_device_compat",
+    JSON.stringify({
+      schema: 4,
+      codecs: {},
+      players: {
+        "provider:3:mp4": {
+          recommendedPlayer: "avplayer",
+          successCount: 2,
+          lastSuccess: Date.now(),
+        },
+      },
+    }),
+  );
+  assert.equal(preferences.getRecommendedPlayer("provider:3:mp4"), null);
+});
+
 function storage(t) {
   const values = new Map();
   const previous = Object.getOwnPropertyDescriptor(globalThis, "localStorage");

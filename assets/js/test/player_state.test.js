@@ -117,3 +117,23 @@ test("does not share mutable defaults between player instances", () => {
   assert.deepEqual(second.audioTracks, []);
   assert.deepEqual(second.fallbackCooldowns, [2_000, 5_000, 10_000, 20_000, 30_000]);
 });
+test("client revision comes from the page's served build meta, with untrusted values rejected", () => {
+  const dependencies = {
+    createPlaybackMetrics: () => ({}),
+    isIosPwaMode: () => false,
+    now: () => 0,
+    parseNextEpisode: () => null,
+    readEngineFlag: () => false,
+    selectStreamingMode: () => "live",
+  };
+  const documentRef = { querySelector: () => ({ content: "b".repeat(40) }) };
+  assert.equal(
+    createInitialPlayerState(createElement(), { dependencies, documentRef }).clientRevision,
+    "b".repeat(40),
+  );
+  documentRef.querySelector = () => ({ content: "https://invalid.test/secret" });
+  assert.equal(
+    createInitialPlayerState(createElement(), { dependencies, documentRef }).clientRevision,
+    undefined,
+  );
+});

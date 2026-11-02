@@ -114,7 +114,7 @@ test("initial AVPlayer selection reuses the initPlayer session without fallback 
   assert.match(startup, /key: "startup-avplayer"/);
   assert.match(startup, /sessionId,/);
   assert.match(startup, /initializeEngine: true/);
-  assert.match(startup, /recordSuccess: true/);
+  assert.doesNotMatch(activation, /recordPlayerSuccess|recordSuccess/);
   assert.match(startup, /this\.host\.markAVPlayerAttempted\(\)/);
   assert.doesNotMatch(
     startup,
@@ -158,7 +158,7 @@ test("fallback and track-switch entrypoints retain policy but delegate transacti
   assert.match(hook, /canAttemptFallback\(\) \{/, "circuit-breaker policy stays on the hook");
   assert.match(
     hook,
-    /tryAVPlayerFallback\(\) \{\s*return this\.avPlayerEngineActivation\?\.tryFallback\(\)/,
+    /tryAVPlayerFallback\(reason = "fallback_codec"\) \{\s*return this\.avPlayerEngineActivation\?\.tryFallback\(reason\)/,
   );
   assert.doesNotMatch(hook, /this\._switchingToAVPlayer = true/);
 });

@@ -30,7 +30,7 @@ import {
   PLAYBACK_STATE,
 } from "../player/engine_contract.js";
 import { createEngineRecoveryPolicy } from "../player/engine_recovery_policy.js";
-import { selectEngine } from "../player/engine_selector";
+import { selectEngineDecision } from "../player/engine_selector";
 import {
   createErrorReport,
   detectErrorPatterns,
@@ -85,6 +85,7 @@ import {
   getPreferences,
   getRecommendedPlayer,
   playerRecommendationKey,
+  recordPlayerSuccess,
   saveAudioTrack,
   saveMuted,
   savePlaybackPosition,
@@ -97,6 +98,7 @@ import { createPlayerTrackController } from "../player/player_track_controller.j
 import { createPlayerTrackPresentationController } from "../player/player_track_presentation_controller.js";
 import { PlayerUI } from "../player/player_ui";
 import { createPlayerUiController } from "../player/player_ui_controller.js";
+import { ProviderEngineMemory } from "../player/provider_engine_memory.js";
 import { createSourceFailoverController } from "../player/source_failover_controller.js";
 import { createStreamTransport } from "../player/stream_transport.js";
 import { createSubtitleSourceResolver } from "../player/subtitle_source_resolver.js";
@@ -171,6 +173,14 @@ const VideoPlayer = {
   initStartupPresentation() {
     const intent = consumePlaybackIntent({ contentId: this.contentId });
     this.providerId = this.el.dataset.providerId || intent?.providerId || null;
+    this.providerEngineMemory = new ProviderEngineMemory({
+      getPlayback: () => ({
+        playing: !this.isPaused() && !this.video?.seeking && !this._memorySeekTokens?.size,
+        currentTime: this.getCurrentTime(),
+        playbackRate: this.getPlaybackRate(),
+      }),
+      record: recordPlayerSuccess,
+    });
     this._playbackMountedAt = intent?.startedAt ?? this._playbackMountedAt ?? performance.now();
     this.startupPresentation = new PlaybackStartupController({
       root: this.el,
@@ -182,6 +192,7 @@ const VideoPlayer = {
       },
       onFrame: () => {
         this.playbackMetrics?.markFirstFrame();
+        this.providerEngineMemory?.frame();
         this.recoveryGuard?.playing();
         if (this.isPaused()) this.recoveryGuard?.pause();
         this.playerUIController?.hideLoading();
@@ -198,9 +209,13 @@ const VideoPlayer = {
         this.retryCount = 0;
         this.fallbackAttempts = 0;
       },
-      onExhausted: () => {
+      onExhausted: (reason) => {
         this.cleanup();
-        this.presentTerminalPlaybackError("Não foi possível iniciar o vídeo. Tente novamente.");
+        this.presentTerminalPlaybackError(
+          "Não foi possível iniciar o vídeo. Tente novamente.",
+          null,
+          reason,
+        );
       },
     });
     this.recoveryGuard.begin();
@@ -281,7 +296,7 @@ const VideoPlayer = {
       }),
       initCodecAwareABR: (recommendation) => this.initCodecAwareABR(recommendation),
       pushEvent: (event, payload) => this.pushEventSafe(event, payload),
-      showPlaybackError: (message) => this.showPlaybackError(message),
+      showPlaybackError: (message, hint, reason) => this.showPlaybackError(message, hint, reason),
     });
     this.hlsRecoveryCoordinator = createHlsRecoveryCoordinator({
       onFailure: (error) => this.engineRecoveryPolicy?.reportHlsRecoveryFailure(error),
@@ -539,6 +554,7 @@ const VideoPlayer = {
   initPlaybackCommandController() {
     this.playbackCommandController?.destroy();
     this.playbackCommandController = createPlaybackCommandController({
+      onSeekStart: () => this.beginMemorySeek(),
       getRoot: () => this.el,
       getVideo: () => this.video,
       getContentType: () => this.contentType,
@@ -666,6 +682,7 @@ const VideoPlayer = {
         this.lastFallbackTime = Date.now();
       },
       recordPlaybackError: () => {
+        this.providerEngineMemory?.interrupt();
         this.playbackMetrics?.recordError();
         this.recoveryGuard?.attempt();
       },
@@ -713,7 +730,8 @@ const VideoPlayer = {
       setUsingH265web: (using) => {
         this.usingH265web = using === true;
       },
-      showPlaybackError: (message, hint = null) => this.showPlaybackError(message, hint),
+      showPlaybackError: (message, hint = null, reason) =>
+        this.showPlaybackError(message, hint, reason),
       syncPiPAvailability: () => this.syncPiPAvailability(),
       takeResumeTime: (fallback) => this.takeResumeTime(fallback),
       teardownAVPlayer: (player) => this.teardownAVPlayer(player),
@@ -721,7 +739,7 @@ const VideoPlayer = {
         this.teardownStreamLoaderForTransition(sessionId),
       toAbsoluteUrl: (url) => this.toAbsoluteUrl(url),
       trackManagedEngine: (engineId, engine) => this.trackManagedEngine(engineId, engine),
-      tryAVPlayerFallback: () => this.tryAVPlayerFallback(),
+      tryAVPlayerFallback: (reason) => this.tryAVPlayerFallback(reason),
       updateAudioTracks: () => this.updateAudioTracks(),
       updateMediaSessionPosition: (options) => this.updateMediaSessionPosition(options),
       updateSubtitleTracks: () => this.updateSubtitleTracks(),
@@ -1082,6 +1100,7 @@ const VideoPlayer = {
   },
 
   handlePlaybackStarted() {
+    this.providerEngineMemory?.progress();
     if (this._terminalPlaybackError) {
       this.setPlaybackSystemState("none");
       return;
@@ -1097,6 +1116,7 @@ const VideoPlayer = {
   },
 
   handlePlaybackPaused() {
+    this.providerEngineMemory?.pause();
     this.recoveryGuard?.suspend();
     this.setPlaybackSystemState(this._terminalPlaybackError ? "none" : "paused");
   },
@@ -1185,6 +1205,7 @@ const VideoPlayer = {
     this.proxyUrl = payload.proxy_url || streamUrl;
     this.sourceType = payload.source_type || this.sourceType;
     this.providerId = payload.provider_id ? String(payload.provider_id) : null;
+    this._pendingEngineReason = "failover";
     this.contentId = String(payload.content_id);
     this.useProxy = true;
     this.currentUrl = null;
@@ -1328,7 +1349,7 @@ const VideoPlayer = {
   // UI Update Helpers
   // ============================================
 
-  showPlaybackError(message, hint = null) {
+  showPlaybackError(message, hint = null, reason = "fatal_media_error") {
     if (this.recoveryGuard?.terminal) return;
     const failoverRequested = this.sourceFailoverController?.request({
       contentId: this.contentId,
@@ -1345,16 +1366,17 @@ const VideoPlayer = {
       return;
     }
 
-    this.presentTerminalPlaybackError(message, hint);
+    this.presentTerminalPlaybackError(message, hint, reason);
   },
 
-  presentTerminalPlaybackError(message, hint = null) {
+  presentTerminalPlaybackError(message, hint = null, reason = "fatal_media_error") {
+    this.providerEngineMemory?.clear();
     this.recoveryGuard?.finish();
     this.startupPresentation?.stop();
     this._terminalPlaybackError = true;
     this.observePlaybackState(PLAYBACK_STATE.TERMINAL, "terminal_error");
     this.setPlaybackSystemState("none");
-    this.flushPlaybackMetrics("error");
+    this.flushPlaybackMetrics("error", reason);
     this.playerUIController?.showError(message, hint);
   },
 
@@ -1417,6 +1439,7 @@ const VideoPlayer = {
 
   updateTimeUI() {
     this.startupPresentation?.canvasProgress(this.getCurrentTime(), !this.isPaused());
+    this.providerEngineMemory?.progress();
     return this.playerUIController?.updateTime() ?? null;
   },
 
@@ -1624,17 +1647,24 @@ const VideoPlayer = {
 
   reportPlayerLifecycle(stage, extra = {}) {
     if (stage === "player_engine_selected") {
+      this._memorySeekTokens?.clear();
+      this.providerEngineMemory?.select({
+        providerId: this.providerId,
+        streamType: this.currentStreamType,
+        engine: extra.engine,
+        batchId: this.playbackMetrics?.active?.batchId,
+      });
       this.startupPresentation?.attach({
         native: !["avplayer", "h265web"].includes(extra.engine),
       });
       if (extra.fallback) {
-        this.playbackMetrics?.recordFallback(extra.engine);
+        this.playbackMetrics?.recordFallback(extra.engine, extra.reason || "fallback_codec");
         this.playbackOrchestrator?.recordFallback(extra.engine);
       } else {
-        this.playbackMetrics?.selectEngine(extra.engine);
+        this.playbackMetrics?.selectEngine(extra.engine, extra.reason);
       }
     } else if (stage === "player_engine_fallback") {
-      this.playbackMetrics?.recordFallback(extra.to);
+      this.playbackMetrics?.recordFallback(extra.to, extra.reason || "fallback_codec");
       this.playbackOrchestrator?.recordFallback(extra.to);
     }
 
@@ -1670,8 +1700,8 @@ const VideoPlayer = {
     }
   },
 
-  flushPlaybackMetrics(outcome) {
-    const metric = this.playbackMetrics?.finish(outcome);
+  flushPlaybackMetrics(outcome, reason) {
+    const metric = this.playbackMetrics?.finish(outcome, reason);
     if (metric) this.pushEventSafe("client_telemetry", metric);
   },
 
@@ -1715,7 +1745,25 @@ const VideoPlayer = {
     return this.avPlayerTeardownQueue?.destroy(player) || Promise.resolve();
   },
 
+  beginMemorySeek() {
+    this.providerEngineMemory?.interrupt();
+    this._memorySeekTokens ||= new Set();
+    const token = Symbol("seek");
+    this._memorySeekTokens.add(token);
+    return () => {
+      if (!this._memorySeekTokens?.delete(token) || this._destroyed) return;
+      if (this._memorySeekTokens.size === 0) {
+        this.providerEngineMemory?.interrupt();
+        this.startupPresentation?.attach({
+          native: !["avplayer", "h265web"].includes(engineIdFromRuntime(this)),
+        });
+      }
+    };
+  },
+
   cleanup({ preservePlaybackState = false } = {}) {
+    this._memorySeekTokens?.clear();
+    this.providerEngineMemory?.clear();
     this.startupPresentation?.cancelFrame();
     this.reportPlayerLifecycle("player_cleanup", {
       preserve_playback_state: preservePlaybackState,
@@ -1857,7 +1905,9 @@ const VideoPlayer = {
   },
 
   observePlaybackState(nextState, reason, metadata = {}) {
+    if (nextState === PLAYBACK_STATE.SEEKING) this.providerEngineMemory?.pause();
     if (nextState === PLAYBACK_STATE.STALLED || nextState === PLAYBACK_STATE.RECOVERING) {
+      this.providerEngineMemory?.interrupt();
       this.recoveryGuard?.recover();
       if (nextState === PLAYBACK_STATE.RECOVERING || this.startupPresentation?.hasFrame)
         this.startupPresentation?.recover();
@@ -2021,6 +2071,7 @@ const VideoPlayer = {
         contentType: this.contentType,
         streamType: this.currentStreamType,
         displayMode: isStandalonePwa() ? "standalone" : "browser",
+        clientRevision: this.clientRevision,
       });
     this.playbackMetrics.markStage("url");
     this.reportPlayerLifecycle("player_session_started", {
@@ -2047,8 +2098,11 @@ const VideoPlayer = {
     });
     const recommendedPlayer = getRecommendedPlayer(contentKey);
     const engineContext = this.buildEngineContext(recommendedPlayer);
-    const engine = assertEngineSelection(selectEngine(engineContext));
-    this.playbackMetrics.selectEngine(engine);
+    const decision = selectEngineDecision(engineContext);
+    const engine = assertEngineSelection(decision.engine);
+    const reason = this._pendingEngineReason || decision.reason;
+    this._pendingEngineReason = null;
+    this.playbackMetrics.selectEngine(engine, reason);
 
     log.debug("[VideoPlayer] Engine decision context", {
       currentStreamType: this.currentStreamType,
@@ -2199,8 +2253,8 @@ const VideoPlayer = {
     );
   },
 
-  tryAVPlayerFallback() {
-    return this.avPlayerEngineActivation?.tryFallback() ?? Promise.resolve(false);
+  tryAVPlayerFallback(reason = "fallback_codec") {
+    return this.avPlayerEngineActivation?.tryFallback(reason) ?? Promise.resolve(false);
   },
 
   /**
@@ -2364,6 +2418,7 @@ const VideoPlayer = {
   // ============================================
 
   destroyed() {
+    this.providerEngineMemory?.clear();
     this.recoveryGuard?.destroy();
     this.startupPresentation?.destroy();
     this.flushPlaybackMetrics("cancelled");

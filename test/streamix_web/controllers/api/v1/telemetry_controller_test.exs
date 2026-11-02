@@ -40,6 +40,9 @@ defmodule StreamixWeb.Api.V1.TelemetryControllerTest do
             "time_to_first_frame_ms" => 840,
             "buffer_count" => 1,
             "error_count" => 0,
+            "end_reason" => "navigation",
+            "engine_reason" => "capability",
+            "client_revision" => String.duplicate("d", 40),
             "url" => "https://upstream.invalid/secret-token"
           }
         ]
@@ -59,6 +62,9 @@ defmodule StreamixWeb.Api.V1.TelemetryControllerTest do
       from(event in "qoe_events",
         select: %{
           engine: event.engine,
+          end_reason: event.end_reason,
+          engine_reason: event.engine_reason,
+          client_revision: event.client_revision,
           ttff_ms: event.ttff_ms,
           user_id: event.user_id,
           batch_id: event.batch_id
@@ -67,6 +73,9 @@ defmodule StreamixWeb.Api.V1.TelemetryControllerTest do
       |> Repo.one!()
 
     assert event.engine == "native"
+    assert event.end_reason == "navigation"
+    assert event.engine_reason == "capability"
+    assert event.client_revision == String.duplicate("d", 40)
     assert event.ttff_ms == 840
     assert is_integer(event.user_id)
     assert event.batch_id == batch_id

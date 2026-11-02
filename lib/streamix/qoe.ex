@@ -9,6 +9,7 @@ defmodule Streamix.Qoe do
   import Ecto.Query
 
   alias Streamix.Qoe.Event
+  alias Streamix.Qoe.Labels
   alias Streamix.Repo
 
   @max_batch_size 50
@@ -31,6 +32,7 @@ defmodule Streamix.Qoe do
   @surfaces ~w(home browse watch party favorites history auth settings admin other)
   @outcomes ~w(started playing completed error cancelled restarted accepted dismissed help_opened unknown)
   @minimum_slo_samples 20
+
   @vital_thresholds %{
     lcp: %{good: 2_500, poor: 4_000},
     inp: %{good: 200, poor: 500},
@@ -43,6 +45,9 @@ defmodule Streamix.Qoe do
     "mpegts-flv" => "mpegts",
     "av-player" => "avplayer"
   }
+
+  @doc "Validates the public build identifier exposed to browser telemetry."
+  defdelegate client_revision(value), to: Labels
 
   @doc """
   Persists up to 50 samples and returns the number of newly inserted rows.
@@ -153,6 +158,9 @@ defmodule Streamix.Qoe do
       kind: enum_value(metric, "kind", @kinds, "playback"),
       event: enum_value(metric, ["event", "type"], @events, "unknown"),
       outcome: enum_value(metric, "outcome", @outcomes, "unknown"),
+      end_reason: Labels.end_reason(value(metric, "end_reason")),
+      engine_reason: Labels.engine_reason(value(metric, "engine_reason")),
+      client_revision: Labels.client_revision(value(metric, "client_revision")),
       engine: enum_value(metric, "engine", @engines, "unknown"),
       content_type:
         enum_value(metric, ["content_type", "type", "stream_type"], @content_types, "unknown"),

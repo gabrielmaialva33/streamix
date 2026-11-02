@@ -19,9 +19,9 @@ const MAX_POSITIONS = 100; // Max number of positions to store
 // longer applies). Reads with a stale schema are wiped on the next
 // access — much cheaper than asking every user to clear localStorage by
 // hand.
-// Version 4 discards format-global recommendations. A successful MP4
-// must only influence that provider/container, never every other provider.
-const DEVICE_COMPAT_SCHEMA = 4;
+// Version 5 also discards provider evidence learned from `playing` before a
+// presented frame and stable playback. Settings and resume positions are separate.
+const DEVICE_COMPAT_SCHEMA = 5;
 const RECOMMENDATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function playerRecommendationKey({ providerId, streamType } = {}) {
