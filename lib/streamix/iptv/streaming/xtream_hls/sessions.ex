@@ -25,11 +25,16 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.Sessions do
   media playlist with `#EXT-X-ENDLIST`) as a template of resource ids — never
   as rendered text, whose URLs carry the requesting viewer's token — up to
   `playlist_cache_bytes` (8 MiB) per session, so a playlist is fetched once
-  per session. A live session never keeps a playlist. Both record every
-  media playlist's latest segment order and, per playlist, the playhead (the
-  latest segment a player asked for), which `claim_prefetch/4` uses to hand
-  out the next segments to prefetch, at most `prefetch_concurrency` (3) in
-  flight per session. All of it goes with the session when it idles.
+  per session. A live session never keeps a playlist across refreshes, except
+  that a live media playlist fetched to synthesize the one-variant master is
+  stashed for `live_playlist_ttl_ms` (default 2,000 ms) and consumed by the
+  immediate variant request so startup does not fetch it twice. Both record
+  every media playlist's latest segment order and, per playlist, the playhead
+  (seeded at live edge minus `live_sync_segments` when a live media playlist
+  is served, then updated to the latest segment a player asked for), which
+  `claim_prefetch/4` uses to hand out the next segments to prefetch, at most
+  `prefetch_concurrency` (3) in flight per session. All of it goes with the
+  session when it idles.
 
   ## Leases
 
@@ -68,8 +73,8 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.Sessions do
   `{:ok, resource, %{provider_id:, live?:, root:, template:}}`, where
   `template` is the session's cached template of that playlist, or `nil`.
   """
-  def resource(session_id, resource_id, content),
-    do: GenServer.call(__MODULE__, {:resource, session_id, resource_id, content})
+  def resource(session_id, resource_id, content, opts \\ []),
+    do: GenServer.call(__MODULE__, {:resource, session_id, resource_id, content, opts})
 
   @doc "Registers playlist references on a session; returns one identifier per reference."
   def register(session_id, content, refs),
@@ -142,18 +147,24 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.Sessions do
     end
   end
 
-  def handle_call({:resource, sid, rid, content}, _from, state) do
+  def handle_call({:resource, sid, rid, content}, from, state),
+    do: handle_call({:resource, sid, rid, content, []}, from, state)
+
+  def handle_call({:resource, sid, rid, content, opts}, _from, state) do
     with %{content: ^content} = session <- state.sessions[sid],
          false <- expired?(session),
          {:ok, resource} <- Registry.lookup(session.registry, rid) do
+      {template, session} = resolve_template(session, rid, opts)
+
       info = %{
         provider_id: session.provider_id,
         live?: session.live?,
         root: Registry.root(session.registry),
-        template: session.playlists[rid]
+        template: template
       }
 
-      {:reply, {:ok, resource, info}, touch(state, sid)}
+      state = state |> put_in([:sessions, sid], session) |> touch(sid)
+      {:reply, {:ok, resource, info}, state}
     else
       true -> {:reply, {:error, :playback_restart_required}, remove(state, sid)}
       _ -> {:reply, {:error, :resource_not_found}, state}
@@ -323,6 +334,9 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.Sessions do
       # Immutable playlists, as templates of resource ids (never rendered
       # URLs, which carry the requesting viewer's token).
       playlists: %{},
+      # Short-lived live media playlist templates seeded by `fetch_master` for
+      # the immediate variant request (`%{rid => {template, expires_at_ms}}`).
+      live_playlists: %{},
       playlist_bytes: 0,
       # Segment order per playlist and each segment's position, for lookahead.
       orders: %{},
@@ -335,11 +349,52 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.Sessions do
     }
   end
 
+  defp resolve_template(session, rid, opts) do
+    cond do
+      template = session.playlists[rid] ->
+        {template, session}
+
+      Keyword.get(opts, :consume_live_template?, true) ->
+        pop_live_playlist(session, rid)
+
+      true ->
+        {nil, session}
+    end
+  end
+
+  defp pop_live_playlist(session, rid) do
+    case Map.pop(session.live_playlists, rid) do
+      {nil, _live_playlists} ->
+        {nil, session}
+
+      {{template, expires_at_ms}, live_playlists} ->
+        session = %{session | live_playlists: live_playlists}
+        if now_ms() <= expires_at_ms, do: {template, session}, else: {nil, session}
+    end
+  end
+
   # A playlist's segment order is always recorded (it drives lookahead); its
-  # template is kept only when immutable and while the session stays under
-  # its playlist byte bound.
-  defp store_playlist(session, rid, %{segments: segments} = template, cache?) do
+  # template is kept permanently when immutable (VOD) or briefly when seeded
+  # by the synthetic live master for the immediate variant request, while the
+  # session stays under its playlist byte bound.
+  defp store_playlist(session, rid, %{segments: segments} = template, :live_master) do
     session = store_order(session, rid, segments)
+    ttl_ms = live_playlist_ttl_ms()
+    size = :erlang.external_size(template)
+
+    if ttl_ms > 0 and size <= config(:playlist_cache_bytes, 8 * 1024 * 1024) do
+      put_in(session.live_playlists[rid], {template, now_ms() + ttl_ms})
+    else
+      %{session | live_playlists: Map.delete(session.live_playlists, rid)}
+    end
+  end
+
+  defp store_playlist(session, rid, %{segments: segments} = template, cache?) do
+    session =
+      session
+      |> store_order(rid, segments)
+      |> Map.update!(:live_playlists, &Map.delete(&1, rid))
+
     size = :erlang.external_size(template)
 
     if cache? and not Map.has_key?(session.playlists, rid) and
@@ -354,14 +409,47 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.Sessions do
     end
   end
 
-  # The playhead is a segment id, resolved to its position when claiming: a
-  # live playlist's order shifts on every refresh.
+  # The playhead is either `{:start, index}` (seeded when a live media
+  # playlist is served, at live edge minus `live_sync_segments`) or a segment
+  # id (once a player requests a segment), resolved to its position when
+  # claiming: a live playlist's order shifts on every refresh.
   defp move_playhead(session, :continue), do: session
 
-  defp move_playhead(session, rid) do
+  defp move_playhead(session, {:playlist, playlist}) do
+    case session.orders[playlist] do
+      order when is_tuple(order) and tuple_size(order) > 0 ->
+        start_index = max(tuple_size(order) - live_sync_segments(), 0)
+
+        case active_playhead_index(session, playlist) do
+          index when is_integer(index) and index >= start_index ->
+            session
+
+          _ ->
+            put_in(session.playheads[playlist], {:start, start_index})
+        end
+
+      _ ->
+        session
+    end
+  end
+
+  defp move_playhead(session, rid) when is_binary(rid) do
     case session.positions[rid] do
       {playlist, _index} -> put_in(session.playheads[playlist], rid)
       nil -> session
+    end
+  end
+
+  defp active_playhead_index(session, playlist) do
+    case session.playheads[playlist] do
+      rid when is_binary(rid) ->
+        case session.positions[rid] do
+          {^playlist, index} -> index
+          _ -> nil
+        end
+
+      _ ->
+        nil
     end
   end
 
@@ -370,7 +458,9 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.Sessions do
 
     claimed =
       session.playheads
-      |> Enum.flat_map(fn {_playlist, rid} -> following(session, rid, depth) end)
+      |> Enum.flat_map(fn {playlist, playhead} ->
+        following(session, playlist, playhead, depth)
+      end)
       |> Enum.reject(&MapSet.member?(session.prefetching, &1))
       |> Enum.flat_map(&uncached_resource(session, &1, cached?))
       |> Enum.take(room)
@@ -379,10 +469,22 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.Sessions do
     {claimed, %{session | prefetching: prefetching}}
   end
 
-  # The `depth` segments after `rid` in its playlist's latest order; none
-  # once a live refresh no longer lists it.
-  defp following(session, rid, depth) do
-    with {playlist, index} <- session.positions[rid],
+  # For a newly served live playlist (`{:start, index}`), the `depth` segments
+  # starting at `index` (live edge minus `live_sync_segments`). For a segment
+  # `rid`, the `depth` segments after `rid` in its playlist's latest order;
+  # none once a live refresh no longer lists it.
+  defp following(session, playlist, {:start, index}, depth) do
+    case session.orders[playlist] do
+      order when is_tuple(order) ->
+        for i <- index..(index + depth - 1)//1, i < tuple_size(order), do: elem(order, i)
+
+      _ ->
+        []
+    end
+  end
+
+  defp following(session, playlist, rid, depth) when is_binary(rid) do
+    with {^playlist, index} <- session.positions[rid],
          order when is_tuple(order) <- session.orders[playlist] do
       for i <- (index + 1)..(index + depth)//1, i < tuple_size(order), do: elem(order, i)
     else
@@ -473,6 +575,7 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.Sessions do
     do: %{session_id: session.id, resource_id: Registry.root(session.registry)}
 
   defp now, do: System.monotonic_time(:second)
+  defp now_ms, do: System.monotonic_time(:millisecond)
   defp schedule_cleanup, do: Process.send_after(self(), :cleanup, @cleanup_interval_ms)
 
   defp max_sessions, do: config(:max_sessions, 2_048)
@@ -480,6 +583,8 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.Sessions do
   defp lease_wait_ms, do: config(:lease_wait_ms, 5_000)
   defp prefetch_concurrency, do: config(:prefetch_concurrency, 3)
   defp session_ttl_seconds, do: config(:session_ttl_seconds, 600)
+  defp live_playlist_ttl_ms, do: config(:live_playlist_ttl_ms, 2_000)
+  defp live_sync_segments, do: max(config(:live_sync_segments, 3), 1)
 
   defp idle_seconds,
     do: max(config(:idle_seconds, 1_800), session_ttl_seconds())

@@ -126,5 +126,58 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.SessionsTest do
       assert {:error, :resource_not_found} =
                Sessions.resource(session.session_id, session.resource_id, content)
     end
+
+    test "a live master playlist template is reused once within its TTL, then cleared" do
+      content = {:channel, System.unique_integer([:positive])}
+      live_url = "http://93.184.216.34/live/u/p/501.ts"
+      {:ok, %{session_id: sid, resource_id: rid}} = Sessions.open(content, 1, live_url)
+
+      template = %{nodes: ["#EXTM3U\n", {:id, "seg-1"}, "\n"], segments: ["seg-1"]}
+      Sessions.put_playlist(sid, rid, template, :live_master)
+
+      # A master lookup (`consume_live_template?: false`) does not consume it.
+      assert {:ok, _resource, %{template: nil}} =
+               Sessions.resource(sid, rid, content, consume_live_template?: false)
+
+      # The immediate variant request gets the cached template once.
+      assert {:ok, _resource, %{template: ^template}} = Sessions.resource(sid, rid, content)
+
+      # Subsequent refreshes see `template: nil` and fetch upstream.
+      assert {:ok, _resource, %{template: nil}} = Sessions.resource(sid, rid, content)
+    end
+
+    test "live playlist prefetch starts at live edge minus live_sync_segments and clamps short playlists" do
+      content = {:channel, System.unique_integer([:positive])}
+      live_url = "http://93.184.216.34/live/u/p/502.ts"
+      {:ok, %{session_id: sid, resource_id: rid}} = Sessions.open(content, 1, live_url)
+
+      refs = for i <- 1..5, do: {"https://104.16.3.3/hls/seg-#{i}.ts", :media}
+      {:ok, ids} = Sessions.register(sid, content, refs)
+
+      Sessions.put_playlist(sid, rid, %{nodes: [], segments: ids}, :live_master)
+
+      # 5 segments, live_sync_segments=3 -> index 5 - 3 = 2 (the 3rd segment).
+      assert [%{id: first_id, url: "https://104.16.3.3/hls/seg-3.ts"}] =
+               Sessions.claim_prefetch(sid, {:playlist, rid}, 1, fn _ -> false end)
+
+      assert first_id == Enum.at(ids, 2)
+      Sessions.release_prefetch(sid, first_id)
+
+      # Once the player requests that segment, lookahead advances to the next one (seg-4).
+      assert [%{url: "https://104.16.3.3/hls/seg-4.ts"}] =
+               Sessions.claim_prefetch(sid, first_id, 1, fn _ -> false end)
+
+      # A short playlist (< 3 segments) clamps start_index to 0.
+      short_content = {:channel, System.unique_integer([:positive])}
+
+      {:ok, %{session_id: short_sid, resource_id: short_rid}} =
+        Sessions.open(short_content, 1, live_url)
+
+      {:ok, short_ids} = Sessions.register(short_sid, short_content, Enum.take(refs, 2))
+      Sessions.put_playlist(short_sid, short_rid, %{nodes: [], segments: short_ids}, :live_master)
+
+      assert [%{url: "https://104.16.3.3/hls/seg-1.ts"}] =
+               Sessions.claim_prefetch(short_sid, {:playlist, short_rid}, 1, fn _ -> false end)
+    end
   end
 end
