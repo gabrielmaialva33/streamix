@@ -554,21 +554,23 @@ defmodule StreamixWeb.PlayerLive do
 
   defp load_available_content(socket, type, user_id, content, provider, return_to) do
     if Streamix.Playback.vod_dead?(content) do
+      # Never probe here: the replacement goes through
+      # load_authorized_content/6, which shows the startup screen and probes
+      # off the mount when its provider needs it.
       case PlayerSourceFailover.next(
              type,
              content,
              socket.assigns.current_scope.user,
              MapSet.new(),
-             probe: connected?(socket)
+             probe: false
            ) do
         {:ok, source, _attempted} ->
-          start_authorized_player(
+          load_authorized_content(
             socket,
             source.content_type,
             user_id,
             source.content,
             source.provider,
-            source.stream_url,
             return_to
           )
 
