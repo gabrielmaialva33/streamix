@@ -21,7 +21,7 @@ test("VideoPlayer composes one transport-command controller", () => {
   );
   assert.ok(
     normalized.includes(
-      "this.initUI(); this.initPlaybackCommandController(); this.initPlaybackBrowserIntegration(); this.updateVolumeUI();",
+      "this.initUI(); this.initStartupPresentation(); this.initPlaybackCommandController(); this.initPlaybackBrowserIntegration(); this.updateVolumeUI();",
     ),
   );
   assert.match(

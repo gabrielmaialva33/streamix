@@ -117,6 +117,29 @@ defmodule StreamixWeb.PlayerComponents.Metadata do
     "T#{season_num}:E#{episode_num}"
   end
 
+  @doc """
+  The picture shown while the stream starts: a wide backdrop when the
+  catalog has one, otherwise the episode still or the cover. `nil` for live
+  channels, whose logo would only be stretched across the screen.
+  """
+  @spec poster(map(), atom()) :: String.t() | nil
+  def poster(_content, type) when type in [:live, :live_channel], do: nil
+
+  def poster(content, _type) when is_map(content) do
+    [backdrop(content), Map.get(content, :still_path), Map.get(content, :cover)]
+    |> Enum.concat([Map.get(content, :stream_icon)])
+    |> Enum.find(&(is_binary(&1) and &1 != ""))
+  end
+
+  defp backdrop(%{assets: assets}) when is_list(assets) do
+    assets
+    |> Enum.filter(&(Map.get(&1, :asset_type) == "backdrop"))
+    |> Enum.sort_by(&Map.get(&1, :position))
+    |> Enum.find_value(&Map.get(&1, :url))
+  end
+
+  defp backdrop(_content), do: nil
+
   @spec uhd_hevc?(map()) :: boolean()
   def uhd_hevc?(content) when is_map(content) do
     haystack =

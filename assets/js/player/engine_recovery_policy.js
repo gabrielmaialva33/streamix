@@ -1,6 +1,6 @@
 import { playerLogger as log } from "../core/logger.js";
 import { isMpegtsSupported } from "../media/player_libs.js";
-import { isStreamLoaderCancelledError } from "../media/stream_loader.js";
+import { getStreamType, isStreamLoaderCancelledError } from "../media/stream_loader.js";
 import { PLAYBACK_STATE } from "./engine_contract.js";
 import {
   HLS_RECOVERY_OPERATION,
@@ -17,6 +17,7 @@ export const ENGINE_RECOVERY_HOST_METHODS = Object.freeze([
   "consumeRetry",
   "getErrorContext",
   "getHlsRecoveryContext",
+  "getNativeHlsSupport",
   "getHlsRecoveryCoordinator",
   "getMpegtsRecoveryCoordinator",
   "getPageProtocol",
@@ -116,6 +117,25 @@ export class EngineRecoveryPolicy {
   }
 
   handleHlsFallback(decision) {
+    const { streamType, currentUrl } = this.host.getErrorContext();
+    const manifest =
+      streamType === "hls" || streamType === "m3u8" || getStreamType(currentUrl) === "hls";
+    const transportStream = ["ts", "xtream", "mpegts", "flv"].includes(streamType);
+    if (manifest || !transportStream) {
+      if (this.host.canRetry() && this.host.getNativeHlsSupport()) {
+        this.host.consumeRetry();
+        this.host.observePlaybackState(PLAYBACK_STATE.RECOVERING, "hls_to_native_fallback");
+        this.host.cleanup({ preservePlaybackState: true });
+        this.host.playNative();
+      } else {
+        this.host.showErrorWithDiagnostics(
+          "Não foi possível carregar o vídeo. Tente novamente.",
+          { type: "network" },
+          false,
+        );
+      }
+      return;
+    }
     if (decision.reason === HLS_RECOVERY_REASON.MANIFEST_UNAVAILABLE) {
       if (this.host.canRetry() && this.deps.isMpegtsSupported()) {
         this.host.consumeRetry();

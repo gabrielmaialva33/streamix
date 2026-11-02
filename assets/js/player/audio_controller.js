@@ -7,6 +7,13 @@ import {
 } from "./audio_state.js";
 import { perceivedToLinear } from "./volume_utils.js";
 
+export function usesNativeAudioControls(
+  video,
+  { nativeControls = false, canvasPlayback = false } = {},
+) {
+  return Boolean(video && !canvasPlayback && (nativeControls || video.webkitDisplayingFullscreen));
+}
+
 const copyState = (state) => ({ ...state });
 
 export function createAudioController({

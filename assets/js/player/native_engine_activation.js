@@ -12,7 +12,7 @@ import {
   assertActivationHost,
   PLAYBACK_ENGINE_ACTIVATION_HOST_METHODS,
 } from "./playback_engine_activation.js";
-import { isAppleTouchDevice, scheduleLowPriority } from "./playback_environment.js";
+import { scheduleLowPriority } from "./playback_environment.js";
 import { loadAVPlayer } from "./playback_module_loader.js";
 import { recordPlayerSuccess } from "./player_preferences.js";
 
@@ -68,11 +68,11 @@ const defaultDependencies = {
   configureNativePlaybackElement,
   createNativeBufferManager: (video, callbacks) => new NativeBufferManager(video, callbacks),
   createNativePlaybackEngine,
-  isAppleTouchDevice,
   loadAVPlayer,
   recordPlayerSuccess,
   scheduleLowPriority,
   timerApi: globalThis,
+  now: () => performance.now(),
   waitForNativeReady,
   waitForNativeSeek,
 };
@@ -126,7 +126,9 @@ export class NativeEngineActivation {
     this.host.syncPiPAvailability();
     const resumeTime = this.host.takeResumeTime();
     this.logger.info("Playing with native video element, url:", url);
-    this.host.setNativeTouchControls(this.deps.isAppleTouchDevice());
+    // Inline playback uses the same gesture chrome on every device. Safari's
+    // native fullscreen remains owned by PlaybackBrowserIntegration.
+    this.host.setNativeTouchControls(false);
     this.deps.configureNativePlaybackElement(video, { resumeTime });
 
     const nativeEngine =
@@ -219,12 +221,14 @@ export class NativeEngineActivation {
     if (resumeTime > 0) {
       this.logger.debug("Resuming from saved position before play:", resumeTime);
       this.trace("native_resume_prepare", sessionId, { resume_time: resumeTime });
-      await this.deps.waitForNativeReady({ video, isCurrent });
+      const deadline = this.deps.now() + 2_500;
+      await this.deps.waitForNativeReady({ video, isCurrent, timeoutMs: 2_500 });
       if (!isCurrent()) return;
       this.trace("native_resume_ready", sessionId, { resume_time: resumeTime });
       await this.deps.waitForNativeSeek({
         video,
         targetTime: resumeTime,
+        timeoutMs: Math.max(0, deadline - this.deps.now()),
         isCurrent,
         onSeekError: (error) =>
           this.logger.debug("[VideoPlayer] Native seek before play failed:", error.message),

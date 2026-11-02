@@ -84,7 +84,7 @@ test("the initial hook state no longer owns MPEG-TS recovery internals", async (
   );
 });
 
-test("MPEG-TS recovery is reset by confirmed playback, not by the initial play request", async () => {
+test("MPEG-TS retry reset belongs to stable playback, never initial play or brief playing", async () => {
   const [hook, activation, bindings] = await Promise.all([
     source(hookUrl),
     source(activationUrl),
@@ -93,10 +93,7 @@ test("MPEG-TS recovery is reset by confirmed playback, not by the initial play r
   const listeners = methodSource(bindings, "bindMediaEvents");
   const loadMpegts = activation.slice(activation.indexOf("  async load("));
 
-  assert.match(
-    hook,
-    /markMpegtsRecovered: \(\) => this\.mpegtsRecoveryCoordinator\?\.markRecovered\(\)/,
-  );
+  assert.match(hook, /onStable: \(\) => \{[\s\S]*this\.mpegtsRecoveryCoordinator\?\.reset\(\)/);
   const playListener = listeners.slice(
     listeners.indexOf('listenOptional(this.video, "play"'),
     listeners.indexOf('listenOptional(this.video, "pause"'),

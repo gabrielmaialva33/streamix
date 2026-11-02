@@ -5,7 +5,7 @@ defmodule StreamixWeb.PlayerComponentsTest do
 
   alias StreamixWeb.PlayerComponents
 
-  test "keeps VOD controls in the bottom bar with centered loading indicator and no seek buttons" do
+  test "keeps VOD controls in the bottom bar with centered loading indicator and Netflix skips" do
     html =
       render_component(&PlayerComponents.video_player/1,
         content: %{id: 42, name: "Filme de teste", title: "Filme de teste"},
@@ -24,8 +24,20 @@ defmodule StreamixWeb.PlayerComponentsTest do
     assert Floki.find(document, "#player-bottom-controls #tracks-btn") != []
     assert Floki.find(document, "#player-bottom-controls #settings-btn") != []
     assert Floki.find(document, "#center-play") == []
-    assert Floki.find(document, "#seek-backward-btn") == []
-    assert Floki.find(document, "#seek-forward-btn") == []
+
+    # Netflix's ±10 s: in the bar, and again in the touch-only centre row.
+    assert Floki.find(
+             document,
+             "#player-primary-controls #player-bar-seek-backward-btn[data-player-action='seek-backward']"
+           ) != []
+
+    assert Floki.find(
+             document,
+             "#player-primary-controls #player-bar-seek-forward-btn[data-player-action='seek-forward']"
+           ) != []
+
+    assert Floki.find(document, "#player-center-controls[data-player-touch-only]") != []
+    assert Floki.find(document, "#player-center-play-btn[data-player-action='toggle-play']") != []
     assert Floki.find(document, "#pip-btn[aria-pressed=false].hidden") != []
 
     assert [{"video", video_attributes, _children}] =
@@ -34,7 +46,133 @@ defmodule StreamixWeb.PlayerComponentsTest do
     assert {"preload", "none"} in video_attributes
     refute List.keymember?(video_attributes, "disablepictureinpicture", 0)
 
-    assert Floki.find(document, "#player-close-btn.size-12") != []
+    assert Floki.find(document, "#player-close-btn.size-12[aria-label='Voltar']") != []
+
+    assert Floki.find(
+             document,
+             "#player-lock-btn[data-player-action='lock'][data-player-touch-only]"
+           ) != []
+
+    assert Floki.find(document, "#player-fit-btn[data-player-action='fit-toggle']") != []
+    assert Floki.find(document, "#player-unlock-btn[data-player-action='unlock']") != []
+
+    # No series, no episodes button or panel; no next episode, no shortcut.
+    assert Floki.find(document, "#player-episodes-btn") == []
+    assert Floki.find(document, "#player-episodes-layer") == []
+    assert Floki.find(document, "#player-next-episode-btn") == []
+  end
+
+  test "hands the player a picture to show until the first frame" do
+    movie =
+      render_component(&PlayerComponents.video_player/1,
+        content: %{
+          id: 42,
+          name: "Filme",
+          stream_icon: "https://image.tmdb.org/t/p/w500/poster.jpg",
+          assets: [
+            %{asset_type: "backdrop", position: 1, url: "https://image.tmdb.org/t/p/w1280/b.jpg"},
+            %{asset_type: "image", position: 0, url: "https://image.tmdb.org/t/p/w500/i.jpg"}
+          ]
+        },
+        content_type: :movie,
+        stream_url: "/stream/movie/42"
+      )
+
+    assert [poster] =
+             movie
+             |> Floki.parse_fragment!()
+             |> Floki.attribute("#video-player-container", "data-player-poster")
+
+    # The wide backdrop wins over the portrait cover, through the image proxy.
+    assert poster =~ "b.jpg"
+    refute poster =~ "poster.jpg"
+
+    channel =
+      render_component(&PlayerComponents.video_player/1,
+        content: %{id: 7, name: "Canal", stream_icon: "https://example.com/logo.png"},
+        content_type: :live_channel,
+        stream_url: "/stream/live/7"
+      )
+
+    assert channel
+           |> Floki.parse_fragment!()
+           |> Floki.attribute("#video-player-container", "data-player-poster") == []
+  end
+
+  test "pause screen reminds what is playing, with the synopsis" do
+    document =
+      render_component(&PlayerComponents.video_player/1,
+        content: %{id: 42, name: "Filme de teste", title: "Filme de teste"},
+        content_type: :movie,
+        stream_url: "/stream/movie/42",
+        synopsis: "Uma família viaja pelo litoral."
+      )
+      |> Floki.parse_fragment!()
+
+    pause_info = Floki.find(document, "#player-pause-info")
+    assert Floki.text(pause_info) =~ "Você está assistindo"
+    assert Floki.text(pause_info) =~ "Filme de teste"
+    assert Floki.text(pause_info) =~ "Uma família viaja pelo litoral."
+  end
+
+  test "episodes panel lists the season with progress and the current episode" do
+    document =
+      render_component(&PlayerComponents.video_player/1,
+        content: %{id: 2, name: "Piloto", title: "Piloto"},
+        content_type: :episode,
+        stream_url: "/stream/episode/2",
+        next_episode: %{
+          id: 3,
+          title: "Segundo",
+          episode_num: 3,
+          season_num: 1,
+          series_name: "Série",
+          cover: nil,
+          stream_url: "/stream/episode/3",
+          type: "episode"
+        },
+        season_episodes: [
+          %{
+            id: 1,
+            number: 1,
+            title: "Começo",
+            plot: nil,
+            image: nil,
+            path: "/watch/episode/1",
+            progress: 1.0,
+            current: false
+          },
+          %{
+            id: 2,
+            number: 2,
+            title: "Piloto",
+            plot: "Tudo começa aqui.",
+            image: nil,
+            path: "/watch/episode/2",
+            progress: 0.4,
+            current: true
+          }
+        ]
+      )
+      |> Floki.parse_fragment!()
+
+    assert Floki.find(document, "#player-episodes-btn[data-player-action='episodes']") != []
+
+    assert Floki.find(document, "#player-next-episode-btn[data-player-action='next-episode']") !=
+             []
+
+    assert Floki.find(document, "#player-episodes-panel[role='dialog']") != []
+    assert Floki.find(document, "#player-episodes-layer [data-player-action='close-panel']") != []
+
+    assert [_, _] = Floki.find(document, "#player-episodes-panel li a")
+    assert [current] = Floki.find(document, "#player-episodes-panel a[aria-current='true']")
+    assert Floki.attribute(current, "href") == ["/watch/episode/2"]
+    assert Floki.text(current) =~ "Assistindo agora"
+
+    assert Floki.find(
+             document,
+             "#player-episodes-panel a[href='/watch/episode/2'] [style='width: 40%']"
+           ) != []
   end
 
   test "renders viewer transport controls locked before JavaScript mounts" do
@@ -52,6 +190,8 @@ defmodule StreamixWeb.PlayerComponentsTest do
     assert Floki.find(document, "#play-pause-btn[disabled]") != []
     assert Floki.find(document, "#progress-container[aria-disabled='true']") != []
     assert Floki.find(document, "#speed-btn[disabled]") != []
+    assert Floki.find(document, "#player-center-play-btn[disabled]") != []
+    assert [_, _, _, _] = Floki.find(document, "[data-player-action^='seek-'][disabled]")
   end
 
   test "keeps live playback non-seekable" do
@@ -67,6 +207,8 @@ defmodule StreamixWeb.PlayerComponentsTest do
     assert Floki.find(document, "#player-bottom-controls #player-primary-controls") != []
     assert Floki.find(document, "#player-bottom-controls #play-pause-btn") != []
     assert Floki.find(document, "#center-play") == []
+    assert Floki.find(document, "[data-player-action^='seek-']") == []
+    assert Floki.find(document, "#player-center-controls") == []
   end
 
   test "timeline progress container is rendered as an accessible slider (A2-C11)" do
@@ -111,8 +253,9 @@ defmodule StreamixWeb.PlayerComponentsTest do
 
     # Middle spacer in player controls does not intercept pointer events
     # Middle spacer in player controls does not intercept pointer events
-    assert [{"div", spacer_attrs, _}] =
-             Floki.find(document, "#player-controls > .flex-1[aria-hidden='true']")
+    # The middle band holds the touch play row, so it is not aria-hidden, but
+    # it must still let a click through to the video.
+    assert [{"div", spacer_attrs, _}] = Floki.find(document, "#player-controls > .flex-1")
 
     spacer_class = List.keyfind(spacer_attrs, "class", 0) |> elem(1)
     assert spacer_class =~ "pointer-events-none"

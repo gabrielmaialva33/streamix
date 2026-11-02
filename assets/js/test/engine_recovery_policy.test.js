@@ -72,11 +72,12 @@ function createHarness({ state: overrides = {}, dependencies: depOverrides = {} 
       fallbackAttempts: 1,
       retryCount: 2,
       sourceType: "xtream",
-      streamType: "mpegts",
+      streamType: state.streamType || "ts",
       streamingMode: "auto",
       usingAVPlayer: false,
       video: { id: "video" },
     }),
+    getNativeHlsSupport: () => state.nativeHls === true,
     getHlsRecoveryContext: () => ({ sessionId: state.sessionId, url: state.urls.currentUrl }),
     getHlsRecoveryCoordinator: () => hls,
     getMpegtsRecoveryCoordinator: () => mpegts,
@@ -163,7 +164,7 @@ test("handleStreamError reports telemetry and routes HLS errors to the coordinat
   assert.deepEqual(payload.context.playerState, {
     usingAVPlayer: false,
     streamingMode: "auto",
-    streamType: "mpegts",
+    streamType: "ts",
     sourceType: "xtream",
   });
   assert.deepEqual(payload.patterns, ["pattern"]);
@@ -361,4 +362,39 @@ test("recoverFromMpegtsError cleanup reports a lost session and the direct retry
   assert.deepEqual(calls.plays, ["mpegts", "mpegts"]);
   assert.equal(state.urls.useProxy, false);
   assert.equal(state.urls.currentUrl, "http://direct/live.ts");
+});
+
+for (const reason of [
+  HLS_RECOVERY_REASON.MANIFEST_UNAVAILABLE,
+  HLS_RECOVERY_REASON.UNHANDLED_FATAL,
+]) {
+  test(`HLS manifest fallback (${reason}) uses native HLS only when supported`, () => {
+    const { calls, policy, state } = createHarness({
+      state: {
+        streamType: "hls",
+        nativeHls: true,
+        urls: {
+          currentUrl: "https://example.test/live.m3u8",
+          streamUrl: "https://example.test/live.m3u8",
+        },
+      },
+    });
+    policy.handleHlsFallback({ reason });
+    assert.deepEqual(calls.plays, ["native"]);
+    state.nativeHls = false;
+    policy.handleHlsFallback({ reason });
+    assert.deepEqual(calls.plays, ["native"]);
+    assert.equal(calls.errors.length, 1);
+  });
+}
+
+test("a stale TS hint cannot feed a manifest URL to mpegts", () => {
+  const { calls, policy } = createHarness({
+    state: {
+      urls: { currentUrl: "https://example.test/hls/master.m3u8" },
+    },
+  });
+  policy.handleHlsFallback({ reason: HLS_RECOVERY_REASON.MANIFEST_UNAVAILABLE });
+  assert.deepEqual(calls.plays, []);
+  assert.equal(calls.errors.length, 1);
 });

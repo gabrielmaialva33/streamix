@@ -228,6 +228,8 @@ const ContentCard = {
       // Create preview element
       const preview = document.createElement("div");
       preview.dataset.contentId = this.contentId;
+      preview.dataset.sourceType = this.sourceType;
+      if (this.el.dataset.streamType) preview.dataset.streamType = this.el.dataset.streamType;
       preview.className =
         "content-preview fixed z-50 bg-surface rounded-lg shadow-2xl overflow-hidden transition-all duration-200 ease-out";
       preview.style.cssText = `

@@ -330,7 +330,7 @@ defmodule StreamixWeb.PlayerComponents.Controls do
         </div>
 
         <div class="px-4 py-2 text-xs text-white/50 font-semibold uppercase tracking-wider border-y border-white/10">
-          Proporção
+          Formato da tela
         </div>
         <div id="aspect-options" class="py-1">
           <%= for {label, mode} <- [
@@ -338,7 +338,7 @@ defmodule StreamixWeb.PlayerComponents.Controls do
                 {"Preencher tela", "cover"},
                 {"16:9", "16-9"},
                 {"4:3", "4-3"},
-                {"Nativo", "native"}
+                {"Original", "native"}
               ] do %>
             <button
               type="button"
@@ -393,6 +393,175 @@ defmodule StreamixWeb.PlayerComponents.Controls do
     </button>
     """
   end
+
+  # Same look as the existing chrome buttons, so the Netflix-style additions
+  # sit in the same row without a visual seam.
+  @chrome_button "player-control-btn flex size-12 min-h-12 min-w-12 touch-manipulation items-center justify-center rounded-full bg-black/35 text-white/90 backdrop-blur-xs transition-all hover:bg-black/50 hover:text-white active:scale-95 active:bg-black/60 sm:size-11 sm:min-h-0 sm:min-w-0 sm:bg-transparent sm:backdrop-blur-none sm:hover:bg-white/10 sm:active:scale-100 sm:active:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60"
+
+  attr :direction, :atom, values: [:backward, :forward], required: true
+  attr :placement, :string, default: "bar"
+  attr :disabled, :boolean, default: false
+  attr :class, :string, default: nil
+
+  @doc "Skips 10 seconds, Netflix style: a circular arrow with the amount inside."
+  def seek_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      id={"player-#{@placement}-seek-#{@direction}-btn"}
+      data-player-action={"seek-#{@direction}"}
+      disabled={@disabled}
+      aria-label={if @direction == :backward, do: "Voltar 10 segundos", else: "Avançar 10 segundos"}
+      title={if @direction == :backward, do: "Voltar 10 s", else: "Avançar 10 s"}
+      class={[chrome_button(), @class]}
+    >
+      <.seek_icon direction={@direction} class="size-7 sm:size-6" />
+    </button>
+    """
+  end
+
+  attr :direction, :atom, required: true
+  attr :class, :string, default: nil
+
+  defp seek_icon(assigns) do
+    ~H"""
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      class={[@class, @direction == :forward && "-scale-x-100"]}
+      aria-hidden="true"
+    >
+      <path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" />
+      <path d="M4.5 3.5v4h4" />
+      <text
+        x="12.4"
+        y="15.6"
+        text-anchor="middle"
+        font-size="7.5"
+        font-weight="700"
+        stroke="none"
+        fill="currentColor"
+        class={
+          @direction == :forward && "-scale-x-100 [transform-box:fill-box] [transform-origin:center]"
+        }
+      >
+        10
+      </text>
+    </svg>
+    """
+  end
+
+  attr :disabled, :boolean, default: false
+
+  @doc """
+  Big back / play / forward row in the middle of the screen on touch layouts,
+  where Netflix puts it on phones and tablets.
+  """
+  def center_controls(assigns) do
+    ~H"""
+    <div
+      id="player-center-controls"
+      data-player-touch-only
+      class="pointer-events-auto flex items-center justify-center gap-10 sm:gap-16"
+    >
+      <.seek_button
+        direction={:backward}
+        placement="center"
+        disabled={@disabled}
+        class="size-16 min-h-16 min-w-16"
+      />
+      <button
+        type="button"
+        id="player-center-play-btn"
+        data-player-action="toggle-play"
+        disabled={@disabled}
+        aria-label={
+          if @disabled, do: "Reprodução controlada pelo anfitrião", else: "Reproduzir ou pausar"
+        }
+        class="player-control-btn flex size-20 touch-manipulation items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-xs transition-transform active:scale-90 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <.icon name="hero-play-solid" class="play-icon size-11 translate-x-0.5" aria-hidden="true" />
+        <.icon name="hero-pause-solid" class="pause-icon hidden size-11" aria-hidden="true" />
+      </button>
+      <.seek_button
+        direction={:forward}
+        placement="center"
+        disabled={@disabled}
+        class="size-16 min-h-16 min-w-16"
+      />
+    </div>
+    """
+  end
+
+  def next_episode_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      id="player-next-episode-btn"
+      data-player-action="next-episode"
+      aria-label="Próximo episódio"
+      title="Próximo episódio"
+      class={chrome_button()}
+    >
+      <.icon name="hero-forward-solid" class="size-6 sm:size-5" aria-hidden="true" />
+    </button>
+    """
+  end
+
+  def episodes_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      id="player-episodes-btn"
+      data-player-action="episodes"
+      aria-label="Episódios"
+      aria-controls="player-episodes-panel"
+      title="Episódios"
+      class={chrome_button()}
+    >
+      <.icon name="hero-rectangle-stack-solid" class="size-6 sm:size-5" aria-hidden="true" />
+    </button>
+    """
+  end
+
+  def lock_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      id="player-lock-btn"
+      data-player-action="lock"
+      data-player-touch-only
+      aria-label="Travar a tela"
+      title="Travar a tela"
+      class={chrome_button()}
+    >
+      <.icon name="hero-lock-open" class="size-6" aria-hidden="true" />
+    </button>
+    """
+  end
+
+  def fit_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      id="player-fit-btn"
+      data-player-action="fit-toggle"
+      data-player-touch-only
+      aria-label="Ajustar ou preencher a tela"
+      title="Ajustar ou preencher a tela"
+      class={chrome_button()}
+    >
+      <.icon name="hero-arrows-pointing-out" class="size-6 player-fit-fill-icon" aria-hidden="true" />
+      <.icon name="hero-arrows-pointing-in" class="size-6 player-fit-fit-icon" aria-hidden="true" />
+    </button>
+    """
+  end
+
+  defp chrome_button, do: @chrome_button
 
   defp format_subtitle_offset(0), do: "0s"
 

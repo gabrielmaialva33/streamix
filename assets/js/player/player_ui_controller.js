@@ -57,6 +57,8 @@ export class PlayerUiController {
     isPiPSupported,
     isPlaying,
     onError = null,
+    onStartupStage = () => {},
+    onAutoplayBlocked = () => {},
     onPiPStateChange = null,
     ui,
     updateMediaSessionPosition,
@@ -78,6 +80,8 @@ export class PlayerUiController {
       assertFunction(onPiPStateChange, "onPiPStateChange");
     }
 
+    this.onStartupStage = onStartupStage;
+    this.onAutoplayBlocked = onAutoplayBlocked;
     this.onError = onError;
     this.onPiPStateChange = onPiPStateChange;
     this._destroyed = false;
@@ -158,6 +162,10 @@ export class PlayerUiController {
     return true;
   }
 
+  markStartupStage(stage) {
+    if (!this._destroyed) this.onStartupStage(stage);
+  }
+
   showLoading() {
     if (this._destroyed) return;
     this.ui.showLoading();
@@ -186,6 +194,7 @@ export class PlayerUiController {
 
   showAutoplayBlocked() {
     if (this._destroyed) return;
+    this.onAutoplayBlocked();
     this.ui.showAutoplayBlocked?.();
   }
 

@@ -13,7 +13,7 @@ test("summarizes one playback session without retaining stream URLs", () => {
   session.begin({ contentType: "vod", streamType: "mkv", displayMode: "standalone" });
   session.selectEngine("hls-js");
   now = 1_200;
-  session.markPlaying();
+  session.markFirstFrame();
   now = 2_000;
   session.setBuffering(true);
   session.setBuffering(true);
@@ -53,4 +53,29 @@ test("deduplicates fallback reports that target the selected engine", () => {
   session.recordFallback("avplayer");
 
   assert.equal(session.finish("error").fallback_count, 1);
+});
+
+test("TTFF waits for presented frame, preserves origin across startup marks and excludes startup buffer count", () => {
+  let now = 200;
+  const session = new PlaybackSession({ now: () => now, batchId: () => "timed" });
+  session.begin({ startedAt: 0 });
+  session.markStage("url");
+  session.setBuffering(true);
+  now = 500;
+  session.markPlaying();
+  assert.equal(session.active.playingAt, null);
+  now = 900;
+  session.markStage("metadata");
+  now = 1000;
+  session.markFirstFrame();
+  now = 2000;
+  session.setBuffering(true);
+  now = 2300;
+  session.markPlaying();
+  assert.deepEqual(session.active.marks, { url: 200, metadata: 900, frame: 1000 });
+  const payload = session.finish();
+  assert.equal(payload.ttff_ms, 1000);
+  assert.equal(payload.buffer_count, 1);
+  assert.equal(payload.buffer_duration_ms, 1100);
+  assert.equal("marks" in payload, false);
 });

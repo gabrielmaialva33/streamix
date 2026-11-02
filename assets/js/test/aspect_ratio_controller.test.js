@@ -215,3 +215,48 @@ test("starts every mounted player in auto and keeps manual choices session-scope
   assert.deepEqual(removedValues, ["streamix:player:aspect", "streamix:player:aspect"]);
   second.controller.destroy();
 });
+
+test("fit attribute overrides manual ratios on video and canvas, then returns to contain", () => {
+  const video = fakeElement();
+  const canvas = fakeElement();
+  const root = {
+    dataset: {},
+    querySelector: (selector) =>
+      selector === "#avplayer-mount" ? { querySelectorAll: () => [canvas] } : null,
+    querySelectorAll: () => [],
+  };
+  let onFit;
+  class Observer {
+    constructor(callback) {
+      this.callback = callback;
+    }
+    observe(target) {
+      if (target === root) onFit = this.callback;
+    }
+    disconnect() {}
+  }
+  const controller = createAspectRatioController({
+    root,
+    video,
+    storage: null,
+    MutationObserverImpl: Observer,
+  });
+  controller.apply("16-9");
+  root.dataset.playerFit = "fill";
+  assert.equal(typeof onFit, "function");
+  onFit();
+  assert.equal(video.style.objectFit, "cover");
+  assert.equal(video.style.aspectRatio, "");
+  assert.equal(canvas.properties["--streamix-player-fit"], "cover");
+  delete root.dataset.playerFit;
+  onFit();
+  assert.equal(video.style.objectFit, "");
+  assert.equal(canvas.properties["--streamix-player-fit"], "contain");
+  controller.apply("cover");
+  assert.equal(root.dataset.playerFit, "fill");
+  controller.apply("native");
+  assert.equal(root.dataset.playerFit, undefined);
+  onFit();
+  assert.equal(video.style.objectFit, "none");
+  controller.destroy();
+});

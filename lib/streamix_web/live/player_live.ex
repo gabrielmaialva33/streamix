@@ -25,6 +25,7 @@ defmodule StreamixWeb.PlayerLive do
   import StreamixWeb.PlayerHelpers
 
   alias Streamix.Torrent
+  alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.PlayerComponents.Metadata
   alias StreamixWeb.PlayerLifecycleTelemetry
   alias StreamixWeb.PlayerSourceFailover
@@ -389,6 +390,8 @@ defmodule StreamixWeb.PlayerLive do
         on_close="close_player"
         show_controls={true}
         next_episode={@next_episode}
+        season_episodes={@season_episodes}
+        synopsis={Map.get(@content, :plot)}
         expected_duration={Map.get(@content, :duration_secs, 0) || 0}
         subtitles_enabled={@current_scope.user.subtitles_enabled}
         subtitle_language={@current_scope.user.subtitle_language}
@@ -571,6 +574,7 @@ defmodule StreamixWeb.PlayerLive do
       |> assign(subtitle_tracks: [])
       |> assign(user_id: user_id)
       |> assign(next_episode: next_episode)
+      |> assign(season_episodes: load_season_episodes(socket, type, content))
       |> assign(playback_session: playback_session)
       |> assign(return_to: return_to)
       |> assign(
@@ -581,6 +585,36 @@ defmodule StreamixWeb.PlayerLive do
 
     {:ok, socket}
   end
+
+  # The current season, for the in-player episodes panel (Netflix's "Episódios"
+  # button). Each item links to its own watch page and carries the user's
+  # progress.
+  defp load_season_episodes(socket, type, %{season_id: season_id} = content)
+       when type in ["episode", "gindex_episode"] and is_integer(season_id) do
+    episodes = Streamix.Catalog.list_season_episodes(season_id)
+
+    progress =
+      Library.get_watch_progress_map(
+        socket.assigns.current_scope.user.id,
+        "episode",
+        Enum.map(episodes, & &1.id)
+      )
+
+    Enum.map(episodes, fn episode ->
+      %{
+        id: episode.id,
+        number: episode.episode_num,
+        title: DisplayTitle.episode(episode.title || "Episódio #{episode.episode_num}"),
+        plot: episode.plot,
+        image: episode.still_path || episode.cover,
+        path: ~p"/watch/#{type}/#{episode.id}",
+        progress: Map.get(progress, episode.id, 0.0),
+        current: episode.id == content.id
+      }
+    end)
+  end
+
+  defp load_season_episodes(_socket, _type, _content), do: []
 
   defp prepare_connected_player(socket, type, content, user_id) do
     if connected?(socket) do
@@ -620,6 +654,7 @@ defmodule StreamixWeb.PlayerLive do
       |> assign(subtitle_tracks: [])
       |> assign(user_id: user_id)
       |> assign(next_episode: nil)
+      |> assign(season_episodes: [])
       |> assign(playback_session: playback_session)
       |> assign(return_to: return_to)
       |> assign(torrent_info_hash: info_hash)
