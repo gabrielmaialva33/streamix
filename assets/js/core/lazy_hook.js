@@ -37,6 +37,8 @@ export function createLazyHook(name, loader, { shouldLoad = () => true } = {}) {
 
   return {
     async mounted() {
+      if (name === "VideoPlayer")
+        this._playbackMountedAt = globalThis.performance?.now?.() ?? Date.now();
       const state = {
         destroyed: false,
         implementation: null,

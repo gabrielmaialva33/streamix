@@ -409,3 +409,20 @@ test("play and pause icons stay synchronized in the bar and centre touch control
     [true, true],
   );
 });
+
+test("metadata cannot hide the first-frame loading mask, but frame or autoplay/error can", () => {
+  const loadingIndicator = elementDouble();
+  const ui = {
+    container: { dataset: { playerAwaitingFrame: "true" } },
+    elements: { loadingIndicator },
+  };
+  PlayerUI.prototype.hideLoading.call(ui);
+  assert.equal(loadingIndicator.classList.contains("hidden"), false);
+  ui.container.dataset.playerAwaitingFrame = "false";
+  PlayerUI.prototype.hideLoading.call(ui);
+  assert.equal(loadingIndicator.classList.contains("hidden"), true);
+  loadingIndicator.classList.remove("hidden");
+  ui.container.dataset.playerAwaitingFrame = "true";
+  PlayerUI.prototype.hideLoading.call(ui, { force: true });
+  assert.equal(loadingIndicator.classList.contains("hidden"), true);
+});

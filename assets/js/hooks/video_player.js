@@ -74,7 +74,10 @@ import {
   isStandalonePwa,
   scheduleLowPriority,
 } from "../player/playback_environment";
+import { consumePlaybackIntent } from "../player/playback_intent.js";
 import { createPlaybackOrchestrator } from "../player/playback_orchestrator.js";
+import { PlaybackRecoveryGuard } from "../player/playback_recovery_guard.js";
+import { PlaybackStartupController } from "../player/playback_startup_controller.js";
 import { createPlayerDiagnosticsController } from "../player/player_diagnostics_controller.js";
 import { createPlayerInteractions } from "../player/player_interactions.js";
 import {
@@ -118,8 +121,10 @@ import { createWatchPartyPlayerPolicy } from "../watch_party/player_policy.js";
 const VideoPlayer = {
   mounted() {
     this.initializeState();
+    this.initRecoveryGuard();
     this.loadPreferences();
     this.initUI();
+    this.initStartupPresentation();
     this.initPlaybackCommandController();
     this.initPlaybackBrowserIntegration();
     this.updateVolumeUI();
@@ -160,6 +165,44 @@ const VideoPlayer = {
     this._startupDiagnosticsCancel = scheduleLowPriority(() => {
       if (!this._destroyed) this.runStartupDiagnostics();
     });
+  },
+
+  initStartupPresentation() {
+    const intent = consumePlaybackIntent({ contentId: this.contentId });
+    this._playbackMountedAt = intent?.startedAt ?? this._playbackMountedAt ?? performance.now();
+    this.startupPresentation = new PlaybackStartupController({
+      root: this.el,
+      video: this.video,
+      cover: intent?.cover,
+      onMark: (mark) => {
+        this.playbackMetrics?.markStage(mark);
+        if (mark === "play") this.recoveryGuard?.resume();
+      },
+      onFrame: () => {
+        this.playbackMetrics?.markFirstFrame();
+        this.recoveryGuard?.playing();
+        if (this.isPaused()) this.recoveryGuard?.pause();
+        this.playerUIController?.hideLoading();
+      },
+    });
+    this.startupPresentation.begin();
+  },
+
+  initRecoveryGuard() {
+    this.recoveryGuard = new PlaybackRecoveryGuard({
+      onStable: () => {
+        this.hlsRecoveryCoordinator?.reset();
+        this.mpegtsRecoveryCoordinator?.reset();
+        this.retryCount = 0;
+        this.fallbackAttempts = 0;
+      },
+      onExhausted: () => {
+        this.cleanup();
+        this.presentTerminalPlaybackError("Não foi possível iniciar o vídeo. Tente novamente.");
+        this.flushPlaybackMetrics("error");
+      },
+    });
+    this.recoveryGuard.begin();
   },
 
   updated() {
@@ -367,6 +410,8 @@ const VideoPlayer = {
   initUI() {
     this.playerUI = new PlayerUI(this.el);
     this.playerUIController = createPlayerUiController({
+      onStartupStage: (stage) => this.startupPresentation?.preparing(stage),
+      onAutoplayBlocked: () => this.recoveryGuard?.suspend(),
       emit: (event, payload) => this.pushEventSafe(event, payload),
       getBufferState: () => ({
         buffered: this.video?.buffered ?? null,
@@ -606,15 +651,22 @@ const VideoPlayer = {
       markH265webAttempted: () => {
         this.h265webAttempted = true;
       },
-      markMpegtsRecovered: () => this.mpegtsRecoveryCoordinator?.markRecovered(),
-      markPlaying: () => this.playbackMetrics?.markPlaying(),
+      markMpegtsRecovered: () => {},
+      markPlaying: () => {
+        this.recoveryGuard?.resume();
+        this.playbackMetrics?.markStage("play");
+        this.playbackMetrics?.markPlaying();
+      },
       playNativeAfterResume: (sessionId) => this.playNativeAfterResume(sessionId),
       probeMetadataInBackground: () => this.probeMetadataInBackground(),
       recordFallbackAttempt: () => {
         this.fallbackAttempts++;
         this.lastFallbackTime = Date.now();
       },
-      recordPlaybackError: () => this.playbackMetrics?.recordError(),
+      recordPlaybackError: () => {
+        this.playbackMetrics?.recordError();
+        this.recoveryGuard?.attempt();
+      },
       recoverFromMpegtsError: (data) => this.recoverFromMpegtsError(data),
       registerMediaElementEngine: (engineId, engine, options) =>
         this.setMediaElementEngine(engineId, engine, options),
@@ -1033,12 +1085,8 @@ const VideoPlayer = {
       return;
     }
 
-    if (this.mediaElementEngine?.id === ENGINE_ID.HLS) {
-      this.hlsRecoveryCoordinator?.markRecovered();
-    }
-    if (this.mediaElementEngine?.id === ENGINE_ID.MPEGTS) {
-      this.mpegtsRecoveryCoordinator?.markRecovered();
-    }
+    if (this.startupPresentation?.hasFrame && !this.startupPresentation.awaitingFrame)
+      this.recoveryGuard?.playing();
 
     this.observePlaybackState(PLAYBACK_STATE.PLAYING, "playback_started");
     this.setPlaybackSystemState("playing");
@@ -1047,6 +1095,7 @@ const VideoPlayer = {
   },
 
   handlePlaybackPaused() {
+    this.recoveryGuard?.suspend();
     this.setPlaybackSystemState(this._terminalPlaybackError ? "none" : "paused");
   },
 
@@ -1117,6 +1166,7 @@ const VideoPlayer = {
   },
 
   applySourceFailover(payload) {
+    if (this.recoveryGuard?.terminal) return;
     const streamUrl = payload?.stream_url;
     if (typeof streamUrl !== "string" || streamUrl.length === 0) return;
 
@@ -1275,6 +1325,7 @@ const VideoPlayer = {
   // ============================================
 
   showPlaybackError(message, hint = null) {
+    if (this.recoveryGuard?.terminal) return;
     const failoverRequested = this.sourceFailoverController?.request({
       contentId: this.contentId,
       position: this.getCurrentTime(),
@@ -1282,6 +1333,7 @@ const VideoPlayer = {
     });
 
     if (failoverRequested) {
+      this.observePlaybackState(PLAYBACK_STATE.RECOVERING, "source_failover");
       this._terminalPlaybackError = false;
       this.setPlaybackSystemState("none");
       this.playerUIController?.showRecovery();
@@ -1293,6 +1345,8 @@ const VideoPlayer = {
   },
 
   presentTerminalPlaybackError(message, hint = null) {
+    this.recoveryGuard?.finish();
+    this.startupPresentation?.stop();
     this._terminalPlaybackError = true;
     this.observePlaybackState(PLAYBACK_STATE.TERMINAL, "terminal_error");
     this.setPlaybackSystemState("none");
@@ -1357,6 +1411,7 @@ const VideoPlayer = {
   },
 
   updateTimeUI() {
+    this.startupPresentation?.canvasProgress(this.getCurrentTime(), !this.isPaused());
     return this.playerUIController?.updateTime() ?? null;
   },
 
@@ -1408,6 +1463,10 @@ const VideoPlayer = {
   },
 
   setWatchPartySyncHold(held) {
+    if (this.watchPartyPolicy?.isViewer) {
+      if (held) this.recoveryGuard?.suspend();
+      else this.recoveryGuard?.resume();
+    }
     return this.watchPartyPolicy?.setSyncHold(held) ?? true;
   },
 
@@ -1560,6 +1619,9 @@ const VideoPlayer = {
 
   reportPlayerLifecycle(stage, extra = {}) {
     if (stage === "player_engine_selected") {
+      this.startupPresentation?.attach({
+        native: !["avplayer", "h265web"].includes(extra.engine),
+      });
       if (extra.fallback) {
         this.playbackMetrics?.recordFallback(extra.engine);
         this.playbackOrchestrator?.recordFallback(extra.engine);
@@ -1610,6 +1672,7 @@ const VideoPlayer = {
 
   retryPlaybackFromError() {
     log.info("[VideoPlayer] Retrying playback from error screen");
+    this.recoveryGuard?.begin();
     this.sourceFailoverController?.reset();
     this.pushEventSafe("reset_source_failover", {});
     this.reportPlayerLifecycle("player_retry_from_error", {
@@ -1617,6 +1680,9 @@ const VideoPlayer = {
       fallback_attempts: this.fallbackAttempts,
     });
 
+    this.flushPlaybackMetrics("restarted");
+    this._playbackMountedAt = performance.now();
+    this.startupPresentation?.begin();
     this.playerUIController.showRecovery();
     this.retryCount = 0;
     this.hlsRecoveryCoordinator?.reset();
@@ -1645,6 +1711,7 @@ const VideoPlayer = {
   },
 
   cleanup({ preservePlaybackState = false } = {}) {
+    this.startupPresentation?.cancelFrame();
     this.reportPlayerLifecycle("player_cleanup", {
       preserve_playback_state: preservePlaybackState,
     });
@@ -1785,6 +1852,11 @@ const VideoPlayer = {
   },
 
   observePlaybackState(nextState, reason, metadata = {}) {
+    if (nextState === PLAYBACK_STATE.STALLED || nextState === PLAYBACK_STATE.RECOVERING) {
+      this.recoveryGuard?.recover();
+      if (nextState === PLAYBACK_STATE.RECOVERING || this.startupPresentation?.hasFrame)
+        this.startupPresentation?.recover();
+    }
     return this.playbackOrchestrator?.observe(nextState, reason, metadata) ?? null;
   },
 
@@ -1886,6 +1958,8 @@ const VideoPlayer = {
   },
 
   initPlayer({ sessionId: providedSessionId = null } = {}) {
+    if (this.recoveryGuard?.terminal) return;
+    if (this.playbackMetrics?.active && this.recoveryGuard && !this.recoveryGuard.attempt()) return;
     this._terminalPlaybackError = false;
 
     if (!this.streamUrl) {
@@ -1915,7 +1989,6 @@ const VideoPlayer = {
     this.currentStreamType = resolveStreamType(this.el.dataset.streamType, this.streamUrl);
     log.debug("Detected stream type:", this.currentStreamType);
 
-    this.flushPlaybackMetrics("restarted");
     this.cleanup();
 
     // cleanup() advances playbackSessionId to invalidate work still in flight
@@ -1937,11 +2010,14 @@ const VideoPlayer = {
       session_id: sessionId,
       stream_type: this.currentStreamType,
     });
-    this.playbackMetrics.begin({
-      contentType: this.contentType,
-      streamType: this.currentStreamType,
-      displayMode: isStandalonePwa() ? "standalone" : "browser",
-    });
+    if (!this.playbackMetrics.active)
+      this.playbackMetrics.begin({
+        startedAt: this._playbackMountedAt ?? performance.now(),
+        contentType: this.contentType,
+        streamType: this.currentStreamType,
+        displayMode: isStandalonePwa() ? "standalone" : "browser",
+      });
+    this.playbackMetrics.markStage("url");
     this.reportPlayerLifecycle("player_session_started", {
       session_id: sessionId,
       engine: this.currentStreamType,
@@ -2011,6 +2087,7 @@ const VideoPlayer = {
         video: this.video,
       }),
       getHlsRecoveryContext: () => this.hlsRecoveryContext(),
+      getNativeHlsSupport: () => this.getNativeHlsSupport(),
       getHlsRecoveryCoordinator: () => this.hlsRecoveryCoordinator,
       getMpegtsRecoveryCoordinator: () => this.mpegtsRecoveryCoordinator,
       getPageProtocol: () => window.location.protocol,
@@ -2040,6 +2117,9 @@ const VideoPlayer = {
   },
 
   handleStreamError(type, data) {
+    if (this.recoveryGuard?.terminal) return;
+    if ((type !== "hls" || data.fatal) && this.recoveryGuard && !this.recoveryGuard.attempt())
+      return;
     return this.engineRecoveryPolicy?.handleStreamError(type, data);
   },
 
@@ -2080,6 +2160,7 @@ const VideoPlayer = {
    * Check circuit breaker before attempting fallback (exponential backoff)
    */
   canAttemptFallback() {
+    if (this.recoveryGuard?.terminal) return false;
     const decision = evaluateFallbackAttempt(
       {
         attempts: this.fallbackAttempts,
@@ -2275,6 +2356,8 @@ const VideoPlayer = {
   // ============================================
 
   destroyed() {
+    this.recoveryGuard?.destroy();
+    this.startupPresentation?.destroy();
     this.flushPlaybackMetrics("cancelled");
     this._destroyed = true;
     this.playbackCommandController?.destroy();
