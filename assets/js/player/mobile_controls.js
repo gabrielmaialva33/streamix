@@ -74,6 +74,11 @@ export function createMobileControls({
       } else if (!viewer() && getContentType() !== "live") {
         seek(tap.action === "seek-backward" ? -10 : 10);
       }
+    } else if (!presentation.controlsVisible) {
+      // Like Netflix and YouTube, the first tap shows the controls at once; a
+      // second tap inside the window still seeks. Only hiding waits, so a
+      // double tap never flickers the controls away.
+      presentation.revealControls();
     } else {
       singleTapTimer = scheduler.setTimeout(() => {
         singleTapTimer = null;

@@ -9,12 +9,15 @@ function harness({ touch = true } = {}) {
   const video = root.appendChild(new PlayerElement("VIDEO"));
   const calls = [];
   const timer = clock();
-  const state = { native: false, live: false };
+  const state = { native: false, live: false, visible: true };
   const controller = createMobileControls({
     root,
     controls,
     video,
     presentation: {
+      get controlsVisible() {
+        return state.visible;
+      },
       cancelControlsAutoHide: () => calls.push("cancel"),
       keepControlsVisible: () => calls.push("keep"),
       revealControls: () => calls.push("reveal"),
@@ -60,6 +63,19 @@ test("single tap toggles controls, side double taps seek and chain for 700ms wit
   controller.destroy();
   timer.tick(1000);
   assert.equal(timer.pending, 0);
+});
+
+test("a tap on hidden controls shows them at once and a second tap still seeks", () => {
+  const { tap, timer, calls, state, controller } = harness();
+  state.visible = false;
+  tap(200);
+  assert.deepEqual(calls, ["reveal"]);
+  state.visible = true;
+  timer.tick(150);
+  tap(200);
+  timer.tick(1000);
+  assert.deepEqual(calls, ["reveal", -10]);
+  controller.destroy();
 });
 
 test("centre double tap toggles play once, no single-tap control flicker", () => {
