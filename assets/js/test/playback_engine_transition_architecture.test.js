@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readSource as readFile } from "./support/player_hook_source.js";
 
 const controllerUrl = new URL(
   "../player/playback_engine_transition_controller.js",
@@ -22,11 +22,12 @@ function methodIndex(hook, methodName, fromIndex = 0) {
   return indexes.length > 0 ? Math.min(...indexes) : -1;
 }
 
-function methodSlice(hook, methodName, nextMethodName) {
+function methodSlice(hook, methodName) {
   const start = methodIndex(hook, methodName);
-  const end = methodIndex(hook, nextMethodName, start + 1);
+  const closing = /^ {2}},?$/m.exec(hook.slice(start));
+  const end = closing ? start + closing.index + closing[0].length : -1;
   assert.notEqual(start, -1, `missing ${methodName}()`);
-  assert.notEqual(end, -1, `missing boundary after ${methodName}()`);
+  assert.ok(end > start, `missing closing brace for ${methodName}()`);
   return hook.slice(start, end);
 }
 
@@ -49,7 +50,7 @@ test("VideoPlayer composes one transition controller with narrow lifecycle bound
 
   assert.match(
     hook,
-    /import \{ createPlaybackEngineTransitionController \} from "\.\.\/player\/playback_engine_transition_controller\.js";/,
+    /import \{ createPlaybackEngineTransitionController \} from "(?:\.\.\/player|\.)\/playback_engine_transition_controller\.js";/,
   );
   assert.match(
     hook,

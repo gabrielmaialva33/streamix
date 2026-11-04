@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readSource as readFile } from "./support/player_hook_source.js";
 
 const coordinatorUrl = new URL("../player/mpegts_recovery_coordinator.js", import.meta.url);
 const hookUrl = new URL("../hooks/video_player.js", import.meta.url);

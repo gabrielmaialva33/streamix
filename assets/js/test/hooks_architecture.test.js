@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import test from "node:test";
+import { readSource as readFile } from "./support/player_hook_source.js";
 
 const hooksDirUrl = new URL("../hooks/", import.meta.url);
 
