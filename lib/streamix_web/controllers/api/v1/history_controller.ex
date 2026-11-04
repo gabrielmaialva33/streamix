@@ -6,7 +6,36 @@ defmodule StreamixWeb.Api.V1.HistoryController do
   """
   use StreamixWeb, :controller
 
+  use OpenApiSpex.ControllerSpecs
+
   action_fallback StreamixWeb.Api.V1.FallbackController
+
+  alias StreamixWeb.Api.V1.Operations
+
+  operation :index,
+            Operations.build("history.index", "List watch history", "HistoryResponse",
+              security: Operations.authenticated(),
+              parameters: [
+                Operations.query(:type),
+                Operations.query(:limit, :integer),
+                Operations.query(:offset, :integer)
+              ]
+            )
+
+  operation :upsert,
+            Operations.build("history.upsert", "Save watch progress", "HistoryEntry",
+              status: :created,
+              body: "HistoryRequest",
+              security: Operations.authenticated(),
+              errors: [:not_found, :unprocessable_entity]
+            )
+
+  operation :delete,
+            Operations.build("history.delete", "Remove watch history", nil,
+              status: :no_content,
+              parameters: [Operations.path(:id, :integer)],
+              security: Operations.authenticated()
+            )
 
   import StreamixWeb.Helpers.Params,
     only: [

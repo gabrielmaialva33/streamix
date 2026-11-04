@@ -14,7 +14,36 @@ defmodule StreamixWeb.Api.V1.EpgController do
   """
   use StreamixWeb, :controller
 
+  use OpenApiSpex.ControllerSpecs
+
   action_fallback StreamixWeb.Api.V1.FallbackController
+
+  alias StreamixWeb.Api.V1.Operations
+
+  operation :programs,
+            Operations.build("epg.programs", "Get channel program windows", "EpgProgramsResponse",
+              parameters: [
+                channel_ids: [
+                  in: :query,
+                  type: :string,
+                  required: true,
+                  description: "Comma-separated channel IDs"
+                ],
+                hours: [in: :query, type: :integer]
+              ]
+            )
+
+  operation :now,
+            Operations.build("epg.now", "Get currently playing programs", "EpgNowResponse",
+              parameters: [
+                channel_ids: [
+                  in: :query,
+                  type: :string,
+                  required: true,
+                  description: "Comma-separated channel IDs"
+                ]
+              ]
+            )
 
   import StreamixWeb.Helpers.Params,
     only: [bounded_integer: 4, parse_positive_integer: 1]

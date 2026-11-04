@@ -8,7 +8,18 @@ defmodule StreamixWeb.Api.V1.TelemetryController do
   """
   use StreamixWeb, :controller
 
+  use OpenApiSpex.ControllerSpecs
+
   action_fallback StreamixWeb.Api.V1.FallbackController
+
+  alias StreamixWeb.Api.V1.Operations
+
+  operation :ingest,
+            Operations.build("telemetry.ingest", "Ingest playback metrics", "TelemetryResponse",
+              status: :accepted,
+              body: "TelemetryRequest",
+              security: Operations.authenticated()
+            )
 
   alias Streamix.Qoe
   alias StreamixWeb.Api.V1.Response

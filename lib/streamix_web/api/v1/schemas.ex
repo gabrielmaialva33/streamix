@@ -7,10 +7,10 @@ defmodule StreamixWeb.Api.V1.Schemas do
   undocumented transport maps visible during review.
   """
 
-  alias StreamixWeb.Api.V1.Schemas.{Catalog, Common, Reels}
+  alias StreamixWeb.Api.V1.Schemas.{Catalog, Common, Reels, Resources}
 
   def schemas do
-    [Common.schemas(), Catalog.schemas(), Reels.schemas()]
+    [Common.schemas(), Catalog.schemas(), Reels.schemas(), Resources.schemas()]
     |> Enum.reduce(fn schemas, registry ->
       Map.merge(registry, schemas, fn title, _registered, _duplicate ->
         raise ArgumentError, "duplicate OpenAPI schema title: #{title}"

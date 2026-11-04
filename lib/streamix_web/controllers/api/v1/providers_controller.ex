@@ -7,7 +7,46 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
   """
   use StreamixWeb, :controller
 
+  use OpenApiSpex.ControllerSpecs
+
   action_fallback StreamixWeb.Api.V1.FallbackController
+
+  alias StreamixWeb.Api.V1.Operations
+
+  operation :index,
+            Operations.build(
+              "providers.index",
+              "List personal providers",
+              "PersonalProvidersResponse",
+              security: Operations.authenticated()
+            )
+
+  operation :create,
+            Operations.build("providers.create", "Create a personal provider", "PersonalProvider",
+              status: :created,
+              body: "ProviderRequest",
+              security: Operations.authenticated(),
+              errors: [:unprocessable_entity]
+            )
+
+  operation :delete,
+            Operations.build("providers.delete", "Delete a personal provider", nil,
+              status: :no_content,
+              parameters: [Operations.path(:id, :integer)],
+              security: Operations.authenticated(),
+              errors: [:not_found, :unprocessable_entity]
+            )
+
+  operation :sync,
+            Operations.build(
+              "providers.sync",
+              "Schedule provider synchronization",
+              "ProviderSyncResponse",
+              status: :accepted,
+              parameters: [Operations.path(:id, :integer)],
+              security: Operations.authenticated(),
+              errors: [:not_found, :internal_server_error]
+            )
 
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
   alias StreamixWeb.Api.V1.Response

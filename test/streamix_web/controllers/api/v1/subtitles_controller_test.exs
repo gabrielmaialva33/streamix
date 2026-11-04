@@ -45,6 +45,10 @@ defmodule StreamixWeb.Api.V1.SubtitlesControllerTest do
       |> put_req_header("accept", "text/vtt")
       |> get("/api/subtitles/tt0111161?lang=pt-BR")
 
+    conn
+    |> OpenApiSpex.Plug.PutApiSpec.call(StreamixWeb.Api.V1.OpenApi)
+    |> OpenApiSpex.TestAssertions.assert_operation_response("subtitles.show")
+
     assert response(conn, 200) =~ "WEBVTT"
     assert response(conn, 200) =~ "00:00:01.000 --> 00:00:02.000"
     assert get_resp_header(conn, "content-type") == ["text/vtt; charset=utf-8"]

@@ -12,7 +12,23 @@ defmodule StreamixWeb.Api.V1.SubtitlesController do
 
   use StreamixWeb, :controller
 
+  use OpenApiSpex.ControllerSpecs
+
   action_fallback StreamixWeb.Api.V1.FallbackController
+
+  alias StreamixWeb.Api.V1.Operations
+
+  operation :show,
+            Operations.build("subtitles.show", "Get external WebVTT subtitles", "WebVtt",
+              content_type: "text/vtt",
+              parameters: [
+                Operations.path(:imdb_id),
+                Operations.query(:lang),
+                Operations.query(:offset_ms, :integer)
+              ],
+              security: [],
+              responses: [no_content: %OpenApiSpex.Response{description: "No subtitle available"}]
+            )
 
   alias Streamix.Subtitles
   alias StreamixWeb.Api.V1.Response

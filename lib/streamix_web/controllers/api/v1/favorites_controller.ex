@@ -5,7 +5,50 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   """
   use StreamixWeb, :controller
 
+  use OpenApiSpex.ControllerSpecs
+
   action_fallback StreamixWeb.Api.V1.FallbackController
+
+  alias StreamixWeb.Api.V1.Operations
+
+  operation :index,
+            Operations.build("favorites.index", "List favorites", "FavoritesResponse",
+              security: Operations.authenticated(),
+              parameters: [Operations.query(:type), Operations.query(:limit, :integer)]
+            )
+
+  operation :create,
+            Operations.build("favorites.create", "Add a favorite", "FavoriteCreatedResponse",
+              status: :created,
+              body: "FavoriteTarget",
+              security: Operations.authenticated(),
+              errors: [:not_found, :unprocessable_entity]
+            )
+
+  operation :delete,
+            Operations.build("favorites.delete", "Remove a favorite", nil,
+              status: :no_content,
+              parameters: [Operations.path(:type), Operations.path(:content_id, :integer)],
+              security: Operations.authenticated(),
+              errors: [:unprocessable_entity]
+            )
+
+  operation :toggle,
+            Operations.build("favorites.toggle", "Toggle a favorite", "FavoriteToggleResponse",
+              body: "FavoriteTarget",
+              security: Operations.authenticated(),
+              errors: [:not_found, :unprocessable_entity]
+            )
+
+  operation :sync,
+            Operations.build(
+              "favorites.sync",
+              "Synchronize offline favorites",
+              "FavoriteSyncResponse",
+              body: "FavoriteSyncRequest",
+              security: Operations.authenticated(),
+              errors: [:request_entity_too_large]
+            )
 
   import StreamixWeb.Helpers.Params,
     only: [bounded_integer: 4, parse_positive_integer: 1]

@@ -24,7 +24,23 @@ defmodule StreamixWeb.Api.V1.ImageResizeController do
 
   use StreamixWeb, :controller
 
+  use OpenApiSpex.ControllerSpecs
+
   action_fallback StreamixWeb.Api.V1.FallbackController
+
+  alias StreamixWeb.Api.V1.Operations
+
+  operation :resize,
+            Operations.build("images.resize", "Resize a public poster", "ResizedImage",
+              content_type: "image/jpeg",
+              parameters: [
+                url: [in: :query, type: :string, required: true],
+                w: [in: :query, type: :integer],
+                h: [in: :query, type: :integer],
+                q: [in: :query, type: :integer]
+              ],
+              errors: [:bad_gateway, :internal_server_error]
+            )
 
   alias StreamixWeb.Api.V1.Response
   alias StreamixWeb.UrlValidator

@@ -14,6 +14,7 @@ defmodule StreamixWeb.Api.V1.Schemas.Common do
           %{
             code: string(description: "Stable machine-readable error code"),
             message: string(description: "Human-readable error message"),
+            upgrade_url: string(description: "Subscription upgrade path"),
             retry_after:
               integer(
                 minimum: 0,

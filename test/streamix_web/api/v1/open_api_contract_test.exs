@@ -2,6 +2,7 @@ defmodule StreamixWeb.Api.V1.OpenApiContractTest do
   use StreamixWeb.ConnCase, async: false
 
   import OpenApiSpex.TestAssertions, only: [assert_operation_response: 2]
+  import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
   alias Streamix.Iptv.{Category, Episode, MovieCredit, Person, Season}
@@ -20,13 +21,19 @@ defmodule StreamixWeb.Api.V1.OpenApiContractTest do
 
     assert spec["openapi"] =~ ~r/^3\.0\./
     assert spec["info"]["title"] == "Streamix Catalog API"
-    assert map_size(spec["paths"]) == 25
+    assert map_size(spec["paths"]) >= 25
     assert spec["components"]["securitySchemes"]["ApiKeyAuth"]["name"] == "X-API-Key"
 
-    operations = Enum.map(spec["paths"], fn {_path, path_item} -> path_item["get"] end)
+    operations =
+      for {path, path_item} <- spec["paths"],
+          String.starts_with?(path, "/api/v1/catalog/"),
+          {method, operation} <- path_item,
+          method in ["get", "post", "delete"],
+          do: operation
+
     operation_ids = Enum.map(operations, & &1["operationId"])
 
-    assert length(Enum.uniq(operation_ids)) == 25
+    assert length(Enum.uniq(operation_ids)) == length(operation_ids)
     assert Enum.all?(operations, &Map.has_key?(&1["responses"], "429"))
 
     assert Enum.all?(operations, fn operation ->
@@ -49,6 +56,28 @@ defmodule StreamixWeb.Api.V1.OpenApiContractTest do
     assert csp =~ "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com"
     assert [_, nonce] = Regex.run(~r/<script nonce="([^"]+)">/, docs_html)
     assert csp =~ "'nonce-#{nonce}'"
+  end
+
+  test "every API v1 router route has a published operation", %{conn: conn} do
+    spec = conn |> get(~p"/api/v1/openapi.json") |> json_response(200)
+
+    operations =
+      for {_path, item} <- spec["paths"],
+          {verb, operation} <- item,
+          verb in ~w(get post delete options head put patch),
+          do: operation
+
+    ids = Enum.map(operations, & &1["operationId"])
+    assert length(Enum.uniq(ids)) == length(ids)
+
+    for route <- Phoenix.Router.routes(StreamixWeb.Router),
+        String.starts_with?(route.path, "/api/v1/") do
+      path = Regex.replace(~r/[:*]([a-z_]+)/, route.path, "{\\1}")
+      operation = get_in(spec, ["paths", path, to_string(route.verb)])
+      assert is_map(operation), "Missing operation: #{route.verb} #{route.path}"
+      assert is_binary(operation["operationId"])
+      assert map_size(operation["responses"]) > 0
+    end
   end
 
   test "successful catalog responses conform to their declared schemas" do
@@ -157,6 +186,60 @@ defmodule StreamixWeb.Api.V1.OpenApiContractTest do
     |> get(~p"/api/v1/catalog/providers")
     |> assert_status(401)
     |> assert_operation_response("catalog.providers.list")
+  end
+
+  test "non-catalog response schemas match populated resources and public discovery" do
+    user = user_fixture()
+    provider = provider_fixture(user)
+    movie = movie_fixture(provider)
+    token = Streamix.Accounts.generate_user_session_token(user) |> Base.url_encode64()
+
+    authenticated = fn -> put_req_header(build_conn(), "authorization", "Bearer #{token}") end
+
+    authenticated.()
+    |> post("/api/v1/favorites", %{type: "movie", content_id: movie.id})
+    |> assert_status(201)
+    |> assert_operation_response("favorites.create")
+
+    authenticated.()
+    |> post("/api/v1/history", %{type: "movie", content_id: movie.id, progress_seconds: 10})
+    |> assert_status(201)
+    |> assert_operation_response("history.upsert")
+
+    for {path, operation} <- [
+          {"/api/v1/favorites", "favorites.index"},
+          {"/api/v1/history", "history.index"},
+          {"/api/v1/providers", "providers.index"},
+          {"/api/v1/auth/me", "auth.me"}
+        ] do
+      authenticated.()
+      |> get(path)
+      |> assert_status(200)
+      |> OpenApiSpex.Plug.PutApiSpec.call(StreamixWeb.Api.V1.OpenApi)
+      |> assert_operation_response(operation)
+    end
+
+    authenticated.()
+    |> post("/api/v1/telemetry/playback", %{
+      metrics: [%{event: "playback_started", engine: "native"}]
+    })
+    |> assert_status(202)
+    |> assert_operation_response("telemetry.ingest")
+
+    for {path, operation} <- [
+          {"/api/v1/search/movies", "search.movies"},
+          {"/api/v1/search/series", "search.series"},
+          {"/api/v1/search/status", "search.status"},
+          {"/api/v1/search/info", "search.info"},
+          {"/api/v1/providers/status", "providers.status"},
+          {"/api/v1/epg/programs?channel_ids=1", "epg.programs"},
+          {"/api/v1/epg/now?channel_ids=1", "epg.now"}
+        ] do
+      build_conn()
+      |> get(path)
+      |> assert_status(200)
+      |> assert_operation_response(operation)
+    end
   end
 
   defp assert_status(conn, expected) do

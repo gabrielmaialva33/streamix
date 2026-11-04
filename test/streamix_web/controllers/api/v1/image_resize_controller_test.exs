@@ -104,6 +104,7 @@ defmodule StreamixWeb.Api.V1.ImageResizeControllerTest do
           url: "https://example.com/redirect.jpg"
         )
 
+      OpenApiSpex.TestAssertions.assert_operation_response(conn, "images.resize")
       assert conn.status == 200
       assert get_resp_header(conn, "content-type") |> List.first() =~ "image/jpeg"
       assert get_resp_header(conn, "x-image-source") == ["origin"]
@@ -146,6 +147,7 @@ defmodule StreamixWeb.Api.V1.ImageResizeControllerTest do
       conn =
         get(authed_conn(), "/api/v1/catalog/images/resize", url: url, w: Integer.to_string(width))
 
+      OpenApiSpex.TestAssertions.assert_operation_response(conn, "images.resize")
       assert conn.status == 200
       assert get_resp_header(conn, "content-type") |> List.first() =~ "image/jpeg"
       assert get_resp_header(conn, "x-image-source") == ["cache"]
@@ -165,6 +167,7 @@ defmodule StreamixWeb.Api.V1.ImageResizeControllerTest do
       conn =
         get(authed_conn(), "/api/v1/catalog/images/resize", url: url, w: "9999")
 
+      OpenApiSpex.TestAssertions.assert_operation_response(conn, "images.resize")
       assert conn.status == 200
       assert get_resp_header(conn, "x-image-source") == ["cache"]
     end
@@ -184,6 +187,7 @@ defmodule StreamixWeb.Api.V1.ImageResizeControllerTest do
           q: "50percent"
         )
 
+      OpenApiSpex.TestAssertions.assert_operation_response(conn, "images.resize")
       assert conn.status == 200
       assert get_resp_header(conn, "x-image-source") == ["cache"]
     end

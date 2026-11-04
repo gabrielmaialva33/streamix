@@ -18,7 +18,63 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   """
   use StreamixWeb, :controller
 
+  use OpenApiSpex.ControllerSpecs
+
   action_fallback StreamixWeb.Api.V1.FallbackController
+
+  alias StreamixWeb.Api.V1.Operations
+
+  operation :index,
+            Operations.build(
+              "recommendations.index",
+              "Get personalized recommendations",
+              "RecommendationsResponse",
+              parameters: [Operations.query(:type), Operations.query(:limit, :integer)],
+              security: Operations.authenticated(),
+              errors: [:payment_required, :service_unavailable]
+            )
+
+  operation :similar,
+            Operations.build(
+              "recommendations.similar",
+              "Find similar visible titles",
+              "SimilarRecommendationsResponse",
+              parameters: [
+                Operations.path(:id, :integer),
+                Operations.query(:type),
+                Operations.query(:limit, :integer)
+              ],
+              security: Operations.authenticated(),
+              errors: [:payment_required, :not_found, :service_unavailable]
+            )
+
+  operation :channels,
+            Operations.build(
+              "recommendations.channels",
+              "Recommend live channels",
+              "RecommendedChannelsResponse",
+              parameters: [Operations.query(:limit, :integer)],
+              security: Operations.authenticated(),
+              errors: [:payment_required]
+            )
+
+  operation :insights,
+            Operations.build(
+              "recommendations.insights",
+              "Get viewing insights",
+              "InsightsResponse",
+              security: Operations.authenticated(),
+              errors: [:payment_required]
+            )
+
+  operation :refresh,
+            Operations.build(
+              "recommendations.refresh",
+              "Recompute the viewing profile",
+              "ProfileRefreshResponse",
+              security: Operations.authenticated(),
+              errors: [:payment_required, :service_unavailable]
+            )
 
   import StreamixWeb.Helpers.Params,
     only: [bounded_integer: 4, parse_positive_integer: 1]

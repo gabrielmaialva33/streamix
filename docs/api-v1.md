@@ -6,8 +6,13 @@ and signed playback URLs. Its executable OpenAPI 3 contract is served by the app
 - `GET /api/v1/openapi.json` — machine-readable contract
 - `GET /api/v1/docs` — interactive Swagger UI
 
-The OpenAPI document currently covers all 19 routes owned by `CatalogController`. Other `/api/v1` resource families
-keep their existing controller contracts until they are added to the executable specification.
+The OpenAPI document covers all `/api/v1` router operations: catalog, reels, authentication,
+favorites, history, providers, health, search, recommendations, EPG, telemetry, image resizing,
+CORS preflight and documentation. It also describes the v1 controllers served at
+`/api/subtitles/:imdb_id` and `/api/gindex-tracks/:type/:id`.
+
+Only catalog and reels currently cast and validate input through OpenAPI; other operations
+are descriptive contracts and retain their existing controller parameter handling.
 
 ## Error compatibility
 
@@ -30,6 +35,11 @@ X-API-Key: your-integration-key
 
 Query-string API keys are not accepted. Provider credentials, upstream URLs, and final upstream playback URLs are never
 part of catalog responses.
+
+Authentication routes do not require an integration key. `auth/me` requires a Bearer session token;
+logout also accepts anonymous requests. Favorites, history, personal providers, recommendations and
+telemetry require both the configured integration key and `Authorization: Bearer <token>`.
+Subtitles, GIndex tracks, documentation and CORS preflight are anonymous.
 
 ## Response envelopes
 
