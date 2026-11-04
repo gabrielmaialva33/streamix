@@ -11,6 +11,7 @@ defmodule StreamixWeb.HomeLive do
   import StreamixWeb.Home.Authenticated
   import StreamixWeb.Home.Landing
 
+  @impl true
   def mount(_params, _session, socket) do
     Logger.info(
       "[HomeLive] mount connected=#{connected?(socket)} user_id=#{user_id_from_socket(socket)}"
@@ -27,6 +28,7 @@ defmodule StreamixWeb.HomeLive do
     {:ok, socket}
   end
 
+  @impl true
   def handle_async(task, {:ok, sections}, socket)
       when task in [:home_catalog, :home_personalization, :home_library, :home_annotations] do
     group = task_group(task)
@@ -122,6 +124,7 @@ defmodule StreamixWeb.HomeLive do
   # `/` is the public session while `/home` is authenticated. The classifier
   # keeps signed-in card navigation on the current LiveView socket and falls
   # back to a normal redirect for the public landing.
+  @impl true
   def handle_event("play_movie", %{"id" => id}, socket) do
     {:noreply, navigate_from_home(socket, ~p"/browse/movies/#{id}")}
   end
@@ -176,6 +179,7 @@ defmodule StreamixWeb.HomeLive do
   defp home_busy?(home_loading),
     do: Enum.any?(home_loading, fn {_group, state} -> state != false end)
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div

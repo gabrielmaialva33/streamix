@@ -6,6 +6,7 @@ defmodule StreamixWeb.Admin.PlansLive do
   alias Streamix.Billing
   alias StreamixWeb.Helpers.Money
 
+  @impl true
   def mount(_params, _session, socket) do
     plans = Billing.list_plans()
 
@@ -17,6 +18,7 @@ defmodule StreamixWeb.Admin.PlansLive do
     {:ok, socket}
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div id="admin-plans" class="space-y-6">

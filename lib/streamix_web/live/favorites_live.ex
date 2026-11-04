@@ -23,6 +23,7 @@ defmodule StreamixWeb.FavoritesLive do
   @per_page 24
 
   @doc false
+  @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_scope.user
     user_id = user.id
@@ -54,6 +55,7 @@ defmodule StreamixWeb.FavoritesLive do
   # ============================================
 
   @doc false
+  @impl true
   def handle_event("filter", %{"type" => type}, socket) do
     socket =
       socket
@@ -119,6 +121,7 @@ defmodule StreamixWeb.FavoritesLive do
   # ============================================
 
   @doc false
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="space-y-6 sm:space-y-8">

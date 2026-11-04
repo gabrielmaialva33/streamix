@@ -7,6 +7,7 @@ defmodule StreamixWeb.Gindex.MoviesLive do
   """
   use StreamixWeb, :live_view
 
+  @impl true
   def mount(params, _session, socket) do
     # Redirect to unified browse page with gindex source
     search = params["search"]

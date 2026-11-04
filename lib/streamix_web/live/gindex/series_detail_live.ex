@@ -20,6 +20,7 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
 
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
+  @impl true
   def mount(%{"id" => series_id}, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
 
@@ -61,6 +62,7 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
     end
   end
 
+  @impl true
   def handle_event("toggle_season", %{"id" => season_id}, socket) do
     case parse_positive_integer(season_id) do
       {:ok, season_id} ->
@@ -107,6 +109,7 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
     {:noreply, assign(socket, is_favorite: FavoriteState.preserve_boolean(is_favorite, result))}
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-background">

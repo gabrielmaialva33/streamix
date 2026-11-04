@@ -25,6 +25,7 @@ defmodule StreamixWeb.HistoryLive do
   @episode_dash_code ~r/\s+[-–]\s+s0?(\d{1,2})\s?e0?(\d{1,4})\s+[-–]\s+/iu
 
   @doc false
+  @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_scope.user
     user_id = user.id
@@ -56,6 +57,7 @@ defmodule StreamixWeb.HistoryLive do
   # ============================================
 
   # OfflineSync hook events (client-side sync, no server action needed)
+  @impl true
   def handle_event("refresh_data", _params, socket), do: {:noreply, socket}
 
   @doc false
@@ -129,6 +131,7 @@ defmodule StreamixWeb.HistoryLive do
   # ============================================
 
   @doc false
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="space-y-4 sm:space-y-6">

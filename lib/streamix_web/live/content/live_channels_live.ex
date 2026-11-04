@@ -13,11 +13,13 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
 
   alias StreamixWeb.Content.LiveChannels
 
+  @impl true
   def mount(_params, _session, socket) do
     if connected?(socket), do: Process.send_after(self(), :refresh_games, 60_000)
     {:ok, LiveChannels.init_socket(socket)}
   end
 
+  @impl true
   def handle_params(params, _url, socket) do
     case LiveChannels.assign_params(socket, params) do
       {:ok, socket} ->
@@ -32,6 +34,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   # Event Handlers
   # ============================================
 
+  @impl true
   def handle_event("filter_category", %{"category" => category}, socket) do
     category = if category == "", do: nil, else: category
 
@@ -111,6 +114,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   # series, categories) on the same `provider:<id>` topic this view subscribes
   # to. This page only renders the coarse `sync_status` spinner, so the fine
   # grained ticks are intentionally ignored rather than crashing the view.
+  @impl true
   def handle_info(:refresh_games, socket) do
     Process.send_after(self(), :refresh_games, 60_000)
     {:noreply, LiveChannels.load_games(socket)}
@@ -148,6 +152,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   # Render
   # ============================================
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="space-y-4 sm:space-y-5">

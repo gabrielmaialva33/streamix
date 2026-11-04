@@ -42,6 +42,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
   # Mount for /providers/:provider_id/movies/:id (user provider). Must
   # come first: the browse clause's pattern also matches these params.
+  @impl true
   def mount(%{"provider_id" => _, "id" => movie_id} = params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
     return_to = ReturnPath.safe(params["return_to"])
@@ -154,6 +155,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
     end
   end
 
+  @impl true
   def handle_async({:movie_enrichment, movie_id}, {:ok, movie}, socket)
       when movie_id == socket.assigns.movie.id do
     {:noreply,
@@ -184,6 +186,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
   # ?source=<movie_id> picks one of the authorized copies; anything else keeps
   # the recommended one.
+  @impl true
   def handle_params(params, _uri, %{assigns: %{movie_variants: variants}} = socket) do
     variant =
       case Integer.parse(to_string(params["source"])) do
@@ -196,6 +199,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
+  @impl true
   def handle_event("select_source", %{"id" => id}, socket) do
     {:noreply, push_patch(socket, to: with_source(socket.assigns.current_path, id))}
   end
@@ -225,6 +229,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   # Render
   # ============================================
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-background">

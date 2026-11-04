@@ -6,6 +6,7 @@ defmodule StreamixWeb.Providers.ProviderListLive do
 
   alias Streamix.Accounts
 
+  @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_scope.user
     user_id = user.id
@@ -33,6 +34,7 @@ defmodule StreamixWeb.Providers.ProviderListLive do
     {:ok, socket}
   end
 
+  @impl true
   def handle_params(params, _url, socket) do
     {:noreply, apply_action(socket, socket.assigns.live_action, params)}
   end
@@ -61,6 +63,7 @@ defmodule StreamixWeb.Providers.ProviderListLive do
     |> assign(show_modal: false)
   end
 
+  @impl true
   def handle_event("sync_provider", %{"id" => id}, socket) do
     user_id = socket.assigns.current_scope.user.id
     provider = Streamix.Providers.get_user_provider(user_id, id)
@@ -120,6 +123,7 @@ defmodule StreamixWeb.Providers.ProviderListLive do
     {:noreply, push_patch(socket, to: ~p"/providers")}
   end
 
+  @impl true
   def handle_info({:sync_progress, %{provider_id: id} = payload}, socket) do
     user_id = socket.assigns.current_scope.user.id
 
@@ -178,6 +182,7 @@ defmodule StreamixWeb.Providers.ProviderListLive do
      |> push_patch(to: ~p"/providers")}
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="space-y-4 sm:space-y-6">

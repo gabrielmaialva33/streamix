@@ -3,6 +3,7 @@ defmodule StreamixWeb.BillingLive do
 
   alias Streamix.Billing
 
+  @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_scope.user
     active_subscription = Billing.active_subscription_for_user(user)
@@ -20,6 +21,7 @@ defmodule StreamixWeb.BillingLive do
     {:ok, socket}
   end
 
+  @impl true
   def handle_event("stripe_portal", _params, socket) do
     user = socket.assigns.current_scope.user
 
@@ -41,6 +43,7 @@ defmodule StreamixWeb.BillingLive do
     end
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div id="billing-page" class="space-y-6 pb-12">

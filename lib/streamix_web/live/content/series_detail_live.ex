@@ -41,6 +41,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
 
   # Mount for /providers/:provider_id/series/:id (user provider). Must
   # come first: the browse clause's pattern also matches these params.
+  @impl true
   def mount(%{"provider_id" => _, "id" => series_id} = params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
     return_to = ReturnPath.safe(params["return_to"])
@@ -154,6 +155,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
     {:ok, socket}
   end
 
+  @impl true
   def handle_params(params, _uri, %{assigns: %{series_sources: sources}} = socket) do
     selected =
       Enum.find(sources, &(Integer.to_string(&1.id) == params["source"])) ||
@@ -235,6 +237,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
       "?" <> URI.encode_query(query)
   end
 
+  @impl true
   def handle_async({:series_enrichment, series_id}, {:ok, series}, socket)
       when series_id == socket.assigns.series.id do
     hero_image = Detail.hero_image(series, series.cover)
@@ -289,6 +292,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   # Event Handlers
   # ============================================
 
+  @impl true
   def handle_event("select_source", %{"id" => id}, socket) do
     selected =
       Enum.find(socket.assigns.series_sources, &(Integer.to_string(&1.id) == id)) ||
@@ -371,6 +375,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   # Render
   # ============================================
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-background">

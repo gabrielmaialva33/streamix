@@ -4,6 +4,7 @@ defmodule StreamixWeb.User.SettingsLive do
   alias Streamix.Accounts
   alias StreamixWeb.Locale
 
+  @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_scope.user
 
@@ -19,6 +20,7 @@ defmodule StreamixWeb.User.SettingsLive do
     {:ok, socket}
   end
 
+  @impl true
   def handle_event("validate_password", %{"user" => params}, socket) do
     user = socket.assigns.current_scope.user
 
@@ -100,6 +102,7 @@ defmodule StreamixWeb.User.SettingsLive do
     update_settings(socket, user, params, "Preferências de legenda atualizadas")
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="mx-auto w-full max-w-5xl space-y-4 sm:space-y-5">

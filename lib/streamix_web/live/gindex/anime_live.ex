@@ -16,6 +16,7 @@ defmodule StreamixWeb.Gindex.AnimeLive do
 
   @per_page 48
 
+  @impl true
   def mount(_params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
     gindex_counts = Streamix.Catalog.gindex_counts()
@@ -37,6 +38,7 @@ defmodule StreamixWeb.Gindex.AnimeLive do
     {:ok, socket}
   end
 
+  @impl true
   def handle_params(params, _url, socket) do
     search = params["search"] || ""
 
@@ -55,6 +57,7 @@ defmodule StreamixWeb.Gindex.AnimeLive do
   # Event Handlers
   # ============================================
 
+  @impl true
   def handle_event("search", %{"search" => search}, socket) do
     path =
       if search == "",
@@ -112,6 +115,7 @@ defmodule StreamixWeb.Gindex.AnimeLive do
   # Render
   # ============================================
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="space-y-6">

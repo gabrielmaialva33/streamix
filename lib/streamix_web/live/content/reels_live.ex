@@ -27,6 +27,7 @@ defmodule StreamixWeb.Content.ReelsLive do
   # Matches the domain bound: a display name of a varchar(255) category.
   @max_category_length 247
 
+  @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_scope.user
     global_provider = Streamix.Providers.get_global_provider()
@@ -56,6 +57,7 @@ defmodule StreamixWeb.Content.ReelsLive do
      |> stream(:series, [])}
   end
 
+  @impl true
   def handle_params(params, _url, socket) do
     category = normalize_category(params["category"])
     search = normalize_search(params["search"])
@@ -78,6 +80,7 @@ defmodule StreamixWeb.Content.ReelsLive do
   # Event Handlers
   # ============================================
 
+  @impl true
   def handle_event("search", %{"search" => search}, socket) do
     {:noreply,
      push_patch(socket,
@@ -116,6 +119,7 @@ defmodule StreamixWeb.Content.ReelsLive do
   # Render
   # ============================================
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div id="reels-browse" phx-hook="BrowseScrollRestoration" class="space-y-4 sm:space-y-5">

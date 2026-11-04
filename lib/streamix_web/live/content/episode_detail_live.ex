@@ -37,6 +37,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   # Mount for /providers/:provider_id/series/:series_id/episode/:id (user
   # provider). Must come first: the browse clause's pattern also matches
   # these params.
+  @impl true
   def mount(
         %{"provider_id" => _, "series_id" => series_id, "id" => episode_id} = params,
         _session,
@@ -136,6 +137,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   # Event Handlers
   # ============================================
 
+  @impl true
   def handle_event("play_episode", _, socket) do
     {:noreply, redirect(socket, to: ~p"/watch/episode/#{socket.assigns.episode.id}")}
   end
@@ -172,6 +174,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   # Render
   # ============================================
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-background">

@@ -6,6 +6,7 @@ defmodule StreamixWeb.Admin.BillingLive do
   alias Streamix.Billing
   alias StreamixWeb.Helpers.Money
 
+  @impl true
   def mount(_params, _session, socket) do
     socket =
       socket
@@ -15,6 +16,7 @@ defmodule StreamixWeb.Admin.BillingLive do
     {:ok, socket}
   end
 
+  @impl true
   def handle_event("reconcile_stripe", _params, socket) do
     case Billing.reconcile_stripe_subscriptions() do
       {:ok, _summary} ->
@@ -28,6 +30,7 @@ defmodule StreamixWeb.Admin.BillingLive do
     end
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div id="admin-billing" class="space-y-6">

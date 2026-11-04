@@ -18,6 +18,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
   import StreamixWeb.Content.DetailComponents.Badges, only: [rating_badge: 1, year_badge: 1]
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
+  @impl true
   def mount(%{"id" => anime_id}, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
 
@@ -59,6 +60,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
     end
   end
 
+  @impl true
   def handle_event("toggle_release", %{"id" => release_id}, socket) do
     case parse_positive_integer(release_id) do
       {:ok, release_id} ->
@@ -105,6 +107,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
     {:noreply, assign(socket, is_favorite: FavoriteState.preserve_boolean(is_favorite, result))}
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-background">

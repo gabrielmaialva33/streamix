@@ -26,6 +26,7 @@ defmodule StreamixWeb.SearchLive do
   @result_types %{"channels" => :channels, "movies" => :movies, "series" => :series}
 
   @doc false
+  @impl true
   def mount(_params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
 
@@ -48,6 +49,7 @@ defmodule StreamixWeb.SearchLive do
   end
 
   @doc false
+  @impl true
   def handle_params(%{"q" => query}, _url, socket) when query != "" do
     socket =
       socket
@@ -68,6 +70,7 @@ defmodule StreamixWeb.SearchLive do
   # ============================================
 
   @doc false
+  @impl true
   def handle_event("search", %{"query" => query}, socket) do
     if String.trim(query) == "" do
       socket =
@@ -148,6 +151,7 @@ defmodule StreamixWeb.SearchLive do
   # ============================================
 
   @doc false
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="py-6 sm:py-8 space-y-6 sm:space-y-8">
