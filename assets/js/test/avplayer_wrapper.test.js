@@ -442,3 +442,7 @@ test("picking the subtitle libmedia already holds only enables it", async () => 
     ["subtitle-enabled", true],
   ]);
 });
+
+test("preserves the default AVPlayer wrapper export for existing module consumers", () => {
+  assert.equal(avplayerModule.default, AVPlayerWrapper);
+});

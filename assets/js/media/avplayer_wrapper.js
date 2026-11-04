@@ -810,3 +810,5 @@ export class AVPlayerWrapper {
     log.debug("Destroyed");
   }
 }
+
+export default AVPlayerWrapper;
