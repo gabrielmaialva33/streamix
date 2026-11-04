@@ -307,6 +307,7 @@ defmodule StreamixWeb.Home.Landing do
   attr :channel, :map, required: true
   attr :class, :string, default: nil
 
+  @doc "Public landing teaser: anonymous discovery with a browse link, not the authenticated playback controls."
   def public_channel_card(assigns) do
     assigns =
       assigns

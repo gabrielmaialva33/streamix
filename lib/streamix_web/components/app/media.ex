@@ -31,6 +31,7 @@ defmodule StreamixWeb.App.Media do
   attr :show_epg, :boolean, default: true
   attr :on_favorite, :string, default: "toggle_favorite"
 
+  @doc "Catalog/search grid: event-driven playback, optional favorite action and current EPG progress; unlike the compact home shelf."
   def live_channel_card(assigns) do
     assigns =
       assign(

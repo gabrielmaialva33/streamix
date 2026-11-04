@@ -3,8 +3,9 @@ defmodule StreamixWeb.Admin.BillingLive do
 
   import StreamixWeb.AdminComponents
 
+  import StreamixWeb.Billing.Formatting, only: [format_price: 2]
+
   alias Streamix.Billing
-  alias StreamixWeb.Helpers.Money
 
   @impl true
   def mount(_params, _session, socket) do
@@ -133,6 +134,4 @@ defmodule StreamixWeb.Admin.BillingLive do
     |> assign(payments: Billing.list_recent_payments())
     |> assign(invoices: Billing.list_recent_invoices())
   end
-
-  defp format_price(cents, currency), do: Money.format(cents, currency)
 end

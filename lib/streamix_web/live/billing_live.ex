@@ -1,6 +1,8 @@
 defmodule StreamixWeb.BillingLive do
   use StreamixWeb, :live_view
 
+  import StreamixWeb.Billing.Formatting, only: [format_price: 3]
+
   alias Streamix.Billing
 
   @impl true
@@ -126,7 +128,7 @@ defmodule StreamixWeb.BillingLive do
               </td>
               <td class="px-5 py-3 text-text-secondary">{status_label(invoice.status)}</td>
               <td class="px-5 py-3 text-text-primary">
-                {format_price(invoice.amount_paid_cents, invoice.currency)}
+                {format_price(invoice.amount_paid_cents, invoice.currency, missing: "-")}
               </td>
               <td class="px-5 py-3 text-text-secondary">{format_datetime(invoice.paid_at)}</td>
             </tr>
@@ -155,7 +157,7 @@ defmodule StreamixWeb.BillingLive do
               <td class="px-5 py-3 text-text-primary">{payment.provider}</td>
               <td class="px-5 py-3 text-text-secondary">{status_label(payment.status)}</td>
               <td class="px-5 py-3 text-text-primary">
-                {format_price(payment.amount_cents, payment.currency)}
+                {format_price(payment.amount_cents, payment.currency, missing: "-")}
               </td>
               <td class="px-5 py-3 text-text-secondary">{format_datetime(payment.paid_at)}</td>
             </tr>
@@ -179,13 +181,6 @@ defmodule StreamixWeb.BillingLive do
       _ -> "sem limite"
     end
   end
-
-  defp format_price(cents, _currency) when is_integer(cents) do
-    "R$ " <>
-      (:erlang.float_to_binary(cents / 100, decimals: 2) |> String.replace(".", ","))
-  end
-
-  defp format_price(_, _), do: "-"
 
   defp status_label("active"), do: "Ativo"
   defp status_label("trialing"), do: "Em teste"

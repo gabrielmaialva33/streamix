@@ -9,7 +9,7 @@ defmodule StreamixWeb.SearchLive do
   - Recent searches history
   """
   use StreamixWeb, :live_view
-  import StreamixWeb.App.Filters, only: [filter_chip: 1, filter_strip: 1]
+  import StreamixWeb.App.Filters, only: [filter_button: 1, filter_strip: 1]
   import StreamixWeb.Content.NavigationComponents, only: [section_header: 1]
 
   import StreamixWeb.App.Feedback
@@ -194,6 +194,8 @@ defmodule StreamixWeb.SearchLive do
       <div :if={@searched && has_results?(@result_counts)} class="space-y-8">
         <.filter_strip id="search-filter-strip">
           <.filter_button
+            prefix="search"
+            hide_zero={false}
             type="all"
             label="Todos"
             current={@filter}
@@ -201,6 +203,8 @@ defmodule StreamixWeb.SearchLive do
             has_more={Enum.any?(Map.values(@has_more))}
           />
           <.filter_button
+            prefix="search"
+            hide_zero={false}
             type="channels"
             label="Canais"
             current={@filter}
@@ -208,6 +212,8 @@ defmodule StreamixWeb.SearchLive do
             has_more={@has_more.channels}
           />
           <.filter_button
+            prefix="search"
+            hide_zero={false}
             type="movies"
             label="Filmes"
             current={@filter}
@@ -215,6 +221,8 @@ defmodule StreamixWeb.SearchLive do
             has_more={@has_more.movies}
           />
           <.filter_button
+            prefix="search"
+            hide_zero={false}
             type="series"
             label="Séries"
             current={@filter}
@@ -266,20 +274,6 @@ defmodule StreamixWeb.SearchLive do
 
       <.search_hints :if={!@searched} />
     </div>
-    """
-  end
-
-  defp filter_button(assigns) do
-    ~H"""
-    <.filter_chip
-      id={"search-filter-#{@type}"}
-      active={@current == @type}
-      label={@label}
-      count={@count}
-      count_suffix={if @has_more, do: "+", else: ""}
-      phx-click="filter"
-      phx-value-type={@type}
-    />
     """
   end
 

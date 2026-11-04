@@ -60,6 +60,7 @@ defmodule StreamixWeb.Home.Cards do
     """
   end
 
+  @doc "Home shelf: compact linked TV card without EPG or favorite controls."
   def channel_card(assigns) do
     assigns =
       assigns
@@ -175,52 +176,6 @@ defmodule StreamixWeb.Home.Cards do
     """
   end
 
-  def favorite_item(assigns) do
-    assigns =
-      assigns
-      |> assign_new(:class, fn -> nil end)
-      |> assign(:image_url, ImageProxy.browser_image(assigns.favorite.content_icon))
-
-    ~H"""
-    <.link
-      href={watch_path(@favorite.content_type, @favorite.content_id)}
-      class={[
-        "content-card media-shelf-card media-shelf-card--favorite group overflow-hidden rounded-md bg-surface transition-transform duration-300 hover:-translate-y-1 sm:rounded-lg",
-        @class
-      ]}
-    >
-      <div class="relative flex aspect-[2/3] items-center justify-center bg-surface-hover">
-        <div
-          id={"fav-img-#{@favorite.content_type}-#{@favorite.content_id}"}
-          phx-hook="ImageFallback"
-          class="w-full h-full"
-        >
-          <img
-            :if={@image_url}
-            src={@image_url}
-            alt={@favorite.content_name}
-            class="w-full h-full object-cover"
-            loading="lazy"
-            decoding="async"
-            data-fallback-target
-          />
-          <div
-            data-fallback
-            class={[
-              "w-full h-full flex items-center justify-center text-text-muted",
-              @image_url && "hidden"
-            ]}
-          >
-            <.icon name={content_type_icon(@favorite.content_type)} class="size-6 sm:size-10" />
-          </div>
-        </div>
-        <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hidden sm:flex items-center justify-center">
-          <.icon name="hero-play-solid" class="size-8 text-white/90 drop-shadow-lg" />
-        </div>
-      </div>
-    </.link>
-    """
-  end
 
   # An episode resumes inside a series: the card leads with the series and
   # says where ("T1 E2"); the episode title goes to the tooltip.

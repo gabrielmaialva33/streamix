@@ -4,6 +4,7 @@ defmodule StreamixWeb.Home.CardsTest do
   import Phoenix.LiveViewTest
 
   alias StreamixWeb.Content.CarouselComponents, as: ContentCarousel
+  alias StreamixWeb.Content.FavoriteComponents
   alias StreamixWeb.Home.{Cards, Carousel, Landing}
 
   @blocked_image "https://png.pngtree.com/png-vector/blocked-image.png"
@@ -78,7 +79,7 @@ defmodule StreamixWeb.Home.CardsTest do
 
   test "favorite cards select their fallback before blocked images reach the browser" do
     html =
-      render_component(&Cards.favorite_item/1,
+      render_component(&FavoriteComponents.favorite_item/1,
         favorite: %{
           content_type: "movie",
           content_id: 20,

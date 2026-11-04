@@ -9,6 +9,7 @@ defmodule StreamixWeb.Home.Carousel do
   import StreamixWeb.Content.NavigationComponents
   import StreamixWeb.Content.DetailComponents.Badges, only: [rating_badge: 1]
   import StreamixWeb.CoreComponents
+  import StreamixWeb.Content.FavoriteComponents, only: [favorite_item: 1]
   import StreamixWeb.Home.Cards
   import StreamixWeb.Home.Helpers
 

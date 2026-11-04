@@ -819,7 +819,7 @@ defmodule StreamixWeb.CoreComponents do
   end
 
   @doc """
-  Renders a skeleton for live channel cards.
+  Renders a loading placeholder for channel grids, without media data or playback actions.
 
   ## Examples
 

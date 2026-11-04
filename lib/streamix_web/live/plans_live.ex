@@ -3,8 +3,9 @@ defmodule StreamixWeb.PlansLive do
 
   import StreamixWeb.App.Premium
 
+  import StreamixWeb.Billing.Formatting, only: [format_price: 2]
+
   alias Streamix.Billing
-  alias StreamixWeb.Helpers.Money
   alias StreamixWeb.ReturnPath
 
   @impl true
@@ -276,8 +277,6 @@ defmodule StreamixWeb.PlansLive do
 
   defp subscription_state(nil), do: "none"
   defp subscription_state(_subscription), do: "active"
-
-  defp format_price(price_cents, currency), do: Money.format(price_cents, currency)
 
   defp status_label("active"), do: "Ativo"
   defp status_label("trialing"), do: "Em teste"
