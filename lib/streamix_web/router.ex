@@ -1,6 +1,8 @@
 defmodule StreamixWeb.Router do
   use StreamixWeb, :router
 
+  alias Streamix.PublicUrls
+
   import StreamixWeb.UserAuth
 
   # E2E tests with Playwright need the sandbox hook to run *before* UserAuth,
@@ -588,7 +590,7 @@ defmodule StreamixWeb.Router do
   defp player_path?(_path), do: false
 
   defp put_stream_proxy_hint(conn) do
-    proxy = Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.fun")
+    proxy = PublicUrls.stream_proxy()
     link = "<#{proxy}>; rel=preconnect; crossorigin"
 
     # Best-effort: a noop on adapters that don't implement inform/3.

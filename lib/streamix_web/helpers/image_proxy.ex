@@ -15,17 +15,19 @@ defmodule StreamixWeb.Helpers.ImageProxy do
   - original: original - for full quality (rarely needed)
   """
 
+  alias Streamix.PublicUrls
+
   @image_cache_version "v2"
   @browser_blocked_hosts ["png.pngtree.com", "static.vecteezy.com"]
 
   defp tmdb_proxy_url,
-    do: Application.get_env(:streamix, :tmdb_proxy_url, "https://tmdb.mahina.fun")
+    do: PublicUrls.tmdb_proxy()
 
   defp imgmxa_proxy_url,
-    do: Application.get_env(:streamix, :imgmxa_proxy_url, "https://imgmxa.mahina.fun")
+    do: PublicUrls.imgmxa_proxy()
 
   defp image_proxy_url,
-    do: Application.get_env(:streamix, :image_proxy_url, "https://img.mahina.fun")
+    do: PublicUrls.image_proxy()
 
   # TMDB image sizes (Netflix uses 20-30KB for thumbnails)
   @tmdb_sizes %{

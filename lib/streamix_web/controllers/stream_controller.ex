@@ -13,6 +13,7 @@ defmodule StreamixWeb.StreamController do
   require Logger
 
   alias Streamix.Gindex
+  alias Streamix.PublicUrls
   alias Streamix.SafeLog
   alias StreamixWeb.Plugs.ApiKeyAuth
   alias StreamixWeb.StreamErrors
@@ -329,7 +330,7 @@ defmodule StreamixWeb.StreamController do
         Enum.random(list)
 
       _ ->
-        Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.fun")
+        PublicUrls.stream_proxy()
     end
   end
 

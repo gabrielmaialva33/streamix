@@ -224,6 +224,9 @@ API surfaces under `/api/v1`:
 - Logging: a constant message plus metadata. Never interpolate a reason, URL or upstream response into the message;
   pass it as `reason: Streamix.SafeLog.redact_inspect(reason)` (URLs: `SafeLog.redact_url/1`). New metadata keys
   must be added to the `:default_formatter` list in `config/config.exs` or they are dropped.
+- Configuration: `config/runtime.exs` parses the environment (through `Streamix.RuntimeConfig` for booleans and
+  integers). Each `:streamix` key has one reading module; other code calls that module (for example
+  `Streamix.PublicUrls.stream_proxy/0`) instead of repeating `Application.get_env` with its own default.
 - Workers live in `lib/streamix/workers/` (grouped by source in subfolders) and `use Oban.Worker`.
 
 ### Phoenix / LiveView
