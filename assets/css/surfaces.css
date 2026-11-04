@@ -24,7 +24,7 @@
     }
 }
 .auth-branded-bg {
-    background: url('/images/auth-bg.jpg') center / cover no-repeat #0a0a0a;
+    background: url('/images/auth-bg.jpg') center / cover no-repeat var(--bg-color);
 }
 
 @keyframes vt-fade-out {

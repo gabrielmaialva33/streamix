@@ -49,6 +49,11 @@
 
     /* Brand */
     --brand-color: #e50914;
+    --brand-rgb: 229, 9, 20;
+    --brand-alpha-12: rgba(var(--brand-rgb), 0.12);
+    --brand-alpha-25: rgba(var(--brand-rgb), 0.25);
+    --brand-alpha-30: rgba(var(--brand-rgb), 0.3);
+    --brand-alpha-35: rgba(var(--brand-rgb), 0.35);
     --brand-text-color: #ff6871;
     --brand-hover-color: #cf0812;
     --accent-color: #46d369;
@@ -208,7 +213,7 @@ body {
 
 /* Brand-tinted text selection */
 ::selection {
-    background-color: rgb(229 9 20 / 0.35);
+    background-color: var(--brand-alpha-35);
     color: #ffffff;
 }
 

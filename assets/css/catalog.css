@@ -105,7 +105,7 @@
 .content-nav__tab--active::after {
     background: var(--brand-color);
     transform: scaleX(1);
-    box-shadow: 0 0 8px rgba(229, 9, 20, 0.3);
+    box-shadow: 0 0 8px var(--brand-alpha-30);
     animation: tab-underline-in 300ms var(--ease-spring);
 }
 
@@ -128,7 +128,7 @@
 
 .content-nav__tab--active .content-nav__count {
     color: var(--brand-color);
-    background: rgba(229, 9, 20, 0.12);
+    background: var(--brand-alpha-12);
 }
 
 /* Category chips — refined */
@@ -159,7 +159,7 @@
     color: #fff;
     background: var(--brand-color);
     border-color: var(--brand-color);
-    box-shadow: 0 2px 8px rgba(229, 9, 20, 0.25);
+    box-shadow: 0 2px 8px var(--brand-alpha-25);
 }
 
 /* Category sidebar — vertical variant for desktop */
@@ -191,7 +191,7 @@
     color: #fff;
     background: var(--brand-color);
     border-color: var(--brand-color);
-    box-shadow: 0 2px 8px rgba(229, 9, 20, 0.25);
+    box-shadow: 0 2px 8px var(--brand-alpha-25);
 }
 
 .category-pill--sidebar-active:hover {
@@ -265,7 +265,7 @@
 
 /* Card red glow on hover (StreamFlix pattern) */
 .card-glow:hover {
-    box-shadow: 0 8px 32px rgba(229, 9, 20, 0.12), 0 2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 8px 32px var(--brand-alpha-12), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 @media (max-width: 639px) {
