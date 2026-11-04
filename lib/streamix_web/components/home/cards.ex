@@ -6,26 +6,25 @@ defmodule StreamixWeb.Home.Cards do
   use Phoenix.Component
   use StreamixWeb, :verified_routes
 
-  import StreamixWeb.Content.CardComponents
+  alias StreamixWeb.Content.CardComponents, as: ContentCards
   import StreamixWeb.CoreComponents
   import StreamixWeb.Home.Helpers
 
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Helpers.ImageProxy
 
-  def render_movie_card(assigns) do
-    assigns =
-      assigns
-      |> assign_new(:class, fn -> nil end)
-      |> assign_new(:progress, fn -> nil end)
-      |> assign_new(:is_favorite, fn -> false end)
+  attr :movie, :map, required: true
+  attr :class, :any, default: nil
+  attr :progress, :any, default: nil
+  attr :is_favorite, :boolean, default: false
 
+  def movie_card(assigns) do
     ~H"""
     <div class={[
       "media-shelf-card media-shelf-card--poster media-shelf-card--poster-home",
       @class
     ]}>
-      <.movie_card
+      <ContentCards.movie_card
         movie={@movie}
         is_favorite={@is_favorite}
         progress={@progress}
@@ -37,19 +36,18 @@ defmodule StreamixWeb.Home.Cards do
     """
   end
 
-  def render_series_card(assigns) do
-    assigns =
-      assigns
-      |> assign_new(:class, fn -> nil end)
-      |> assign_new(:progress, fn -> nil end)
-      |> assign_new(:is_favorite, fn -> false end)
+  attr :series, :map, required: true
+  attr :class, :any, default: nil
+  attr :progress, :any, default: nil
+  attr :is_favorite, :boolean, default: false
 
+  def series_card(assigns) do
     ~H"""
     <div class={[
       "media-shelf-card media-shelf-card--poster media-shelf-card--poster-home",
       @class
     ]}>
-      <.series_card
+      <ContentCards.series_card
         series={@series}
         is_favorite={@is_favorite}
         progress={@progress}
@@ -61,10 +59,12 @@ defmodule StreamixWeb.Home.Cards do
   end
 
   @doc "Home shelf: compact linked TV card without EPG or favorite controls."
+  attr :channel, :map, required: true
+  attr :class, :any, default: nil
+
   def channel_card(assigns) do
     assigns =
       assigns
-      |> assign_new(:class, fn -> nil end)
       |> assign(:image_url, ImageProxy.browser_image(assigns.channel.stream_icon))
 
     ~H"""
@@ -115,10 +115,12 @@ defmodule StreamixWeb.Home.Cards do
     """
   end
 
+  attr :entry, :map, required: true
+  attr :class, :any, default: nil
+
   def history_item(assigns) do
     assigns =
       assigns
-      |> assign_new(:class, fn -> nil end)
       |> assign(:image_url, ImageProxy.browser_image(assigns.entry.content_icon))
 
     ~H"""
@@ -175,7 +177,6 @@ defmodule StreamixWeb.Home.Cards do
     </.link>
     """
   end
-
 
   # An episode resumes inside a series: the card leads with the series and
   # says where ("T1 E2"); the episode title goes to the tooltip.

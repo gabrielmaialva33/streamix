@@ -192,9 +192,9 @@ defmodule StreamixWeb.HomeLive do
       aria-busy={to_string(home_busy?(@home_loading))}
     >
       <%= if @current_scope do %>
-        <.render_authenticated_home {assigns} />
+        <.authenticated_home {assigns} />
       <% else %>
-        <.render_landing_page {assigns} />
+        <.landing_page {assigns} />
       <% end %>
     </div>
     """

@@ -126,7 +126,7 @@ defmodule StreamixWeb.Home.CardsTest do
     movie = %{id: 60, name: "Filme", provider_id: 7}
 
     home_html =
-      render_component(&Carousel.render_content_carousel/1,
+      render_component(&Carousel.content_carousel/1,
         type: :movies,
         title: "Filmes",
         items: [movie],

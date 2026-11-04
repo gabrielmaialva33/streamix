@@ -14,7 +14,16 @@ defmodule StreamixWeb.Home.Landing do
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Helpers.ImageProxy
 
-  def render_landing_page(assigns) do
+  attr :featured, :any, default: nil
+  attr :home_loading, :map, default: %{}
+  attr :stats, :map, required: true
+  attr :trending, :list, required: true
+  attr :new_releases, :list, required: true
+  attr :movies, :list, required: true
+  attr :series, :list, required: true
+  attr :channels, :list, required: true
+
+  def landing_page(assigns) do
     assigns =
       assigns
       |> assign(:catalog_loading, group_loading?(assigns.home_loading, :catalog))
