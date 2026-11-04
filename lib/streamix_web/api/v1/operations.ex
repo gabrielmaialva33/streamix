@@ -1,6 +1,7 @@
 defmodule StreamixWeb.Api.V1.Operations do
   @moduledoc "Shared documentation defaults; these do not cast or change request parameters."
 
+  alias Plug.Conn.Status
   alias StreamixWeb.Api.V1.Schemas
 
   def build(id, summary, response_schema, opts \\ []) do
@@ -9,7 +10,7 @@ defmodule StreamixWeb.Api.V1.Operations do
     responses =
       Enum.map(Enum.uniq(errors), fn status ->
         {status,
-         {Plug.Conn.Status.reason_phrase(Plug.Conn.Status.code(status)), "application/json",
+         {Status.reason_phrase(Status.code(status)), "application/json",
           Schemas.ref("ApiErrorResponse")}}
       end)
 

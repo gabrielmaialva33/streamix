@@ -5,6 +5,7 @@ defmodule StreamixWeb.Api.V1.OpenApiContractTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
+  alias OpenApiSpex.Plug.PutApiSpec
   alias Streamix.Iptv.{Category, Episode, MovieCredit, Person, Season}
   alias Streamix.Repo
 
@@ -215,7 +216,7 @@ defmodule StreamixWeb.Api.V1.OpenApiContractTest do
       authenticated.()
       |> get(path)
       |> assert_status(200)
-      |> OpenApiSpex.Plug.PutApiSpec.call(StreamixWeb.Api.V1.OpenApi)
+      |> PutApiSpec.call(StreamixWeb.Api.V1.OpenApi)
       |> assert_operation_response(operation)
     end
 

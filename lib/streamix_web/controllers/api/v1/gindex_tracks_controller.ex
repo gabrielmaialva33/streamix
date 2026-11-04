@@ -18,7 +18,7 @@ defmodule StreamixWeb.Api.V1.GindexTracksController do
 
   action_fallback StreamixWeb.Api.V1.FallbackController
 
-  alias StreamixWeb.Api.V1.Operations
+  alias StreamixWeb.Api.V1.{Operations, Schemas}
 
   operation :show,
             Operations.build(
@@ -30,8 +30,7 @@ defmodule StreamixWeb.Api.V1.GindexTracksController do
               errors: [:not_found],
               responses: [
                 accepted:
-                  {"Probe in progress", "application/json",
-                   StreamixWeb.Api.V1.Schemas.ref("MediaProbingResponse")}
+                  {"Probe in progress", "application/json", Schemas.ref("MediaProbingResponse")}
               ]
             )
 

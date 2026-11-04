@@ -83,7 +83,9 @@ defmodule StreamixWeb.Api.V1.Schemas.Resources do
                   nil,
                   Map.merge(target, %{action: string(enum: ["add", "remove"]), at: timestamp()}),
                   [:type, :content_id, :action]
-                ), max_items: 500)
+                ),
+                max_items: 500
+              )
           },
           [:operations]
         ),

@@ -11,6 +11,16 @@ defmodule StreamixWeb.ErrorJSONTest do
              %{error: %{code: "internal_server_error", message: "Internal Server Error"}}
   end
 
+  test "unknown API routes render the same envelope through the endpoint" do
+    body =
+      build_conn()
+      |> put_req_header("accept", "application/json")
+      |> get("/api/v1/unknown-error-contract-route")
+      |> json_response(404)
+
+    assert body == %{"error" => %{"code" => "not_found", "message" => "Not Found"}}
+  end
+
   test "similar browser paths keep their existing envelope" do
     conn = build_conn(:get, "/apiary")
 

@@ -125,6 +125,19 @@ defmodule StreamixWeb.Api.V1.UnifiedErrorContractTest do
     end
   end
 
+  test "subscription failures retain the upgrade hint in the common error schema" do
+    user = user_fixture()
+    token = Accounts.generate_user_session_token(user) |> Base.url_encode64()
+
+    conn =
+      integration_conn()
+      |> put_req_header("authorization", "Bearer #{token}")
+      |> get("/api/v1/recommendations")
+      |> assert_error(402, "ai_recommendations_required", "recommendations.index")
+
+    assert json_response(conn, 402)["error"]["upgrade_url"] == "/plans?upgrade=ai"
+  end
+
   test "action fallback preserves resource-specific invalid-id messages" do
     user = user_fixture()
     token = Accounts.generate_user_session_token(user) |> Base.url_encode64()

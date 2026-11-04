@@ -4,6 +4,7 @@ defmodule StreamixWeb.EmbedplayStreamController do
   import StreamixWeb.HlsResponse, only: [cors: 1, head_request?: 1, send_gateway_response: 2]
 
   alias Streamix.Embedplay
+  alias StreamixWeb.Api.V1.Response
   alias StreamixWeb.StreamToken
 
   def options(conn, _params), do: conn |> cors() |> send_resp(204, "")
@@ -202,7 +203,7 @@ defmodule StreamixWeb.EmbedplayStreamController do
 
     conn
     |> cors()
-    |> StreamixWeb.Api.V1.Response.error(
+    |> Response.error(
       status,
       Atom.to_string(code),
       "Playback request could not be completed"

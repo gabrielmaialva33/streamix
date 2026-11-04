@@ -12,7 +12,6 @@ defmodule StreamixWeb.Plugs.BearerAuth do
   import Plug.Conn
 
   alias Streamix.Accounts
-  alias Streamix.Accounts.Scope
   alias StreamixWeb.Api.V1.Response
 
   @type opts :: [optional: boolean()]
@@ -25,7 +24,7 @@ defmodule StreamixWeb.Plugs.BearerAuth do
     case authenticate(conn) do
       {:ok, user, token} ->
         conn
-        |> assign(:current_scope, Scope.for_user(user))
+        |> assign(:current_scope, Accounts.scope_for_user(user))
         |> assign(:current_session_token, token)
 
       :error ->
