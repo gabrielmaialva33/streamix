@@ -1,3 +1,4 @@
+import { memoizeImport } from "../core/async_primitives.js";
 import { canHover } from "../core/browser_environment.js";
 import { createLazyHook } from "../core/lazy_hook.js";
 import BrowseScrollRestoration from "./browse_scroll_restoration.js";
@@ -8,27 +9,14 @@ import Modal from "./modal.js";
 import ProgressBar from "./progress_bar.js";
 import ScrollHeader from "./scroll_header.js";
 
-const sharedModule = (loader) => {
-  let modulePromise;
-
-  return () => {
-    modulePromise ||= loader().catch((error) => {
-      modulePromise = null;
-      throw error;
-    });
-
-    return modulePromise;
-  };
-};
-
 const namedHook = (loadModule, exportName) => async () => ({
   default: (await loadModule())[exportName],
 });
 
-const loadCatalogHooks = sharedModule(() => import("./catalog_hooks.js"));
-const loadPlaybackHooks = sharedModule(() => import("./playback_hooks.js"));
-const loadPwaHooks = sharedModule(() => import("./pwa_hooks.js"));
-const loadWatchPartyHooks = sharedModule(() => import("./watch_party_hooks.js"));
+const loadCatalogHooks = memoizeImport(() => import("./catalog_hooks.js"));
+const loadPlaybackHooks = memoizeImport(() => import("./playback_hooks.js"));
+const loadPwaHooks = memoizeImport(() => import("./pwa_hooks.js"));
+const loadWatchPartyHooks = memoizeImport(() => import("./watch_party_hooks.js"));
 
 const ContentCard = createLazyHook("ContentCard", () => import("./content_card.js"), {
   shouldLoad: canHover,

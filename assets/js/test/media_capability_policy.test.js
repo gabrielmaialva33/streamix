@@ -115,3 +115,16 @@ test("derives codec and resolution hints from the player element", () => {
   assert.equal(configuration.video.height, 1440);
   assert.equal(configuration.video.bitrate, 12_000_000);
 });
+
+test("a completed capability probe releases its deadline immediately", async (t) => {
+  const pending = new Set();
+  t.mock.method(globalThis, "setTimeout", () => {
+    const id = {};
+    pending.add(id);
+    return id;
+  });
+  t.mock.method(globalThis, "clearTimeout", (id) => pending.delete(id));
+  const result = await probeMediaCapability({ decodingInfo: async () => ({ supported: true }) });
+  assert.equal(result.supported, true);
+  assert.equal(pending.size, 0);
+});

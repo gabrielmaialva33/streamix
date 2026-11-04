@@ -1,3 +1,5 @@
+import { withTimeout } from "../core/async_primitives.js";
+
 const DEFAULT_VIDEO_CODEC = "avc1.640028";
 const DEFAULT_AUDIO_CODEC = "mp4a.40.2";
 
@@ -86,10 +88,7 @@ export async function probeMediaCapability({
     const timeout = Number(timeoutMs);
     const result =
       Number.isFinite(timeout) && timeout > 0
-        ? await Promise.race([
-            probe,
-            new Promise((resolve) => setTimeout(() => resolve(null), timeout)),
-          ])
+        ? await withTimeout(probe, { timeoutMs: timeout, onTimeout: () => null })
         : await probe;
     return summarizeMediaCapability(result, configuration);
   } catch {

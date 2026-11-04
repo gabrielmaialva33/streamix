@@ -1,3 +1,4 @@
+import { createEventEmitter } from "../core/event_emitter.js";
 // avbridge_wrapper.js
 //
 // Thin adapter that lets us drive Keishi Hattori's `avbridge`
@@ -30,6 +31,10 @@ export class AvbridgeWrapper {
     this.player = null;
     this.initialStrategy = options.initialStrategy || null;
     this.events = new Map();
+    this.emitter = createEventEmitter({
+      events: this.events,
+      onError: (event, error) => log.warn(`[Avbridge] handler for ${event} threw`, error),
+    });
   }
 
   /**
@@ -147,28 +152,13 @@ export class AvbridgeWrapper {
   }
 
   on(event, handler) {
-    const list = this.events.get(event) || [];
-    list.push(handler);
-    this.events.set(event, list);
+    this.emitter.on(event, handler);
   }
-
   off(event, handler) {
-    const list = this.events.get(event);
-    if (!list) return;
-    this.events.set(
-      event,
-      list.filter((h) => h !== handler),
-    );
+    this.emitter.off(event, handler);
   }
-
   _emit(event, ...args) {
-    for (const h of this.events.get(event) || []) {
-      try {
-        h(...args);
-      } catch (err) {
-        log.warn(`[Avbridge] handler for ${event} threw`, err);
-      }
-    }
+    this.emitter.emit(event, ...args);
   }
 }
 
