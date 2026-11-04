@@ -36,6 +36,21 @@ defmodule StreamixWeb.Admin.UsersLiveTest do
       assert html =~ "findme@example.com"
       refute html =~ "notme@example.com"
     end
+
+    test "loads the next page instead of stopping at the first twenty", %{conn: conn} do
+      for n <- 1..25, do: user_fixture(%{email: "page-#{n}@example.com"})
+
+      {:ok, lv, _html} = live(conn, ~p"/admin/users")
+      first = lv |> element("#admin-users-rows") |> render()
+      assert length(Regex.scan(~r/<tr /, first)) == 20
+
+      lv |> element("#admin-users-load-more") |> render_click()
+
+      rows = lv |> element("#admin-users-rows") |> render()
+      # 25 fixtures plus the admin.
+      assert length(Regex.scan(~r/<tr /, rows)) == 26
+      refute has_element?(lv, "#admin-users-load-more")
+    end
   end
 
   describe "user edit" do

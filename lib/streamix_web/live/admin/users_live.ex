@@ -5,30 +5,38 @@ defmodule StreamixWeb.Admin.UsersLive do
 
   alias Streamix.{Accounts, Billing}
 
-  def mount(_params, _session, socket) do
-    users = Accounts.list_users(page: 1, per_page: 20)
+  @per_page 20
 
+  @impl true
+  def mount(_params, _session, socket) do
     socket =
       socket
       |> assign(page_title: "Admin — Usuários", current_path: "/admin/users")
-      |> assign(users: users, search: "", page: 1)
+      |> load_users("", 1, reset: true)
 
     {:ok, socket}
   end
 
+  @impl true
   def handle_event("search", %{"search" => search}, socket) do
-    users = Accounts.list_users(search: search, page: 1, per_page: 20)
-
-    {:noreply, assign(socket, users: users, search: search, page: 1)}
+    {:noreply, load_users(socket, search, 1, reset: true)}
   end
 
   def handle_event("load_more", _params, socket) do
-    next_page = socket.assigns.page + 1
-    users = Accounts.list_users(search: socket.assigns.search, page: next_page, per_page: 20)
-
-    {:noreply, assign(socket, users: socket.assigns.users ++ users, page: next_page)}
+    %{search: search, page: page} = socket.assigns
+    {:noreply, load_users(socket, search, page + 1)}
   end
 
+  defp load_users(socket, search, page, opts \\ []) do
+    users = Accounts.list_users(search: search, page: page, per_page: @per_page)
+    found = if opts[:reset], do: users != [], else: socket.assigns.any_users?
+
+    socket
+    |> stream(:users, users, reset: Keyword.get(opts, :reset, false))
+    |> assign(search: search, page: page, any_users?: found, more?: length(users) == @per_page)
+  end
+
+  @impl true
   def render(assigns) do
     ~H"""
     <div id="admin-users" class="space-y-6">
@@ -48,7 +56,7 @@ defmodule StreamixWeb.Admin.UsersLive do
       </div>
 
       <div
-        :if={@users != []}
+        :if={@any_users?}
         class="surface-card"
       >
         <div data-admin-table="users" class="overflow-x-auto">
@@ -62,8 +70,12 @@ defmodule StreamixWeb.Admin.UsersLive do
                 <th class="px-4 py-3"><span class="sr-only">Ações</span></th>
               </tr>
             </thead>
-            <tbody>
-              <tr :for={user <- @users} class="border-b border-border/50 hover:bg-surface-hover/30">
+            <tbody id="admin-users-rows" phx-update="stream">
+              <tr
+                :for={{dom_id, user} <- @streams.users}
+                id={dom_id}
+                class="border-b border-border/50 hover:bg-surface-hover/30"
+              >
                 <td class="px-4 py-3 text-text-primary">{user.email}</td>
                 <td class="px-4 py-3"><.status_badge status={user.role.name} /></td>
                 <td class="px-4 py-3">
@@ -84,10 +96,15 @@ defmodule StreamixWeb.Admin.UsersLive do
             </tbody>
           </table>
         </div>
+        <div :if={@more?} class="border-t border-border/50 p-3 text-center">
+          <.button id="admin-users-load-more" phx-click="load_more" variant="secondary">
+            Carregar mais
+          </.button>
+        </div>
       </div>
 
       <div
-        :if={@users == []}
+        :if={not @any_users?}
         class="rounded-lg border border-dashed border-border bg-surface/50 p-8 text-center"
       >
         <.icon name="hero-users" class="mx-auto mb-3 size-10 text-text-muted" />
