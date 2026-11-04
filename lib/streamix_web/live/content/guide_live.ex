@@ -31,7 +31,6 @@ defmodule StreamixWeb.Content.GuideLive do
        page_title: gettext("Guia de TV"),
        current_path: "/guide",
        rows: [],
-       all_rows: [],
        categories: [],
        providers: [],
        selected_category: "all",
@@ -70,20 +69,11 @@ defmodule StreamixWeb.Content.GuideLive do
     cleaned_rows = Enum.map(result.rows, &clean_row/1)
     cleaned_categories = clean_categories(result.categories, cleaned_rows)
 
-    rows =
-      TvGuide.filter(
-        cleaned_rows,
-        socket.assigns.selected_category,
-        socket.assigns.favorites_only,
-        socket.assigns.favorite_ids
-      )
-
     {:noreply,
      socket
      |> assign(
        now: DateTime.utc_now(),
-       rows: rows,
-       all_rows: cleaned_rows,
+       rows: cleaned_rows,
        categories: cleaned_categories,
        providers: result.providers,
        starts_at: result.starts_at,
@@ -99,7 +89,7 @@ defmodule StreamixWeb.Content.GuideLive do
 
     {:noreply,
      socket
-     |> assign(loading: false, rows: [], all_rows: [])
+     |> assign(loading: false, rows: [])
      |> put_flash(:error, gettext("Não foi possível atualizar o guia agora."))
      |> schedule_refresh()}
   end
@@ -154,7 +144,7 @@ defmodule StreamixWeb.Content.GuideLive do
   def handle_event("toggle_favorite", %{"id" => id}, socket) do
     with {channel_id, ""} <- Integer.parse(id),
          row when not is_nil(row) <-
-           Enum.find(socket.assigns.all_rows, &(&1.channel.id == channel_id)),
+           Enum.find(socket.assigns.rows, &(&1.channel.id == channel_id)),
          {:ok, status} <-
            Library.toggle_favorite(
              socket.assigns.current_scope.user.id,
@@ -171,15 +161,7 @@ defmodule StreamixWeb.Content.GuideLive do
           :removed -> MapSet.delete(socket.assigns.favorite_ids, channel_id)
         end
 
-      rows =
-        TvGuide.filter(
-          socket.assigns.all_rows,
-          socket.assigns.selected_category,
-          socket.assigns.favorites_only,
-          favorite_ids
-        )
-
-      {:noreply, assign(socket, favorite_ids: favorite_ids, rows: rows)}
+      {:noreply, assign(socket, favorite_ids: favorite_ids)}
     else
       _ -> {:noreply, socket}
     end

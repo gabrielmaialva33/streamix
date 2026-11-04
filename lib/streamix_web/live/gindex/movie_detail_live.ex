@@ -19,20 +19,26 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
   import StreamixWeb.Content.DetailComponents.Badges,
     only: [extension_badge: 1, rating_badge: 1, year_badge: 1]
 
-  def mount(%{"id" => movie_id} = params, _session, socket) do
-    user_id = socket.assigns.current_scope.user.id
+  @impl true
+  def mount(_params, _session, socket) do
+    {:ok, assign(socket, user_id: socket.assigns.current_scope.user.id)}
+  end
+
+  @impl true
+  def handle_params(%{"id" => movie_id} = params, _uri, socket) do
+    user_id = socket.assigns.user_id
     return_to = ReturnPath.safe(params["return_to"])
 
     case Streamix.Catalog.get_movie(movie_id) do
       nil ->
-        {:ok,
+        {:noreply,
          socket
          |> put_flash(:error, "Filme não encontrado")
          |> push_navigate(to: ~p"/gindex/movies")}
 
       movie ->
         if is_nil(movie.gindex_path) do
-          {:ok,
+          {:noreply,
            socket
            |> put_flash(:error, "Filme não pertence ao GIndex")
            |> push_navigate(to: ~p"/gindex/movies")}
@@ -53,13 +59,13 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
             |> assign(display_title: display_title)
             |> assign(source_badges: SourceBadges.badges(movie))
             |> assign(is_favorite: is_favorite)
-            |> assign(user_id: user_id)
 
-          {:ok, socket}
+          {:noreply, socket}
         end
     end
   end
 
+  @impl true
   def handle_event("play_movie", _, socket) do
     {:noreply,
      redirect(socket,
@@ -85,6 +91,7 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
     {:noreply, assign(socket, is_favorite: FavoriteState.preserve_boolean(is_favorite, result))}
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-background">

@@ -4,6 +4,8 @@ defmodule StreamixWeb.BillingLiveTest do
   import Phoenix.LiveViewTest
 
   alias Streamix.Billing
+  alias Streamix.Billing.Invoice
+  alias Streamix.Repo
 
   describe "billing portal" do
     setup :register_and_log_in_user
@@ -28,8 +30,20 @@ defmodule StreamixWeb.BillingLiveTest do
         starts_at: DateTime.utc_now(:second)
       })
 
+      Repo.insert!(%Invoice{
+        user_id: user.id,
+        plan_id: plan.id,
+        provider: "stripe",
+        status: "paid",
+        amount_due_cents: 123_456,
+        amount_paid_cents: 123_456,
+        currency: "USD"
+      })
+
       {:ok, view, html} = live(conn, ~p"/billing")
 
+      assert html =~ "US$ 1.234,56"
+      refute html =~ "R$ 1.234,56"
       assert html =~ "Billing Premium"
       assert html =~ "Status Ativo"
       assert has_element?(view, "#billing-page")

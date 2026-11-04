@@ -3,10 +3,12 @@ defmodule StreamixWeb.PlansLive do
 
   import StreamixWeb.App.Premium
 
+  import StreamixWeb.Billing.Formatting, only: [format_price: 2]
+
   alias Streamix.Billing
-  alias StreamixWeb.Helpers.Money
   alias StreamixWeb.ReturnPath
 
+  @impl true
   def mount(params, _session, socket) do
     plans = Billing.list_active_plans()
 
@@ -33,6 +35,7 @@ defmodule StreamixWeb.PlansLive do
     {:ok, socket}
   end
 
+  @impl true
   def handle_event("checkout", %{"plan_id" => plan_id}, socket) do
     with %{user: user} <- socket.assigns.current_scope,
          plan <- Billing.get_plan!(plan_id),
@@ -83,6 +86,7 @@ defmodule StreamixWeb.PlansLive do
     end
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div id="plans-page" class="space-y-6 pb-12">
@@ -273,8 +277,6 @@ defmodule StreamixWeb.PlansLive do
 
   defp subscription_state(nil), do: "none"
   defp subscription_state(_subscription), do: "active"
-
-  defp format_price(price_cents, currency), do: Money.format(price_cents, currency)
 
   defp status_label("active"), do: "Ativo"
   defp status_label("trialing"), do: "Em teste"

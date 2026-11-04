@@ -9,6 +9,7 @@ defmodule StreamixWeb.Home.Carousel do
   import StreamixWeb.Content.NavigationComponents
   import StreamixWeb.Content.DetailComponents.Badges, only: [rating_badge: 1]
   import StreamixWeb.CoreComponents
+  import StreamixWeb.Content.FavoriteComponents, only: [favorite_item: 1]
   import StreamixWeb.Home.Cards
   import StreamixWeb.Home.Helpers
 
@@ -107,14 +108,32 @@ defmodule StreamixWeb.Home.Carousel do
     """
   end
 
-  def render_content_carousel(assigns) do
+  attr :items, :list, required: true
+  attr :progress_map, :map, default: %{}
+  attr :favorites_map, :any, default: MapSet.new()
+  attr :type, :atom, required: true
+  attr :title, :string, required: true
+  attr :carousel_id, :any, default: :auto
+  attr :see_more_path, :any, default: :auto
+  attr :icon, :string, default: nil
+
+  def content_carousel(assigns) do
     assigns =
       assigns
-      |> assign_new(:carousel_id, fn -> build_carousel_id(assigns.type, assigns[:title]) end)
-      |> assign_new(:see_more_path, fn -> get_see_more_path(assigns.type, assigns.items) end)
-      |> assign_new(:icon, fn -> nil end)
-      |> assign_new(:progress_map, fn -> %{} end)
-      |> assign_new(:favorites_map, fn -> MapSet.new() end)
+      |> assign(
+        :carousel_id,
+        if(assigns.carousel_id == :auto,
+          do: build_carousel_id(assigns.type, assigns.title),
+          else: assigns.carousel_id
+        )
+      )
+      |> assign(
+        :see_more_path,
+        if(assigns.see_more_path == :auto,
+          do: get_see_more_path(assigns.type, assigns.items),
+          else: assigns.see_more_path
+        )
+      )
 
     ~H"""
     <div class="render-lazy">
@@ -151,7 +170,7 @@ defmodule StreamixWeb.Home.Carousel do
           >
             <%= case @type do %>
               <% :movies -> %>
-                <.render_movie_card
+                <.movie_card
                   :for={{movie, idx} <- Enum.with_index(@items)}
                   movie={movie}
                   is_favorite={MapSet.member?(@favorites_map, movie.id)}
@@ -159,7 +178,7 @@ defmodule StreamixWeb.Home.Carousel do
                   class={if idx >= 6, do: "hidden sm:block", else: ""}
                 />
               <% :series -> %>
-                <.render_series_card
+                <.series_card
                   :for={{series, idx} <- Enum.with_index(@items)}
                   series={series}
                   is_favorite={MapSet.member?(@favorites_map, series.id)}
@@ -192,12 +211,16 @@ defmodule StreamixWeb.Home.Carousel do
     """
   end
 
-  def render_ai_trending_section(assigns) do
-    assigns =
-      assigns
-      |> assign_new(:progress_map, fn -> %{} end)
-      |> assign_new(:favorites_map, fn -> MapSet.new() end)
+  attr :items, :list, required: true
+  attr :progress_map, :map, default: %{}
+  attr :favorites_map, :any, default: MapSet.new()
+  attr :genre_filters, :list, required: true
+  attr :period_filters, :list, required: true
+  attr :selected_genre, :any, default: nil
+  attr :selected_period, :any, default: nil
+  attr :ai_powered, :boolean, default: true
 
+  def ai_trending_section(assigns) do
     ~H"""
     <div class="render-lazy">
       <.section_header
@@ -218,7 +241,7 @@ defmodule StreamixWeb.Home.Carousel do
           data-carousel-track
           class="media-shelf-track"
         >
-          <.render_movie_card
+          <.movie_card
             :for={{movie, idx} <- Enum.with_index(@items)}
             movie={movie}
             is_favorite={MapSet.member?(@favorites_map, movie.id)}
@@ -236,12 +259,14 @@ defmodule StreamixWeb.Home.Carousel do
     """
   end
 
-  def render_ai_series_section(assigns) do
-    assigns =
-      assigns
-      |> assign_new(:progress_map, fn -> %{} end)
-      |> assign_new(:favorites_map, fn -> MapSet.new() end)
+  attr :items, :list, required: true
+  attr :progress_map, :map, default: %{}
+  attr :favorites_map, :any, default: MapSet.new()
+  attr :genre_filters, :list, required: true
+  attr :selected_genre, :any, default: nil
+  attr :ai_powered, :boolean, default: true
 
+  def ai_series_section(assigns) do
     ~H"""
     <div class="render-lazy">
       <.section_header
@@ -259,7 +284,7 @@ defmodule StreamixWeb.Home.Carousel do
           data-carousel-track
           class="media-shelf-track"
         >
-          <.render_series_card
+          <.series_card
             :for={{series, idx} <- Enum.with_index(@items)}
             series={series}
             is_favorite={MapSet.member?(@favorites_map, series.id)}
@@ -277,7 +302,12 @@ defmodule StreamixWeb.Home.Carousel do
     """
   end
 
-  def render_ai_channels_section(assigns) do
+  attr :items, :list, required: true
+  attr :category_filters, :list, required: true
+  attr :selected_category, :any, default: nil
+  attr :ai_powered, :boolean, default: true
+
+  def ai_channels_section(assigns) do
     ~H"""
     <div class="render-lazy">
       <.section_header
@@ -307,7 +337,10 @@ defmodule StreamixWeb.Home.Carousel do
     """
   end
 
-  def render_top_10(assigns) do
+  attr :items, :list, required: true
+  attr :title, :string, required: true
+
+  def top_10(assigns) do
     ~H"""
     <div class="render-lazy">
       <.section_header
@@ -330,6 +363,9 @@ defmodule StreamixWeb.Home.Carousel do
     </div>
     """
   end
+
+  attr :movie, :map, required: true
+  attr :rank, :integer, required: true
 
   def top_10_card(assigns) do
     assigns =
@@ -393,9 +429,11 @@ defmodule StreamixWeb.Home.Carousel do
     """
   end
 
-  def see_more_card(assigns) do
-    assigns = assign_new(assigns, :class, fn -> nil end)
+  attr :path, :string, required: true
+  attr :type, :atom, required: true
+  attr :class, :any, default: nil
 
+  def see_more_card(assigns) do
     card_class =
       case assigns.type do
         :channels -> "aspect-video w-[150px] lg:w-[176px]"

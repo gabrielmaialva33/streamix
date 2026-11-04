@@ -10,6 +10,29 @@ defmodule StreamixWeb.App.Filters do
   alias Phoenix.LiveView.JS
   alias StreamixWeb.Content.HelperComponents
 
+  @doc "Content-type filter with a stable surface ID and optional paginated count."
+  attr :prefix, :string, required: true
+  attr :type, :string, required: true
+  attr :current, :string, required: true
+  attr :label, :string, required: true
+  attr :count, :integer, default: 0
+  attr :hide_zero, :boolean, default: true
+  attr :has_more, :boolean, default: false
+
+  def filter_button(assigns) do
+    ~H"""
+    <.filter_chip
+      id={"#{@prefix}-filter-#{@type}"}
+      active={@current == @type}
+      label={@label}
+      count={if !@hide_zero || @count > 0, do: @count}
+      count_suffix={if @has_more, do: "+", else: ""}
+      phx-click="filter"
+      phx-value-type={@type}
+    />
+    """
+  end
+
   attr :active, :boolean, default: false
   attr :label, :string, required: true
   attr :count, :integer, default: nil

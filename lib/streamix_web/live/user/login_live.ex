@@ -1,6 +1,7 @@
 defmodule StreamixWeb.User.LoginLive do
   use StreamixWeb, :live_view
 
+  @impl true
   def mount(_params, _session, socket) do
     email = Phoenix.Flash.get(socket.assigns.flash, :email)
     form = to_form(%{"email" => email, "remember_me" => "true"}, as: "user")
@@ -14,6 +15,7 @@ defmodule StreamixWeb.User.LoginLive do
     {:ok, socket}
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <%!-- Logo (mobile only — desktop has branded panel) --%>

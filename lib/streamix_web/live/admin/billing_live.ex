@@ -3,9 +3,11 @@ defmodule StreamixWeb.Admin.BillingLive do
 
   import StreamixWeb.AdminComponents
 
-  alias Streamix.Billing
-  alias StreamixWeb.Helpers.Money
+  import StreamixWeb.Billing.Formatting, only: [format_price: 2]
 
+  alias Streamix.Billing
+
+  @impl true
   def mount(_params, _session, socket) do
     socket =
       socket
@@ -15,6 +17,7 @@ defmodule StreamixWeb.Admin.BillingLive do
     {:ok, socket}
   end
 
+  @impl true
   def handle_event("reconcile_stripe", _params, socket) do
     case Billing.reconcile_stripe_subscriptions() do
       {:ok, _summary} ->
@@ -28,6 +31,7 @@ defmodule StreamixWeb.Admin.BillingLive do
     end
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div id="admin-billing" class="space-y-6">
@@ -130,6 +134,4 @@ defmodule StreamixWeb.Admin.BillingLive do
     |> assign(payments: Billing.list_recent_payments())
     |> assign(invoices: Billing.list_recent_invoices())
   end
-
-  defp format_price(cents, currency), do: Money.format(cents, currency)
 end

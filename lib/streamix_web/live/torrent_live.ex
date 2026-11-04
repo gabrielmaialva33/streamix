@@ -24,6 +24,7 @@ defmodule StreamixWeb.TorrentLive do
 
   @per_page 48
 
+  @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_scope.user
     user_id = user.id
@@ -48,6 +49,7 @@ defmodule StreamixWeb.TorrentLive do
     {:ok, socket}
   end
 
+  @impl true
   def handle_params(params, _url, socket) do
     search = params["search"] || ""
 
@@ -62,6 +64,7 @@ defmodule StreamixWeb.TorrentLive do
     {:noreply, socket}
   end
 
+  @impl true
   def handle_event("search", %{"search" => search}, socket) do
     path = if search == "", do: ~p"/torrent", else: ~p"/torrent?search=#{search}"
     {:noreply, push_patch(socket, to: path)}
@@ -104,6 +107,7 @@ defmodule StreamixWeb.TorrentLive do
     end
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="space-y-6">

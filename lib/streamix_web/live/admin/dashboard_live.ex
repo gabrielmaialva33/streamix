@@ -5,6 +5,7 @@ defmodule StreamixWeb.Admin.DashboardLive do
 
   alias Streamix.{Accounts, Billing, Operations}
 
+  @impl true
   def mount(_params, _session, socket) do
     stats = Billing.admin_stats()
     recent_users = Accounts.list_users(page: 1, per_page: 10)
@@ -29,12 +30,14 @@ defmodule StreamixWeb.Admin.DashboardLive do
     {:ok, socket}
   end
 
+  @impl true
   def handle_async(:operations, {:ok, runtime}, socket) do
     {:noreply, assign(socket, operations: Map.merge(socket.assigns.operations, runtime))}
   end
 
   def handle_async(:operations, {:exit, _reason}, socket), do: {:noreply, socket}
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div id="admin-dashboard" class="space-y-6">

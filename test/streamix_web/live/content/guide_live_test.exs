@@ -119,6 +119,12 @@ defmodule StreamixWeb.Content.GuideLiveTest do
 
       assert has_element?(favorites_view, "#guide-channel-#{channel.id}")
       refute has_element?(favorites_view, "#guide-channel-#{other.id}")
+
+      render_click(favorites_view, "toggle_favorite", %{"id" => to_string(channel.id)})
+      refute has_element?(favorites_view, "#guide-channel-#{channel.id}")
+
+      render_click(favorites_view, "toggle_favorite", %{"id" => to_string(channel.id)})
+      assert has_element?(favorites_view, "#guide-channel-#{channel.id}")
     end
 
     test "moves the timeline through bounded URL state", %{conn: conn} do

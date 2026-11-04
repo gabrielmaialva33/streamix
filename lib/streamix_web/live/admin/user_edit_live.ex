@@ -5,6 +5,7 @@ defmodule StreamixWeb.Admin.UserEditLive do
 
   alias Streamix.{Accounts, Billing}
 
+  @impl true
   def mount(%{"id" => id}, _session, socket) do
     user = Accounts.get_user!(id)
     active_sub = Billing.active_subscription_for_user(user)
@@ -27,6 +28,7 @@ defmodule StreamixWeb.Admin.UserEditLive do
     {:ok, socket}
   end
 
+  @impl true
   def handle_event("save_role", %{"user" => %{"role" => role_name}}, socket) do
     case Accounts.update_user_role(socket.assigns.user, role_name) do
       {:ok, updated_user} ->
@@ -112,6 +114,7 @@ defmodule StreamixWeb.Admin.UserEditLive do
     end
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div id="admin-user-edit" class="space-y-6">

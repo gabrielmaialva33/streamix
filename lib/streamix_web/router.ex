@@ -498,7 +498,7 @@ defmodule StreamixWeb.Router do
       live "/history", HistoryLive, :index
 
       # GIndex content (GDrive)
-      live "/gindex/movies", Gindex.MoviesLive, :index
+      get "/gindex/movies", __MODULE__, :redirect_gindex_movies, alias: false
       live "/gindex/movies/:id", Gindex.MovieDetailLive, :show
       live "/gindex/series/:id", Gindex.SeriesDetailLive, :show
       live "/gindex/animes/:id", Gindex.AnimeDetailLive, :show
@@ -570,6 +570,24 @@ defmodule StreamixWeb.Router do
     pipe_through :metrics
     get "/metrics", MetricsController, :scrape
   end
+
+  # This legacy catalog entrypoint needs only the authenticated browser pipeline,
+  # not a mounted LiveView. Keep its 302 and optional search query.
+  @impl Plug
+  def call(conn, :redirect_gindex_movies) do
+    path =
+      case conn.params["search"] do
+        search when is_binary(search) and search != "" ->
+          "/browse/movies?source=gindex&" <> URI.encode_query(search: search)
+
+        _ ->
+          "/browse/movies?source=gindex"
+      end
+
+    Phoenix.Controller.redirect(conn, to: path)
+  end
+
+  def call(conn, opts), do: super(conn, opts)
 
   # Only player requests benefit from opening the stream-proxy connection.
   # Sending this on login/catalog pages paid a TCP+TLS handshake that those

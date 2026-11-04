@@ -15,6 +15,36 @@ defmodule StreamixWeb.FavoritesLiveTest do
   describe "mount" do
     setup :register_and_log_in_user
 
+    test "filter URL survives direct entry, patches and returning to an earlier filter", %{
+      conn: conn,
+      user: user
+    } do
+      provider = provider_fixture(user)
+      movie = movie_fixture(provider, %{name: "Filtro Filme", title: "Filtro Filme"})
+      channel = channel_fixture(provider, %{name: "Filtro Canal"})
+      movie_favorite_fixture(user, movie)
+      favorite_fixture(user, channel)
+
+      {:ok, view, _html} = live(conn, "/favorites?type=movie")
+      assert has_element?(view, "#favorites-grid", "Filtro Filme")
+      refute has_element?(view, "#favorites-grid", "Filtro Canal")
+
+      view |> element("#favorites-filter-live_channel") |> render_click()
+      assert_patch(view, "/favorites?type=live_channel")
+      assert has_element?(view, "#favorites-grid", "Filtro Canal")
+      refute has_element?(view, "#favorites-grid", "Filtro Filme")
+
+      render_patch(view, "/favorites?type=movie")
+      assert has_element?(view, "#favorites-grid", "Filtro Filme")
+      refute has_element?(view, "#favorites-grid", "Filtro Canal")
+
+      render_patch(view, "/favorites?type=invalid")
+      assert has_element?(view, "#favorites-grid", "Filtro Filme")
+      assert has_element?(view, "#favorites-grid", "Filtro Canal")
+      view |> element("#favorites-filter-all") |> render_click()
+      assert_patch(view, "/favorites")
+    end
+
     test "renders favorites page with empty state", %{conn: conn} do
       {:ok, view, html} = live(conn, ~p"/favorites")
 

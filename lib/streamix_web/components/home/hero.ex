@@ -13,7 +13,12 @@ defmodule StreamixWeb.Home.Hero do
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Helpers.ImageProxy
 
-  def render_hero_section(assigns) do
+  attr :featured, :any, required: true
+  attr :current_scope, :any, default: nil
+  attr :featured_favorite, :boolean, default: false
+  attr :stats, :map, default: %{}
+
+  def hero_section(assigns) do
     ~H"""
     <%!--
       iOS Safari: use dvh so the home hero doesn't resize awkwardly when the
@@ -43,6 +48,8 @@ defmodule StreamixWeb.Home.Hero do
     </div>
     """
   end
+
+  attr :featured, :any, required: true
 
   def hero_background(assigns) do
     {_type, content} = assigns.featured
@@ -227,6 +234,10 @@ defmodule StreamixWeb.Home.Hero do
     </div>
     """
   end
+
+  attr :featured, :any, required: true
+  attr :current_scope, :any, default: nil
+  attr :featured_favorite, :boolean, default: false
 
   def hero_content(assigns) do
     {type, content} = assigns.featured
