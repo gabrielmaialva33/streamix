@@ -14,6 +14,8 @@ defmodule StreamixWeb.Api.V1.EpgController do
   """
   use StreamixWeb, :controller
 
+  action_fallback StreamixWeb.Api.V1.FallbackController
+
   import StreamixWeb.Helpers.Params,
     only: [bounded_integer: 4, parse_positive_integer: 1]
 

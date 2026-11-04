@@ -5,6 +5,8 @@ defmodule StreamixWeb.Api.V1.AuthController do
   """
   use StreamixWeb, :controller
 
+  action_fallback StreamixWeb.Api.V1.FallbackController
+
   alias Streamix.Accounts
   alias StreamixWeb.Api.V1.Response
 
@@ -113,7 +115,7 @@ defmodule StreamixWeb.Api.V1.AuthController do
       Accounts.delete_user_session_token(token)
     end
 
-    send_resp(conn, 204, "")
+    send_resp(conn, :no_content, "")
   end
 
   defp ip_info(conn) do

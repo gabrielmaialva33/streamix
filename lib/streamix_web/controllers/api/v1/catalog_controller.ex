@@ -7,6 +7,8 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   """
 
   use StreamixWeb, :controller
+
+  action_fallback StreamixWeb.Api.V1.FallbackController
   use OpenApiSpex.ControllerSpecs
 
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]

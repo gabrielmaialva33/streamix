@@ -6,6 +6,8 @@ defmodule StreamixWeb.Api.V1.HistoryController do
   """
   use StreamixWeb, :controller
 
+  action_fallback StreamixWeb.Api.V1.FallbackController
+
   import StreamixWeb.Helpers.Params,
     only: [
       bounded_integer: 4,
@@ -75,7 +77,7 @@ defmodule StreamixWeb.Api.V1.HistoryController do
         end
 
       {:error, :invalid_content_id} ->
-        invalid_id(conn)
+        {:error, :invalid_id, "Invalid history id"}
 
       {:error, :invalid_content_type} ->
         Response.error(
@@ -104,15 +106,11 @@ defmodule StreamixWeb.Api.V1.HistoryController do
     case parse_positive_integer(id) do
       {:ok, entry_id} ->
         Library.remove_from_watch_history(user.id, entry_id)
-        send_resp(conn, 204, "")
+        send_resp(conn, :no_content, "")
 
       :error ->
-        invalid_id(conn)
+        {:error, :invalid_id, "Invalid history id"}
     end
-  end
-
-  defp invalid_id(conn) do
-    Response.error(conn, :bad_request, "invalid_id", "Invalid history id")
   end
 
   defp progress_attrs(params) do

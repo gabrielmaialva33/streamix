@@ -12,6 +12,8 @@ defmodule StreamixWeb.Api.V1.SubtitlesController do
 
   use StreamixWeb, :controller
 
+  action_fallback StreamixWeb.Api.V1.FallbackController
+
   alias Streamix.Subtitles
   alias StreamixWeb.Api.V1.Response
 
@@ -32,11 +34,11 @@ defmodule StreamixWeb.Api.V1.SubtitlesController do
     conn
     |> put_resp_content_type("text/vtt")
     |> put_resp_header("cache-control", "public, max-age=86400")
-    |> send_resp(200, Subtitles.shift_vtt(vtt, offset_ms))
+    |> send_resp(:ok, Subtitles.shift_vtt(vtt, offset_ms))
   end
 
-  defp respond(conn, :not_found, _offset_ms), do: send_resp(conn, 204, "")
-  defp respond(conn, :disabled, _offset_ms), do: send_resp(conn, 204, "")
+  defp respond(conn, :not_found, _offset_ms), do: send_resp(conn, :no_content, "")
+  defp respond(conn, :disabled, _offset_ms), do: send_resp(conn, :no_content, "")
 
   # Keep the lang tag to a safe shape (e.g. "pt-BR", "en"); fall back to
   # pt-BR. Avoids passing arbitrary input down to the providers.

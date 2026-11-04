@@ -13,6 +13,8 @@ defmodule StreamixWeb.Api.V1.StatusController do
 
   use StreamixWeb, :controller
 
+  action_fallback StreamixWeb.Api.V1.FallbackController
+
   @doc """
   GET /api/v1/providers/status
 

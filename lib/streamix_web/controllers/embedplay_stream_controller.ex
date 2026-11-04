@@ -202,22 +202,28 @@ defmodule StreamixWeb.EmbedplayStreamController do
 
     conn
     |> cors()
-    |> put_status(status)
-    |> json(%{error: %{code: code, message: "Playback request could not be completed"}})
+    |> StreamixWeb.Api.V1.Response.error(
+      status,
+      Atom.to_string(code),
+      "Playback request could not be completed"
+    )
   end
 
-  defp error_status(:provider_disabled), do: {503, :provider_disabled}
+  defp error_status(:provider_disabled), do: {:service_unavailable, :provider_disabled}
   # Resolution is systematically failing upstream, so playback is refused
   # before a resolution starts. 503 because a health probe clears it.
-  defp error_status(:provider_degraded), do: {503, :provider_degraded}
-  defp error_status(:provider_capacity_exhausted), do: {503, :provider_capacity_exhausted}
-  defp error_status(:upstream_timeout), do: {504, :upstream_timeout}
-  defp error_status(:missing_token), do: {400, :missing_token}
-  defp error_status(:invalid_token), do: {401, :invalid_token}
-  defp error_status(:token_expired), do: {401, :token_expired}
-  defp error_status(:unauthorized), do: {403, :token_unauthorized}
-  defp error_status(:subscription_required), do: {403, :subscription_required}
-  defp error_status(:unsafe_url), do: {403, :unsafe_url}
+  defp error_status(:provider_degraded), do: {:service_unavailable, :provider_degraded}
+
+  defp error_status(:provider_capacity_exhausted),
+    do: {:service_unavailable, :provider_capacity_exhausted}
+
+  defp error_status(:upstream_timeout), do: {:gateway_timeout, :upstream_timeout}
+  defp error_status(:missing_token), do: {:bad_request, :missing_token}
+  defp error_status(:invalid_token), do: {:unauthorized, :invalid_token}
+  defp error_status(:token_expired), do: {:unauthorized, :token_expired}
+  defp error_status(:unauthorized), do: {:forbidden, :token_unauthorized}
+  defp error_status(:subscription_required), do: {:forbidden, :subscription_required}
+  defp error_status(:unsafe_url), do: {:forbidden, :unsafe_url}
   # `stream_unavailable` means the resolver could not extract a source on this
   # attempt. The causes observed were environmental — one offered host answered
   # 403 from this server, another yielded no independently fetchable manifest —
@@ -225,22 +231,22 @@ defmodule StreamixWeb.EmbedplayStreamController do
   # here would mark a recoverable title dead. It gets
   # its own code purely so the failure is countable, and 503 rather than 502
   # because the condition is expected to clear.
-  defp error_status(:no_source_available), do: {503, :no_source_available}
-  defp error_status(:resource_not_found), do: {404, :resource_not_found}
-  defp error_status(:upstream_not_found), do: {404, :upstream_not_found}
-  defp error_status(:invalid_range), do: {416, :invalid_range}
-  defp error_status(:playback_restart_required), do: {409, :playback_restart_required}
+  defp error_status(:no_source_available), do: {:service_unavailable, :no_source_available}
+  defp error_status(:resource_not_found), do: {:not_found, :resource_not_found}
+  defp error_status(:upstream_not_found), do: {:not_found, :upstream_not_found}
+  defp error_status(:invalid_range), do: {:requested_range_not_satisfiable, :invalid_range}
+  defp error_status(:playback_restart_required), do: {:conflict, :playback_restart_required}
   # The resolver no longer recognises the upstream page, so every title fails
   # alike until its adapter is fixed. 503 because that is expected to clear,
   # and a code of its own so the systemic case is never read as per-title.
-  defp error_status(:resolver_outdated), do: {503, :resolver_outdated}
+  defp error_status(:resolver_outdated), do: {:service_unavailable, :resolver_outdated}
   # The upstream challenged the resolver's browser. It is never solved, so the
   # title cannot play now; 503 because the upstream may stop challenging.
-  defp error_status(:challenge_required), do: {503, :challenge_required}
+  defp error_status(:challenge_required), do: {:service_unavailable, :challenge_required}
   # The movie's current source is HLS on the MP4 route or MP4 on the HLS
   # route. The player already chose its engine from the URL, so the bytes are
   # not cross-served. Catalog URLs name the MP4 route, the only format the
   # usable upstream delivers; an HLS-only resolution has no playable URL.
-  defp error_status(:stream_format_mismatch), do: {409, :stream_format_mismatch}
-  defp error_status(_), do: {502, :stream_resolution_failed}
+  defp error_status(:stream_format_mismatch), do: {:conflict, :stream_format_mismatch}
+  defp error_status(_), do: {:bad_gateway, :stream_resolution_failed}
 end

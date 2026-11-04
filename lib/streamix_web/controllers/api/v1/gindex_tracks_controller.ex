@@ -14,6 +14,8 @@ defmodule StreamixWeb.Api.V1.GindexTracksController do
 
   use StreamixWeb, :controller
 
+  action_fallback StreamixWeb.Api.V1.FallbackController
+
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
   alias Streamix.Gindex

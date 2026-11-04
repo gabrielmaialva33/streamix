@@ -18,6 +18,8 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   """
   use StreamixWeb, :controller
 
+  action_fallback StreamixWeb.Api.V1.FallbackController
+
   import StreamixWeb.Helpers.Params,
     only: [bounded_integer: 4, parse_positive_integer: 1]
 
@@ -108,7 +110,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
       limit = parse_int(params["limit"], 10)
       similar_for_source(conn, user, collection, content_id, limit)
     else
-      :error -> invalid_id(conn)
+      :error -> {:error, :invalid_id, "Invalid content id"}
       :invalid_content_type -> invalid_content_type(conn)
     end
   end
@@ -335,8 +337,4 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   end
 
   defp parse_int(value, default), do: bounded_integer(value, default, 1, 50)
-
-  defp invalid_id(conn) do
-    Response.error(conn, :bad_request, "invalid_id", "Invalid content id")
-  end
 end

@@ -7,6 +7,8 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
   """
   use StreamixWeb, :controller
 
+  action_fallback StreamixWeb.Api.V1.FallbackController
+
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
   alias StreamixWeb.Api.V1.Response
 
@@ -79,7 +81,7 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
            Streamix.Providers.get_user_provider(user.id, provider_id) do
       case Streamix.Providers.delete_provider(provider) do
         {:ok, _} ->
-          send_resp(conn, 204, "")
+          send_resp(conn, :no_content, "")
 
         {:error, _} ->
           Response.error(
@@ -91,7 +93,7 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
       end
     else
       :error ->
-        invalid_id(conn)
+        {:error, :invalid_id, "Invalid provider id"}
 
       nil ->
         Response.error(conn, :not_found, "not_found", "Provider not found")
@@ -125,15 +127,11 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
       end
     else
       :error ->
-        invalid_id(conn)
+        {:error, :invalid_id, "Invalid provider id"}
 
       nil ->
         Response.error(conn, :not_found, "not_found", "Provider not found")
     end
-  end
-
-  defp invalid_id(conn) do
-    Response.error(conn, :bad_request, "invalid_id", "Invalid provider id")
   end
 
   # Serializer — never exposes credentials

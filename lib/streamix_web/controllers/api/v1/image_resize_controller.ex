@@ -24,6 +24,8 @@ defmodule StreamixWeb.Api.V1.ImageResizeController do
 
   use StreamixWeb, :controller
 
+  action_fallback StreamixWeb.Api.V1.FallbackController
+
   alias StreamixWeb.Api.V1.Response
   alias StreamixWeb.UrlValidator
 
@@ -61,7 +63,7 @@ defmodule StreamixWeb.Api.V1.ImageResizeController do
       |> put_resp_content_type("image/jpeg")
       |> put_resp_header("cache-control", "public, max-age=2592000, immutable")
       |> put_resp_header("x-image-source", Atom.to_string(source))
-      |> send_resp(200, bytes)
+      |> send_resp(:ok, bytes)
     else
       {:error, :unsafe_url} ->
         Response.error(conn, :bad_request, "invalid_url", "invalid url")

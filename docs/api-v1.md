@@ -9,6 +9,17 @@ and signed playback URLs. Its executable OpenAPI 3 contract is served by the app
 The OpenAPI document currently covers all 19 routes owned by `CatalogController`. Other `/api/v1` resource families
 keep their existing controller contracts until they are added to the executable specification.
 
+## Error compatibility
+
+All API v1 failures use `{"error":{"code":"...","message":"..."}}`, with optional
+error metadata such as `retry_after`. Existing endpoint codes, messages and HTTP statuses are preserved.
+Framework-generated JSON failures under `/api` (including unknown routes and unhandled exceptions)
+now use this envelope instead of `{"errors":{"detail":"..."}}`; clients reading `errors.detail`
+should read `error.message` instead. Internal exception details are never returned.
+The Stripe webhook rejection message is now the constant `Webhook could not be processed`.
+Telemetry, Bearer authentication, favorites and Embedplay keep their existing wire format.
+Success responses retain their endpoint-specific shape, including favorites creation's `data`/`meta.version`.
+
 ## Authentication
 
 Send the configured integration key only in the request header:

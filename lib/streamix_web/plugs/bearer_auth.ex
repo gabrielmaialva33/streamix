@@ -31,6 +31,7 @@ defmodule StreamixWeb.Plugs.BearerAuth do
   import Plug.Conn
 
   alias Streamix.Accounts
+  alias StreamixWeb.Api.V1.Response
 
   @type opts :: [optional: boolean()]
 
@@ -102,10 +103,7 @@ defmodule StreamixWeb.Plugs.BearerAuth do
     )
 
     conn
-    |> put_status(:unauthorized)
-    |> Phoenix.Controller.json(%{
-      error: %{code: "unauthorized", message: "Invalid or missing Bearer token"}
-    })
+    |> Response.error(:unauthorized, "unauthorized", "Invalid or missing Bearer token")
     |> halt()
   end
 end
