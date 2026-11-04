@@ -1,4 +1,4 @@
-defmodule Streamix.Iptv.ProvidersFacadeTest do
+defmodule Streamix.Providers.LifecycleTest do
   use Streamix.DataCase, async: true
   alias Streamix.Iptv.{Provider, ProviderDrive}
 

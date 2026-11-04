@@ -1,4 +1,4 @@
-defmodule Streamix.Iptv.TorrentMoviesFacadeTest do
+defmodule Streamix.Catalog.TorrentMoviesTest do
   use Streamix.DataCase, async: true
 
   import Streamix.AccountsFixtures

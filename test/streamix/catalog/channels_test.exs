@@ -1,4 +1,4 @@
-defmodule Streamix.Iptv.ChannelsFacadeTest do
+defmodule Streamix.Catalog.ChannelsTest do
   use Streamix.DataCase, async: true
 
   alias Streamix.Iptv.Channels

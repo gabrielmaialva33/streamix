@@ -1,4 +1,4 @@
-defmodule Streamix.Iptv.TrackMetadataFacadeTest do
+defmodule Streamix.Catalog.TrackMetadataTest do
   use Streamix.DataCase, async: true
 
   alias Streamix.Gindex

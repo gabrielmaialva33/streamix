@@ -1,4 +1,4 @@
-defmodule Streamix.Iptv.HistoryFacadeTest do
+defmodule Streamix.Library.HistoryTest do
   use Streamix.DataCase, async: true
   use Oban.Testing, repo: Streamix.Repo
   alias Streamix.Iptv.{Episode, Season}

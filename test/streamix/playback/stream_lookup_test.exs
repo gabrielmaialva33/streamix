@@ -1,4 +1,4 @@
-defmodule Streamix.Iptv.StreamLookupFacadeTest do
+defmodule Streamix.Playback.StreamLookupTest do
   use Streamix.DataCase, async: true
   alias Streamix.Iptv.{Episode, Season}
 

@@ -1,4 +1,4 @@
-defmodule Streamix.Iptv.GindexStreamFacadeTest do
+defmodule Streamix.Playback.GindexStreamTest do
   use Streamix.DataCase, async: true
   alias Streamix.Iptv.{Episode, Season}
 

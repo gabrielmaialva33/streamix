@@ -1,4 +1,4 @@
-defmodule Streamix.Iptv.CatalogFacadeTest do
+defmodule Streamix.Catalog.BrowseTest do
   use Streamix.DataCase, async: true
 
   import Streamix.AccountsFixtures

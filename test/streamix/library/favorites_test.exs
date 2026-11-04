@@ -1,4 +1,4 @@
-defmodule Streamix.Iptv.FavoritesFacadeTest do
+defmodule Streamix.Library.FavoritesTest do
   use Streamix.DataCase, async: true
 
   import Streamix.AccountsFixtures

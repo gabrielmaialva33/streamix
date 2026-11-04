@@ -1,4 +1,4 @@
-defmodule Streamix.Iptv.SyncFacadeTest do
+defmodule Streamix.Providers.SyncTest do
   use Streamix.DataCase, async: true
 
   import Streamix.AccountsFixtures
