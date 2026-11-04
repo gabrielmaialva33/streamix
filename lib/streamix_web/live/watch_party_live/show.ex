@@ -10,6 +10,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   import StreamixWeb.WatchPartyComponents
 
   alias Streamix.{Accounts, Billing, Library, WatchParty}
+  alias Streamix.SafeLog
   alias StreamixWeb.PlayerComponents.Metadata
   alias StreamixWeb.{PlayerSourceFailover, Presence}
   alias StreamixWeb.WatchPartyLive.Status
@@ -114,7 +115,9 @@ defmodule StreamixWeb.WatchPartyLive.Show do
          |> redirect(to: ~p"/plans?upgrade=screens")}
 
       {:error, reason} ->
-        Logger.warning("Watch Party playback reservation failed: #{inspect(reason)}")
+        Logger.warning("[WatchParty] playback reservation failed",
+          reason: SafeLog.redact_inspect(reason)
+        )
 
         {:ok,
          socket
@@ -153,7 +156,10 @@ defmodule StreamixWeb.WatchPartyLive.Show do
         })
 
       {:error, reason} ->
-        Logger.warning("Watch Party token refresh failed: #{inspect(reason)}")
+        Logger.warning("[WatchParty] token refresh failed",
+          reason: SafeLog.redact_inspect(reason)
+        )
+
         socket
     end
   end
@@ -172,7 +178,10 @@ defmodule StreamixWeb.WatchPartyLive.Show do
 
       {:error, reason} ->
         release_playback_session(playback_session)
-        Logger.warning("Watch Party stream resolution failed: #{inspect(reason)}")
+
+        Logger.warning("[WatchParty] stream resolution failed",
+          reason: SafeLog.redact_inspect(reason)
+        )
 
         {:ok,
          socket
@@ -203,7 +212,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
 
       {:error, reason} ->
         release_playback_session(playback_session)
-        Logger.warning("Watch Party join failed: #{inspect(reason)}")
+        Logger.warning("Watch Party join failed", reason: SafeLog.redact_inspect(reason))
 
         {:ok,
          socket
@@ -255,7 +264,10 @@ defmodule StreamixWeb.WatchPartyLive.Show do
       {:error, reason} ->
         WatchParty.leave_room(room.id, user.id, connection_id)
         release_playback_session(playback_session)
-        Logger.warning("Watch Party presence tracking failed: #{inspect(reason)}")
+
+        Logger.warning("Watch Party presence tracking failed",
+          reason: SafeLog.redact_inspect(reason)
+        )
 
         {:ok,
          socket

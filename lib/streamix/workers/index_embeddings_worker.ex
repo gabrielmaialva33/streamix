@@ -28,6 +28,8 @@ defmodule Streamix.Workers.IndexEmbeddingsWorker do
 
   require Logger
 
+  alias Streamix.SafeLog
+
   @impl Oban.Worker
   def timeout(_job), do: :timer.minutes(150)
 
@@ -44,7 +46,10 @@ defmodule Streamix.Workers.IndexEmbeddingsWorker do
         :ok
 
       {:error, reason} ->
-        Logger.error("[IndexEmbeddings] Failed to set up semantic search: #{inspect(reason)}")
+        Logger.error("[IndexEmbeddings] Failed to set up semantic search",
+          reason: SafeLog.redact_inspect(reason)
+        )
+
         {:error, {:setup_failed, reason}}
     end
   end
@@ -111,7 +116,10 @@ defmodule Streamix.Workers.IndexEmbeddingsWorker do
         :ok
 
       {:error, reason} ->
-        Logger.error("[IndexEmbeddings] Failed to index movies: #{inspect(reason)}")
+        Logger.error("[IndexEmbeddings] Failed to index movies",
+          reason: SafeLog.redact_inspect(reason)
+        )
+
         {:error, reason}
     end
   end
@@ -129,7 +137,10 @@ defmodule Streamix.Workers.IndexEmbeddingsWorker do
         :ok
 
       {:error, reason} ->
-        Logger.error("[IndexEmbeddings] Failed to index series: #{inspect(reason)}")
+        Logger.error("[IndexEmbeddings] Failed to index series",
+          reason: SafeLog.redact_inspect(reason)
+        )
+
         {:error, reason}
     end
   end
@@ -147,7 +158,10 @@ defmodule Streamix.Workers.IndexEmbeddingsWorker do
         :ok
 
       {:error, reason} ->
-        Logger.error("[IndexEmbeddings] Failed to index animes: #{inspect(reason)}")
+        Logger.error("[IndexEmbeddings] Failed to index animes",
+          reason: SafeLog.redact_inspect(reason)
+        )
+
         {:error, reason}
     end
   end

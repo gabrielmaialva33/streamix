@@ -10,6 +10,7 @@ defmodule StreamixWeb.Content.Detail do
   alias Streamix.Access
   alias Streamix.AI
   alias Streamix.Library
+  alias Streamix.SafeLog
   alias Streamix.Torrent
   alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.Content.TitleIdentity
@@ -195,12 +196,18 @@ defmodule StreamixWeb.Content.Detail do
         |> Enum.take(@similar_limit)
 
       {:error, reason} ->
-        Logger.debug("[#{log_context}] SemanticSearch unavailable: #{inspect(reason)}")
+        Logger.debug("[#{log_context}] SemanticSearch unavailable",
+          reason: SafeLog.redact_inspect(reason)
+        )
+
         []
     end
   rescue
     error ->
-      Logger.warning("[#{log_context}] Unexpected error in similar lookup: #{inspect(error)}")
+      Logger.warning("[#{log_context}] Unexpected error in similar lookup",
+        reason: SafeLog.redact_inspect(error)
+      )
+
       []
   end
 end

@@ -36,6 +36,7 @@ defmodule Streamix.Workers.Torrent.TargetedSearchWorker do
     ]
 
   alias Streamix.Providers
+  alias Streamix.SafeLog
   alias Streamix.Torrent
 
   require Logger
@@ -96,7 +97,9 @@ defmodule Streamix.Workers.Torrent.TargetedSearchWorker do
         :ok
 
       {:error, reason} ->
-        Logger.warning("[Torrent TargetedSearch] stats refresh failed: #{inspect(reason)}")
+        Logger.warning("[Torrent TargetedSearch] stats refresh failed",
+          reason: SafeLog.redact_inspect(reason)
+        )
     end
   end
 

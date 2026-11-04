@@ -21,6 +21,8 @@ defmodule Streamix.Workers.CleanupOrphanedDataWorker do
 
   require Logger
 
+  alias Streamix.SafeLog
+
   @default_batch_size 5_000
   @snooze_seconds 5
 
@@ -51,7 +53,7 @@ defmodule Streamix.Workers.CleanupOrphanedDataWorker do
         end
 
       {:error, reason} ->
-        Logger.error("[CleanupWorker] Batch failed: #{inspect(reason)}")
+        Logger.error("[CleanupWorker] Batch failed", reason: SafeLog.redact_inspect(reason))
         {:error, reason}
     end
   end

@@ -13,6 +13,7 @@ defmodule Streamix.TvAppRelease do
   require Logger
 
   alias Streamix.Cache
+  alias Streamix.SafeLog
 
   @cache_key "tv_app:release:latest"
   @cache_ttl 3_600
@@ -56,7 +57,10 @@ defmodule Streamix.TvAppRelease do
         defaults()
 
       {:error, reason} ->
-        Logger.warning("[TvAppRelease] GitHub fetch failed: #{inspect(reason)}")
+        Logger.warning("[TvAppRelease] GitHub fetch failed",
+          reason: SafeLog.redact_inspect(reason)
+        )
+
         defaults()
     end
   end

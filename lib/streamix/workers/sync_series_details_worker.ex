@@ -33,6 +33,7 @@ defmodule Streamix.Workers.SyncSeriesDetailsWorker do
 
   alias Streamix.Iptv.{Episode, Season, Series}
   alias Streamix.Repo
+  alias Streamix.SafeLog
 
   require Logger
 
@@ -113,11 +114,14 @@ defmodule Streamix.Workers.SyncSeriesDetailsWorker do
         {[series | successes], failures}
 
       {:ok, {:error, series, reason}}, {successes, failures} ->
-        Logger.debug("[SyncSeriesDetails] Failed series #{series.id}: #{inspect(reason)}")
+        Logger.debug("[SyncSeriesDetails] Failed series #{series.id}",
+          reason: SafeLog.redact_inspect(reason)
+        )
+
         {successes, [series | failures]}
 
       {:exit, reason}, {successes, failures} ->
-        Logger.warning("[SyncSeriesDetails] Task exit: #{inspect(reason)}")
+        Logger.warning("[SyncSeriesDetails] Task exit", reason: SafeLog.redact_inspect(reason))
         {successes, failures}
     end)
   end

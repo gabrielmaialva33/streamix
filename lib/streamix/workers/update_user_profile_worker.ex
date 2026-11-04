@@ -23,6 +23,7 @@ defmodule Streamix.Workers.UpdateUserProfileWorker do
   require Logger
 
   alias Streamix.AI
+  alias Streamix.SafeLog
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"user_id" => user_id}}) do
@@ -42,7 +43,10 @@ defmodule Streamix.Workers.UpdateUserProfileWorker do
         :ok
 
       {:error, reason} ->
-        Logger.warning("[UpdateUserProfile] Failed for user #{user_id}: #{inspect(reason)}")
+        Logger.warning("[UpdateUserProfile] Failed for user #{user_id}",
+          reason: SafeLog.redact_inspect(reason)
+        )
+
         {:error, reason}
     end
   end

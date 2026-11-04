@@ -24,6 +24,7 @@ defmodule Streamix.Torrent.Reaper do
 
   require Logger
 
+  alias Streamix.SafeLog
   alias Streamix.Torrent.{Client, StreamSession}
 
   @registry Streamix.Torrent.StreamRegistry
@@ -73,7 +74,7 @@ defmodule Streamix.Torrent.Reaper do
         :ok
 
       {:error, reason} ->
-        Logger.debug("[Torrent.Reaper] list failed: #{inspect(reason)}")
+        Logger.debug("[Torrent.Reaper] list failed", reason: SafeLog.redact_inspect(reason))
         :error
     end
   end
@@ -107,7 +108,9 @@ defmodule Streamix.Torrent.Reaper do
           :ok
 
         {:error, reason} ->
-          Logger.warning("[Torrent.Reaper] failed to remove #{info_hash}: #{inspect(reason)}")
+          Logger.warning("[Torrent.Reaper] failed to remove #{info_hash}",
+            reason: SafeLog.redact_inspect(reason)
+          )
       end
     end
   end

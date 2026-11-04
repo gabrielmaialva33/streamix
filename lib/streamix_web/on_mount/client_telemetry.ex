@@ -10,6 +10,7 @@ defmodule StreamixWeb.OnMount.ClientTelemetry do
   import Phoenix.LiveView, only: [attach_hook: 4]
 
   alias Streamix.Qoe
+  alias Streamix.SafeLog
 
   require Logger
 
@@ -50,7 +51,7 @@ defmodule StreamixWeb.OnMount.ClientTelemetry do
         :ok
 
       {:error, reason} ->
-        Logger.warning("[QoE] LiveView sample rejected: #{inspect(reason)}")
+        Logger.warning("[QoE] LiveView sample rejected", reason: SafeLog.redact_inspect(reason))
     end
   rescue
     error ->

@@ -22,6 +22,7 @@ defmodule Streamix.AI.Embeddings do
   require Logger
 
   alias Streamix.AI.{Gemini, Nvidia}
+  alias Streamix.SafeLog
 
   @doc """
   Returns the current embedding dimensions based on configured provider.
@@ -140,7 +141,9 @@ defmodule Streamix.AI.Embeddings do
         result
 
       {:error, reason} ->
-        Logger.warning("[Embeddings] #{primary} failed: #{inspect(reason)}, trying #{fallback}")
+        Logger.warning("[Embeddings] #{primary} failed, trying #{fallback}",
+          reason: SafeLog.redact_inspect(reason)
+        )
 
         if provider_enabled?(fallback) and dimensions_compatible?(primary, fallback) do
           do_embed(text, fallback, opts)

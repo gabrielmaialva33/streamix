@@ -21,6 +21,7 @@ defmodule Streamix.Gindex.MetadataProbe do
   require Logger
 
   alias Streamix.Gindex
+  alias Streamix.SafeLog
 
   # Cap how much of the file we feed to ffprobe. For MP4 the moov box
   # is at the start in 99 % of web-optimized files; for MKV the seek
@@ -243,8 +244,11 @@ defmodule Streamix.Gindex.MetadataProbe do
 
   defp persist(type, id, tracks) do
     case Streamix.Catalog.put_media_track_metadata(type, id, tracks) do
-      :ok -> :ok
-      {:error, reason} -> Logger.warning("MetadataProbe persist failed: #{inspect(reason)}")
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("MetadataProbe persist failed", reason: SafeLog.redact_inspect(reason))
     end
   end
 

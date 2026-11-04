@@ -7,6 +7,7 @@ defmodule Streamix.AI.UserAnalytics.Profile do
   alias Streamix.AI.Qdrant
   alias Streamix.Cache
   alias Streamix.Library
+  alias Streamix.SafeLog
 
   @user_profile_collection "user_profiles"
   @recommendations_ttl 3600
@@ -42,7 +43,10 @@ defmodule Streamix.AI.UserAnalytics.Profile do
           {:ok, profile_vector}
 
         {:error, reason} ->
-          Logger.warning("[UserAnalytics] Failed to store profile: #{inspect(reason)}")
+          Logger.warning("[UserAnalytics] Failed to store profile",
+            reason: SafeLog.redact_inspect(reason)
+          )
+
           {:error, {:profile_store_failed, reason}}
       end
     end

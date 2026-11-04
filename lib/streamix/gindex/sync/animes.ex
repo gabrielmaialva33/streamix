@@ -6,6 +6,7 @@ defmodule Streamix.Gindex.Sync.Animes do
   alias Streamix.Gindex.Scraper
   alias Streamix.Gindex.Sync.FolderBatch
   alias Streamix.Gindex.Sync.Persistence
+  alias Streamix.SafeLog
 
   require Logger
 
@@ -32,12 +33,15 @@ defmodule Streamix.Gindex.Sync.Animes do
         {:ok, stats}
 
       {:error, reason} ->
-        Logger.warning("[GIndex Sync] Failed to scrape animes: #{inspect(reason)}")
+        Logger.warning("[GIndex Sync] Failed to scrape animes",
+          reason: SafeLog.redact_inspect(reason)
+        )
+
         {:error, reason}
     end
   rescue
     error ->
-      Logger.error("[GIndex Sync] Error during anime sync: #{inspect(error)}")
+      Logger.error("[GIndex Sync] Error during anime sync", reason: SafeLog.redact_inspect(error))
       {:error, error}
   end
 
@@ -62,7 +66,10 @@ defmodule Streamix.Gindex.Sync.Animes do
     end)
   rescue
     error ->
-      Logger.error("[GIndex Sync] Failed to upsert anime batch: #{inspect(error)}")
+      Logger.error("[GIndex Sync] Failed to upsert anime batch",
+        reason: SafeLog.redact_inspect(error)
+      )
+
       {:error, error}
   end
 end

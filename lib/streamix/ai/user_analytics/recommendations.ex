@@ -12,6 +12,7 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
   alias Streamix.AI.UserAnalytics.Profile
   alias Streamix.Cache
   alias Streamix.Library
+  alias Streamix.SafeLog
 
   @recommendations_ttl 3600
   @content_collections ~w(movies series)
@@ -126,7 +127,9 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
         # for this user" (legit) from "Qdrant is sad" (incident). The
         # outer caller still gets a list so the UI degrades to "no
         # recommendations" instead of crashing.
-        Logger.warning("[UserAnalytics] Recommendation search failed: #{inspect(reason)}")
+        Logger.warning("[UserAnalytics] Recommendation search failed",
+          reason: SafeLog.redact_inspect(reason)
+        )
 
         :telemetry.execute(
           [:streamix, :recommendations, :search_failed],

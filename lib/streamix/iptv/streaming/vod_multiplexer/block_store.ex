@@ -15,6 +15,8 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockStore do
 
   require Logger
 
+  alias Streamix.SafeLog
+
   @table __MODULE__.Index
   @meta_table __MODULE__.Meta
   @default_max_bytes 20 * 1_024 * 1_024 * 1_024
@@ -73,7 +75,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockStore do
     else
       {:error, reason} = error ->
         File.rm(temporary_path)
-        Logger.warning("[VodMux] could not cache block: #{inspect(reason)}")
+        Logger.warning("[VodMux] could not cache block", reason: SafeLog.redact_inspect(reason))
         error
     end
   end
@@ -122,7 +124,10 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockStore do
         :ok
 
       {:error, reason} ->
-        Logger.warning("[VodMux] could not persist total size: #{inspect(reason)}")
+        Logger.warning("[VodMux] could not persist total size",
+          reason: SafeLog.redact_inspect(reason)
+        )
+
         :ok
     end
   end

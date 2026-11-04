@@ -9,6 +9,7 @@ defmodule Streamix.Gindex.Sync do
   alias Streamix.Gindex.Scraper
   alias Streamix.Gindex.Sync.{Animes, Movies, Paths, Series}
   alias Streamix.Providers
+  alias Streamix.SafeLog
 
   require Logger
 
@@ -234,7 +235,9 @@ defmodule Streamix.Gindex.Sync do
   end
 
   defp provider_state_error(stage, reason) do
-    Logger.error("[GIndex Sync] Could not #{stage} provider state update: #{inspect(reason)}")
+    Logger.error("[GIndex Sync] Could not #{stage} provider state update",
+      reason: SafeLog.redact_inspect(reason)
+    )
 
     {:error, {:provider_state_update_failed, reason}}
   end

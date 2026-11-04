@@ -11,6 +11,7 @@ defmodule StreamixWeb.Content.GuideLive do
     only: [filter_chip: 1, filter_strip: 1, provider_dropdown: 1, search_input: 1]
 
   alias Streamix.Library
+  alias Streamix.SafeLog
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Content.TvGuide
   alias StreamixWeb.Helpers.ImageProxy
@@ -94,7 +95,7 @@ defmodule StreamixWeb.Content.GuideLive do
 
   def handle_async({:load_guide, generation}, {:exit, reason}, socket)
       when generation == socket.assigns.load_generation do
-    Logger.warning("[TvGuide] load failed: #{inspect(reason)}")
+    Logger.warning("[TvGuide] load failed", reason: SafeLog.redact_inspect(reason))
 
     {:noreply,
      socket

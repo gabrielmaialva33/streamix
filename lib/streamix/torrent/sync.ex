@@ -13,6 +13,7 @@ defmodule Streamix.Torrent.Sync do
 
   alias Streamix.Providers
   alias Streamix.Repo
+  alias Streamix.SafeLog
   alias Streamix.Torrent.{Catalog, Sources, TorrentStream}
   alias Streamix.Torrent.Sources.HtmlScraper
 
@@ -129,7 +130,10 @@ defmodule Streamix.Torrent.Sync do
       max_pages: max_pages
     }
 
-    Logger.error("[Torrent Sync] page safety limit exceeded: #{inspect(reason)}")
+    Logger.error("[Torrent Sync] page safety limit exceeded",
+      reason: SafeLog.redact_inspect(reason)
+    )
+
     {:error, {:page_limit_exceeded, reason}}
   end
 
@@ -255,7 +259,10 @@ defmodule Streamix.Torrent.Sync do
       next_page: next_page
     }
 
-    Logger.error("[Torrent Sync] invalid pagination cursor: #{inspect(reason)}")
+    Logger.error("[Torrent Sync] invalid pagination cursor",
+      reason: SafeLog.redact_inspect(reason)
+    )
+
     {:error, {:invalid_pagination, reason}}
   end
 
@@ -572,7 +579,10 @@ defmodule Streamix.Torrent.Sync do
   end
 
   defp provider_state_error(stage, reason) do
-    Logger.error("[Torrent Sync] Could not #{stage} provider state update: #{inspect(reason)}")
+    Logger.error("[Torrent Sync] Could not #{stage} provider state update",
+      reason: SafeLog.redact_inspect(reason)
+    )
+
     {:error, {:provider_state_update_failed, reason}}
   end
 

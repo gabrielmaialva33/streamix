@@ -20,6 +20,8 @@ defmodule Streamix.DnsKeeper do
   use GenServer
   require Logger
 
+  alias Streamix.SafeLog
+
   @nameservers [{1, 1, 1, 1}, {1, 0, 0, 1}, {8, 8, 8, 8}]
   @refresh_interval :timer.seconds(30)
 
@@ -49,7 +51,10 @@ defmodule Streamix.DnsKeeper do
     end
   rescue
     error ->
-      Logger.warning("[DnsKeeper] failed to reapply nameservers: #{inspect(error)}")
+      Logger.warning("[DnsKeeper] failed to reapply nameservers",
+        reason: SafeLog.redact_inspect(error)
+      )
+
       :ok
   end
 
