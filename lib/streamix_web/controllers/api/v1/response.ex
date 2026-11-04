@@ -13,14 +13,15 @@ defmodule StreamixWeb.Api.V1.Response do
   @spec error(Plug.Conn.t(), Plug.Conn.status(), String.t(), String.t(), keyword() | map()) ::
           Plug.Conn.t()
   def error(conn, status, code, message, extra \\ []) do
-    error =
-      extra
-      |> Map.new()
-      |> Map.merge(%{code: code, message: message})
-
     conn
     |> put_status(status)
-    |> Phoenix.Controller.json(%{error: error})
+    |> Phoenix.Controller.json(error_body(code, message, extra))
+  end
+
+  @doc "Builds the same envelope for controller and endpoint errors."
+  @spec error_body(String.t(), String.t(), keyword() | map()) :: map()
+  def error_body(code, message, extra \\ []) do
+    %{error: extra |> Map.new() |> Map.merge(%{code: code, message: message})}
   end
 
   @spec internal_error(

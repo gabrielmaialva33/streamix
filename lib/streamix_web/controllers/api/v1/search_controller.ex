@@ -19,6 +19,65 @@ defmodule StreamixWeb.Api.V1.SearchController do
   """
   use StreamixWeb, :controller
 
+  use OpenApiSpex.ControllerSpecs
+
+  action_fallback StreamixWeb.Api.V1.FallbackController
+
+  alias StreamixWeb.Api.V1.Operations
+
+  operation :movies,
+            Operations.build(
+              "search.movies",
+              "Search movies with text fallback",
+              "MovieSearchResponse",
+              parameters: [
+                Operations.query(:q),
+                Operations.query(:limit, :integer),
+                Operations.query(:min_score, :number)
+              ],
+              errors: [:service_unavailable]
+            )
+
+  operation :series,
+            Operations.build(
+              "search.series",
+              "Search series with text fallback",
+              "SeriesSearchResponse",
+              parameters: [
+                Operations.query(:q),
+                Operations.query(:limit, :integer),
+                Operations.query(:min_score, :number)
+              ],
+              errors: [:service_unavailable]
+            )
+
+  operation :similar,
+            Operations.build(
+              "search.similar",
+              "Find similar public titles",
+              "SimilarSearchResponse",
+              parameters: [
+                Operations.path(:collection),
+                Operations.path(:id, :integer),
+                Operations.query(:limit, :integer)
+              ],
+              errors: [:not_found, :service_unavailable]
+            )
+
+  operation :status,
+            Operations.build(
+              "search.status",
+              "Get semantic search readiness",
+              "SearchStatusResponse"
+            )
+
+  operation :info,
+            Operations.build(
+              "search.info",
+              "Get semantic search configuration",
+              "SearchInfoResponse"
+            )
+
   import StreamixWeb.Helpers.Params,
     only: [bounded_integer: 4, parse_positive_integer: 1]
 

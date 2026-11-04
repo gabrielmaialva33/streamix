@@ -18,6 +18,64 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   """
   use StreamixWeb, :controller
 
+  use OpenApiSpex.ControllerSpecs
+
+  action_fallback StreamixWeb.Api.V1.FallbackController
+
+  alias StreamixWeb.Api.V1.Operations
+
+  operation :index,
+            Operations.build(
+              "recommendations.index",
+              "Get personalized recommendations",
+              "RecommendationsResponse",
+              parameters: [Operations.query(:type), Operations.query(:limit, :integer)],
+              security: Operations.authenticated(),
+              errors: [:payment_required, :service_unavailable]
+            )
+
+  operation :similar,
+            Operations.build(
+              "recommendations.similar",
+              "Find similar visible titles",
+              "SimilarRecommendationsResponse",
+              parameters: [
+                Operations.path(:id, :integer),
+                Operations.query(:type),
+                Operations.query(:limit, :integer)
+              ],
+              security: Operations.authenticated(),
+              errors: [:payment_required, :not_found, :service_unavailable]
+            )
+
+  operation :channels,
+            Operations.build(
+              "recommendations.channels",
+              "Recommend live channels",
+              "RecommendedChannelsResponse",
+              parameters: [Operations.query(:limit, :integer)],
+              security: Operations.authenticated(),
+              errors: [:payment_required]
+            )
+
+  operation :insights,
+            Operations.build(
+              "recommendations.insights",
+              "Get viewing insights",
+              "InsightsResponse",
+              security: Operations.authenticated(),
+              errors: [:payment_required]
+            )
+
+  operation :refresh,
+            Operations.build(
+              "recommendations.refresh",
+              "Recompute the viewing profile",
+              "ProfileRefreshResponse",
+              security: Operations.authenticated(),
+              errors: [:payment_required, :service_unavailable]
+            )
+
   import StreamixWeb.Helpers.Params,
     only: [bounded_integer: 4, parse_positive_integer: 1]
 
@@ -31,7 +89,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   # Pipeline `:api_v1` never sets `current_scope` (that's a browser-only
   # concern), so the previous `require_authenticated_user` always
   # 401'd. BearerAuth resolves the user from the session token the TV
-  # app is already sending and assigns it to `:current_user`.
+  # app is already sending and assigns it to `:current_scope`.
   plug StreamixWeb.Plugs.BearerAuth
   plug :require_ai_recommendations
 
@@ -47,7 +105,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   end
 
   defp personalized_recommendations(conn, params, collection) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
     limit = parse_int(params["limit"], 20)
 
     case AI.get_recommendations(user.id,
@@ -83,7 +141,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   end
 
   defp require_ai_recommendations(conn, _opts) do
-    if Billing.entitled?(conn.assigns.current_user, :ai_recommendations) do
+    if Billing.entitled?(conn.assigns.current_scope.user, :ai_recommendations) do
       conn
     else
       conn
@@ -104,11 +162,11 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   def similar(conn, %{"id" => id} = params) do
     with {:ok, content_id} <- parse_positive_integer(id),
          {:ok, collection} <- parse_content_type(Map.get(params, "type", "movies")) do
-      user = conn.assigns.current_user
+      user = conn.assigns.current_scope.user
       limit = parse_int(params["limit"], 10)
       similar_for_source(conn, user, collection, content_id, limit)
     else
-      :error -> invalid_id(conn)
+      :error -> {:error, :invalid_id, "Invalid content id"}
       :invalid_content_type -> invalid_content_type(conn)
     end
   end
@@ -156,7 +214,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   Get recommended live channels based on watch history.
   """
   def channels(conn, params) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
     limit = parse_int(params["limit"], 10)
 
     {:ok, channels} =
@@ -174,7 +232,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   Get user viewing insights and stats.
   """
   def insights(conn, _params) do
-    user_id = conn.assigns.current_user.id
+    user_id = conn.assigns.current_scope.user.id
 
     insights = AI.get_user_insights(user_id)
 
@@ -186,7 +244,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   Force refresh user profile (recalculate from watch history).
   """
   def refresh(conn, _params) do
-    user_id = conn.assigns.current_user.id
+    user_id = conn.assigns.current_scope.user.id
     Cache.invalidate_personalization(user_id)
 
     case AI.compute_user_profile(user_id) do
@@ -335,8 +393,4 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   end
 
   defp parse_int(value, default), do: bounded_integer(value, default, 1, 50)
-
-  defp invalid_id(conn) do
-    Response.error(conn, :bad_request, "invalid_id", "Invalid content id")
-  end
 end

@@ -5,11 +5,55 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   """
   use StreamixWeb, :controller
 
+  use OpenApiSpex.ControllerSpecs
+
+  action_fallback StreamixWeb.Api.V1.FallbackController
+
+  alias StreamixWeb.Api.V1.Operations
+
+  operation :index,
+            Operations.build("favorites.index", "List favorites", "FavoritesResponse",
+              security: Operations.authenticated(),
+              parameters: [Operations.query(:type), Operations.query(:limit, :integer)]
+            )
+
+  operation :create,
+            Operations.build("favorites.create", "Add a favorite", "FavoriteCreatedResponse",
+              status: :created,
+              body: "FavoriteTarget",
+              security: Operations.authenticated(),
+              errors: [:not_found, :unprocessable_entity]
+            )
+
+  operation :delete,
+            Operations.build("favorites.delete", "Remove a favorite", nil,
+              status: :no_content,
+              parameters: [Operations.path(:type), Operations.path(:content_id, :integer)],
+              security: Operations.authenticated(),
+              errors: [:unprocessable_entity]
+            )
+
+  operation :toggle,
+            Operations.build("favorites.toggle", "Toggle a favorite", "FavoriteToggleResponse",
+              body: "FavoriteTarget",
+              security: Operations.authenticated(),
+              errors: [:not_found, :unprocessable_entity]
+            )
+
+  operation :sync,
+            Operations.build(
+              "favorites.sync",
+              "Synchronize offline favorites",
+              "FavoriteSyncResponse",
+              body: "FavoriteSyncRequest",
+              security: Operations.authenticated(),
+              errors: [:request_entity_too_large]
+            )
+
   import StreamixWeb.Helpers.Params,
     only: [bounded_integer: 4, parse_positive_integer: 1]
 
   alias Streamix.Library
-  alias StreamixWeb.Api.Envelope
   alias StreamixWeb.Api.V1.Response
 
   plug StreamixWeb.Plugs.BearerAuth
@@ -22,7 +66,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   Lists user's favorites, optionally filtered by type.
   """
   def index(conn, params) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
 
     opts = [
       content_type: params["type"],
@@ -51,24 +95,22 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   Adds a favorite. Body: { "type": "movie", "content_id": 123 }
   """
   def create(conn, %{"type" => type, "content_id" => content_id}) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
 
     case playable_favorite_target(user.id, type, content_id) do
       {:ok, content_id} ->
         case Library.add_favorite(user.id, type, content_id) do
           {:ok, fav} ->
-            # New endpoints use Envelope for the canonical `%{data, meta}`
-            # shape. Older endpoints in this controller (`index/2`,
-            # `delete/2`) keep their legacy flat-map shape until a major
-            # API bump — TV apps currently parse those.
+            # Preserve the existing create envelope consumed by TV clients.
             conn
             |> put_status(:created)
-            |> json(Envelope.data(%{content_type: fav.content_type, content_id: fav.content_id}))
+            |> json(%{
+              data: %{content_type: fav.content_type, content_id: fav.content_id},
+              meta: %{version: "v1"}
+            })
 
           {:error, _changeset} ->
-            conn
-            |> put_status(:unprocessable_entity)
-            |> json(Envelope.error(:already_exists, "Already in favorites"))
+            {:error, :unprocessable_entity, "already_exists", "Already in favorites"}
         end
 
       {:error, :invalid_content_id} ->
@@ -91,12 +133,12 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   Removes a favorite by type and content_id.
   """
   def delete(conn, %{"type" => type, "content_id" => content_id}) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
 
     with true <- type in @content_types,
          {:ok, content_id} <- parse_positive_integer(content_id) do
       Library.remove_favorite(user.id, type, content_id)
-      send_resp(conn, 204, "")
+      send_resp(conn, :no_content, "")
     else
       false ->
         invalid_content_type(conn)
@@ -111,7 +153,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   Toggles a favorite. Returns { "status": "added" | "removed" }
   """
   def toggle(conn, %{"type" => type, "content_id" => content_id}) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
 
     with {:ok, content_id} <- parse_positive_integer(content_id),
          true <- favorite_or_playable?(user.id, type, content_id) do
@@ -148,7 +190,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   """
   def sync(conn, %{"operations" => operations}) when is_list(operations) do
     if length(operations) <= @max_sync_operations do
-      user = conn.assigns.current_user
+      user = conn.assigns.current_scope.user
       {operations, pre_skipped} = latest_sync_operations(operations)
       results = Enum.map(operations, &process_sync_operation(user.id, &1))
 
@@ -160,7 +202,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
     else
       Response.error(
         conn,
-        413,
+        :request_entity_too_large,
         "too_many_operations",
         "A favorites sync batch accepts at most #{@max_sync_operations} operations"
       )

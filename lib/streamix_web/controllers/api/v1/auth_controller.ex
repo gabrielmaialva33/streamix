@@ -5,6 +5,37 @@ defmodule StreamixWeb.Api.V1.AuthController do
   """
   use StreamixWeb, :controller
 
+  use OpenApiSpex.ControllerSpecs
+
+  action_fallback StreamixWeb.Api.V1.FallbackController
+
+  alias StreamixWeb.Api.V1.Operations
+
+  operation :register,
+            Operations.build("auth.register", "Register an account", "AuthTokenResponse",
+              status: :created,
+              body: "AuthCredentials",
+              security: [],
+              errors: [:unprocessable_entity]
+            )
+
+  operation :login,
+            Operations.build("auth.login", "Create a session token", "AuthTokenResponse",
+              body: "AuthCredentials",
+              security: []
+            )
+
+  operation :me,
+            Operations.build("auth.me", "Get the authenticated user", "AuthUserResponse",
+              security: Operations.bearer()
+            )
+
+  operation :logout,
+            Operations.build("auth.logout", "Invalidate the session token", nil,
+              status: :no_content,
+              security: [%{}, %{"BearerAuth" => []}]
+            )
+
   alias Streamix.Accounts
   alias StreamixWeb.Api.V1.Response
 
@@ -101,7 +132,7 @@ defmodule StreamixWeb.Api.V1.AuthController do
   Expects: Authorization: Bearer <base64_token>
   """
   def me(conn, _params) do
-    json(conn, %{user: serialize_user(conn.assigns.current_user)})
+    json(conn, %{user: serialize_user(conn.assigns.current_scope.user)})
   end
 
   @doc """
@@ -113,7 +144,7 @@ defmodule StreamixWeb.Api.V1.AuthController do
       Accounts.delete_user_session_token(token)
     end
 
-    send_resp(conn, 204, "")
+    send_resp(conn, :no_content, "")
   end
 
   defp ip_info(conn) do

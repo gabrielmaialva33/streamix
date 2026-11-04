@@ -1,6 +1,7 @@
 defmodule StreamixWeb.Api.V1.SubtitlesControllerTest do
   use StreamixWeb.ConnCase, async: false
 
+  alias OpenApiSpex.Plug.PutApiSpec
   alias Streamix.Cache
 
   defmodule StubHit do
@@ -44,6 +45,10 @@ defmodule StreamixWeb.Api.V1.SubtitlesControllerTest do
       conn
       |> put_req_header("accept", "text/vtt")
       |> get("/api/subtitles/tt0111161?lang=pt-BR")
+
+    conn
+    |> PutApiSpec.call(StreamixWeb.Api.V1.OpenApi)
+    |> OpenApiSpex.TestAssertions.assert_operation_response("subtitles.show")
 
     assert response(conn, 200) =~ "WEBVTT"
     assert response(conn, 200) =~ "00:00:01.000 --> 00:00:02.000"

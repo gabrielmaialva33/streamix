@@ -57,6 +57,10 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   byte, readahead grows for providers slow to answer, and providers are ranked by how their VOD actually plays.
 - Live HLS reuses its synthetic master playlist and prefetches the first live segment.
 - Confirmed missing VOD files are hidden for seven days, and buffering metrics count rebuffering only.
+- API framework JSON errors under `/api` now use the existing v1 `error.code` / `error.message`
+  envelope instead of `errors.detail`. Endpoint-specific errors and success payloads stay compatible.
+- Stripe webhook rejections return a constant public message; internal reasons are logged with redaction.
+
 - **Breaking:** catalog success responses now use a consistent `data` envelope and put pagination, applied filters,
   totals, and section metadata under `meta`. Error responses retain the stable `error.code` / `error.message` shape.
 - Catalog path and query parameters are now cast and validated from the executable schema before controller code runs;

@@ -13,6 +13,19 @@ defmodule StreamixWeb.Api.V1.StatusController do
 
   use StreamixWeb, :controller
 
+  use OpenApiSpex.ControllerSpecs
+
+  action_fallback StreamixWeb.Api.V1.FallbackController
+
+  alias StreamixWeb.Api.V1.Operations
+
+  operation :index,
+            Operations.build(
+              "providers.status",
+              "Get public provider health",
+              "ProviderHealthResponse"
+            )
+
   @doc """
   GET /api/v1/providers/status
 
