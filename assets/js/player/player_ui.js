@@ -1,4 +1,5 @@
 import { hasTouch } from "../core/browser_environment.js";
+import { playerOverlays } from "./player_overlays.js";
 
 /**
  * Player UI Manager
@@ -703,122 +704,31 @@ export class PlayerUI {
    * @param {string} quality - The new quality level (e.g., "720p", "Auto: 1080p")
    */
   showQualityChange(quality) {
-    // Remove existing notification
-    const existing = this.container.querySelector(".quality-toast");
-    if (existing) existing.remove();
-
-    const toast = document.createElement("div");
-    toast.className =
-      "quality-toast absolute top-4 right-4 pointer-events-none z-30 animate-fade-in-out";
-
-    // Create using DOM API for security
-    const inner = document.createElement("div");
-    inner.className =
-      "px-3 py-1.5 rounded bg-black/70 backdrop-blur-sm text-white text-sm font-medium flex items-center gap-2";
-
-    // HD icon
-    const icon = document.createElement("span");
-    icon.className = "text-xs bg-white/20 px-1 rounded";
-    icon.textContent = "HD";
-
-    const text = document.createElement("span");
-    text.textContent = quality;
-
-    inner.appendChild(icon);
-    inner.appendChild(text);
-    toast.appendChild(inner);
-    this.container.appendChild(toast);
-
-    // Remove after animation
-    setTimeout(() => toast.remove(), 2000);
+    return playerOverlays.showQualityChange.call(this, quality);
   }
 
   showAutoplayBlocked() {
-    this.hideLoading({ force: true });
-    const overlay = this.container.querySelector("#autoplay-overlay");
-    if (overlay) {
-      overlay.classList.remove("hidden");
-    }
+    return playerOverlays.showAutoplayBlocked.call(this);
   }
 
   hideAutoplayBlocked() {
-    const overlay = this.container.querySelector("#autoplay-overlay");
-    if (overlay) {
-      overlay.classList.add("hidden");
-    }
+    return playerOverlays.hideAutoplayBlocked.call(this);
   }
 
   showResumeToast(resumeSeconds, onRestart) {
-    const toast = this.container.querySelector("#resume-toast");
-    const timeText = this.container.querySelector("#resume-time-text");
-    const restartBtn = this.container.querySelector("#resume-restart-btn");
-    if (!toast) return;
-
-    if (timeText) {
-      timeText.textContent = this.formatTime(resumeSeconds);
-    }
-
-    if (restartBtn && typeof onRestart === "function") {
-      restartBtn.onclick = () => {
-        this.hideResumeToast();
-        onRestart();
-      };
-    }
-
-    toast.classList.remove("hidden");
-    const rAF = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (cb) => cb();
-    rAF(() => {
-      toast.classList.remove("opacity-0", "-translate-y-2");
-    });
-
-    if (this._resumeToastTimeout) clearTimeout(this._resumeToastTimeout);
-    this._resumeToastTimeout = setTimeout(() => {
-      this.hideResumeToast();
-    }, 5000);
+    return playerOverlays.showResumeToast.call(this, resumeSeconds, onRestart);
   }
 
   hideResumeToast() {
-    if (this._resumeToastTimeout) {
-      clearTimeout(this._resumeToastTimeout);
-      this._resumeToastTimeout = null;
-    }
-    const toast = this.container.querySelector("#resume-toast");
-    if (!toast) return;
-
-    toast.classList.add("opacity-0", "-translate-y-2");
-    setTimeout(() => {
-      toast.classList.add("hidden");
-    }, 300);
+    return playerOverlays.hideResumeToast.call(this);
   }
 
   showEndedOverlay(onReplay, onBack) {
-    const overlay = this.container.querySelector("#ended-overlay");
-    const replayBtn = this.container.querySelector("#ended-replay-btn");
-    const backBtn = this.container.querySelector("#ended-back-btn");
-    if (!overlay) return;
-
-    if (replayBtn && typeof onReplay === "function") {
-      replayBtn.onclick = () => {
-        this.hideEndedOverlay();
-        onReplay();
-      };
-    }
-
-    if (backBtn && typeof onBack === "function") {
-      backBtn.onclick = () => {
-        this.hideEndedOverlay();
-        onBack();
-      };
-    }
-
-    overlay.classList.remove("hidden");
+    return playerOverlays.showEndedOverlay.call(this, onReplay, onBack);
   }
 
   hideEndedOverlay() {
-    const overlay = this.container.querySelector("#ended-overlay");
-    if (overlay) {
-      overlay.classList.add("hidden");
-    }
+    return playerOverlays.hideEndedOverlay.call(this);
   }
 
   // ============================================
@@ -828,16 +738,18 @@ export class PlayerUI {
   destroy() {
     this.clearHideControlsTimeout();
 
+    if (this._loadingShowTimeout) {
+      clearTimeout(this._loadingShowTimeout);
+      this._loadingShowTimeout = null;
+    }
+
     // Clear loading safety timeout
     if (this._loadingSafetyTimeout) {
       clearTimeout(this._loadingSafetyTimeout);
       this._loadingSafetyTimeout = null;
     }
 
-    if (this._resumeToastTimeout) {
-      clearTimeout(this._resumeToastTimeout);
-      this._resumeToastTimeout = null;
-    }
+    playerOverlays.destroy.call(this);
 
     playerMenus.destroy.call(this);
   }
