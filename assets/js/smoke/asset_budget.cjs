@@ -12,11 +12,10 @@ const budgets = {
   cssGzip: Number(process.env.ASSET_BUDGET_CSS_GZIP || 36 * 1024),
   eagerJsGzip: Number(process.env.ASSET_BUDGET_EAGER_JS_GZIP || 64 * 1024),
   totalJsGzip: Number(process.env.ASSET_BUDGET_TOTAL_JS_GZIP || 640 * 1024),
-  // 38, not 34: warming the likely playback engine when a viewer points at a
-  // play button makes the eager bundle reference the engine loaders, and
-  // esbuild splits the code they share into a few small chunks. The bytes
-  // stay inside the gzip budgets above.
-  reachableJsFiles: Number(process.env.ASSET_BUDGET_REACHABLE_JS_FILES || 38),
+  // Shared browser predicates, async primitives and the wrapper emitter add
+  // three small chunks over the 37-file base. Keep the measured 40-file cap;
+  // byte budgets above are unchanged (the hook/wrapper extractions add no chunks).
+  reachableJsFiles: Number(process.env.ASSET_BUDGET_REACHABLE_JS_FILES || 40),
 };
 
 function gzipSize(file) {
