@@ -71,12 +71,3 @@ export function isMpegtsSupported() {
 
   return typeof mediaSource.isTypeSupported === "function";
 }
-
-/**
- * Pre-load both libraries in parallel (call when navigating to player page).
- * Non-blocking, returns immediately.
- */
-export function preloadPlayerLibs() {
-  getHls().catch(() => {});
-  getMpegts().catch(() => {});
-}

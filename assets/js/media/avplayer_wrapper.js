@@ -1607,28 +1607,3 @@ function detectAudioWithWebAudioAPI(videoElement) {
     }
   });
 }
-
-/**
- * Check if browser natively supports a specific audio codec
- */
-export function canPlayAudioCodec(codec) {
-  const video = document.createElement("video");
-  const mimeTypes = {
-    ac3: "audio/ac3",
-    eac3: "audio/eac3",
-    dts: "audio/dts",
-    aac: "audio/aac",
-    mp3: "audio/mpeg",
-    opus: "audio/opus",
-    flac: "audio/flac",
-    vorbis: 'audio/ogg; codecs="vorbis"',
-  };
-
-  const mimeType = mimeTypes[codec.toLowerCase()];
-  if (!mimeType) return true; // Unknown codec, assume supported
-
-  const result = video.canPlayType(mimeType);
-  return result === "probably" || result === "maybe";
-}
-
-export default AVPlayerWrapper;

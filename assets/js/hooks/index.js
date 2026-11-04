@@ -6,7 +6,6 @@ import ImageFallback from "./image_fallback.js";
 import Modal from "./modal.js";
 import ProgressBar from "./progress_bar.js";
 import ScrollHeader from "./scroll_header.js";
-import ThemeToggle from "./theme_toggle.js";
 
 const sharedModule = (loader) => {
   let modulePromise;
@@ -63,7 +62,6 @@ const WatchPartySync = createLazyHook(
 export default {
   BrowseScrollRestoration,
   ClientTelemetry,
-  ThemeToggle,
   TorrentSwarmGate,
   VideoPlayer,
   ProgressBar,
