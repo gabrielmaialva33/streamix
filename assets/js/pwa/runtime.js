@@ -1,4 +1,8 @@
 import {
+  isAppleTouch as isIosWebKit,
+  isStandalone as isStandalonePwa,
+} from "../core/browser_environment.js";
+import {
   clearStreamixCaches,
   fetchExpectedCacheName,
   repairPwaApp,
@@ -105,12 +109,6 @@ const showConnectionToast = (state) => {
 
 export function installPwaRuntime({ getLiveSocket }) {
   const displayModeQuery = window.matchMedia?.("(display-mode: standalone)");
-  const isIosWebKit = () =>
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  const isStandalonePwa = () =>
-    displayModeQuery?.matches === true || window.navigator.standalone === true;
-
   const applyPwaModeClasses = () => {
     const standalone = isStandalonePwa();
     const ios = isIosWebKit();

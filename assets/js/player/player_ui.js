@@ -1,3 +1,4 @@
+import { hasTouch } from "../core/browser_environment.js";
 /**
  * Player UI Manager
  *
@@ -80,7 +81,7 @@ export class PlayerUI {
     // Controls visibility state
     this.controlsVisible = true;
     this.controlsTimeout = null;
-    this.isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+    this.isTouchDevice = hasTouch();
     this.elements.controls?.classList.toggle("touch-device", this.isTouchDevice);
     this.nativeControlsMode = false;
 

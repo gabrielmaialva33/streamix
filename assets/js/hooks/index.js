@@ -1,3 +1,4 @@
+import { canHover } from "../core/browser_environment.js";
 import { createLazyHook } from "../core/lazy_hook.js";
 import BrowseScrollRestoration from "./browse_scroll_restoration.js";
 import ClientTelemetry from "./client_telemetry.js";
@@ -24,18 +25,13 @@ const namedHook = (loadModule, exportName) => async () => ({
   default: (await loadModule())[exportName],
 });
 
-const supportsHoverPreview = () => {
-  const hoverQuery = window.matchMedia?.("(hover: hover) and (pointer: fine)");
-  return hoverQuery ? hoverQuery.matches : !("ontouchstart" in window);
-};
-
 const loadCatalogHooks = sharedModule(() => import("./catalog_hooks.js"));
 const loadPlaybackHooks = sharedModule(() => import("./playback_hooks.js"));
 const loadPwaHooks = sharedModule(() => import("./pwa_hooks.js"));
 const loadWatchPartyHooks = sharedModule(() => import("./watch_party_hooks.js"));
 
 const ContentCard = createLazyHook("ContentCard", () => import("./content_card.js"), {
-  shouldLoad: supportsHoverPreview,
+  shouldLoad: canHover,
 });
 const EpgRefresh = createLazyHook("EpgRefresh", namedHook(loadCatalogHooks, "EpgRefresh"));
 const InfiniteScroll = createLazyHook(
