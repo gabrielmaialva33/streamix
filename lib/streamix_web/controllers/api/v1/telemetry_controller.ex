@@ -37,7 +37,7 @@ defmodule StreamixWeb.Api.V1.TelemetryController do
   }
   """
   def ingest(conn, params) when is_map(params) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
     {batch_id, metrics} = normalize_payload(params)
 
     if metrics == [] do

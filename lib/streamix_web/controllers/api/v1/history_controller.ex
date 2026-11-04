@@ -26,7 +26,7 @@ defmodule StreamixWeb.Api.V1.HistoryController do
   Lists user's watch history. Query params: type, limit, offset
   """
   def index(conn, params) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
 
     opts = [
       content_type: params["type"],
@@ -59,7 +59,7 @@ defmodule StreamixWeb.Api.V1.HistoryController do
   Body: { "type": "movie", "content_id": 123, "progress_seconds": 3600, "duration_seconds": 7200, "completed": false }
   """
   def upsert(conn, %{"type" => type, "content_id" => content_id} = params) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
 
     case playable_history_target(user.id, type, content_id) do
       {:ok, content_id} ->
@@ -101,7 +101,7 @@ defmodule StreamixWeb.Api.V1.HistoryController do
   Removes a single history entry.
   """
   def delete(conn, %{"id" => id}) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
 
     case parse_positive_integer(id) do
       {:ok, entry_id} ->

@@ -19,7 +19,7 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
   Lists user's private providers (excludes system providers).
   """
   def index(conn, _params) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
     providers = Streamix.Providers.list_providers(user.id)
 
     json(conn, %{
@@ -33,7 +33,7 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
   Body: { "name": "My IPTV", "url": "http://...", "username": "...", "password": "..." }
   """
   def create(conn, %{"name" => _, "url" => _, "username" => _, "password" => _} = params) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
 
     attrs = %{
       name: params["name"],
@@ -74,7 +74,7 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
   Deletes a user's private provider.
   """
   def delete(conn, %{"id" => id}) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
 
     with {:ok, provider_id} <- parse_positive_integer(id),
          provider when not is_nil(provider) <-
@@ -105,7 +105,7 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
   Triggers async sync for a user's provider.
   """
   def sync(conn, %{"id" => id}) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
 
     with {:ok, provider_id} <- parse_positive_integer(id),
          provider when not is_nil(provider) <-

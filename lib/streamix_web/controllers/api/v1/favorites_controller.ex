@@ -23,7 +23,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   Lists user's favorites, optionally filtered by type.
   """
   def index(conn, params) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
 
     opts = [
       content_type: params["type"],
@@ -52,7 +52,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   Adds a favorite. Body: { "type": "movie", "content_id": 123 }
   """
   def create(conn, %{"type" => type, "content_id" => content_id}) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
 
     case playable_favorite_target(user.id, type, content_id) do
       {:ok, content_id} ->
@@ -90,7 +90,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   Removes a favorite by type and content_id.
   """
   def delete(conn, %{"type" => type, "content_id" => content_id}) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
 
     with true <- type in @content_types,
          {:ok, content_id} <- parse_positive_integer(content_id) do
@@ -110,7 +110,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   Toggles a favorite. Returns { "status": "added" | "removed" }
   """
   def toggle(conn, %{"type" => type, "content_id" => content_id}) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
 
     with {:ok, content_id} <- parse_positive_integer(content_id),
          true <- favorite_or_playable?(user.id, type, content_id) do
@@ -147,7 +147,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   """
   def sync(conn, %{"operations" => operations}) when is_list(operations) do
     if length(operations) <= @max_sync_operations do
-      user = conn.assigns.current_user
+      user = conn.assigns.current_scope.user
       {operations, pre_skipped} = latest_sync_operations(operations)
       results = Enum.map(operations, &process_sync_operation(user.id, &1))
 

@@ -103,7 +103,7 @@ defmodule StreamixWeb.Api.V1.AuthController do
   Expects: Authorization: Bearer <base64_token>
   """
   def me(conn, _params) do
-    json(conn, %{user: serialize_user(conn.assigns.current_user)})
+    json(conn, %{user: serialize_user(conn.assigns.current_scope.user)})
   end
 
   @doc """
