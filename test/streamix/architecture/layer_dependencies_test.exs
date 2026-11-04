@@ -1,37 +1,11 @@
-defmodule Streamix.ArchitectureBoundariesTest do
+defmodule Streamix.Architecture.LayerDependenciesTest do
   use ExUnit.Case, async: true
 
-  @project_root Path.expand("../..", __DIR__)
+  @project_root Path.expand("../../..", __DIR__)
   @lib_root Path.join(@project_root, "lib")
   @domain_root Path.join(@lib_root, "streamix")
   @web_root Path.join(@lib_root, "streamix_web")
   @composition_roots [Path.join(@domain_root, "application.ex")]
-  @iptv_compatibility_facade Path.join(@domain_root, "iptv.ex")
-
-  @library_api_functions [
-    :list_favorites,
-    :list_home_favorites,
-    :favorite?,
-    :count_favorites_by_type,
-    :list_favorite_ids,
-    :count_favorites,
-    :add_favorite,
-    :remove_favorite,
-    :toggle_favorite,
-    :list_watch_history,
-    :list_home_history,
-    :list_watch_history_for_analytics,
-    :count_watch_history_by_type,
-    :add_watch_history,
-    :add_to_watch_history,
-    :update_progress,
-    :update_watch_progress,
-    :update_watch_time,
-    :remove_from_watch_history,
-    :clear_watch_history,
-    :get_watch_progress_map,
-    :get_series_progress_map
-  ]
 
   test "the web layer does not call Repo directly" do
     violations =
@@ -61,21 +35,6 @@ defmodule Streamix.ArchitectureBoundariesTest do
     """
   end
 
-  test "production callers use Library for personal-library operations" do
-    violations =
-      @lib_root
-      |> source_files()
-      |> Enum.reject(&(&1 == @iptv_compatibility_facade))
-      |> Enum.flat_map(&iptv_library_call_violations/1)
-
-    assert violations == [], """
-    Personal-library operations must use Streamix.Library; the old Streamix.Iptv
-    facade is retired.
-
-    #{format_call_violations(violations)}
-    """
-  end
-
   defp source_files(root) do
     root
     |> Path.join("**/*.ex")
@@ -85,10 +44,6 @@ defmodule Streamix.ArchitectureBoundariesTest do
 
   defp repo_call_violations(path) do
     remote_call_violations(path, [:Streamix, :Repo], :all)
-  end
-
-  defp iptv_library_call_violations(path) do
-    remote_call_violations(path, [:Streamix, :Iptv], @library_api_functions)
   end
 
   defp remote_call_violations(path, target_module, allowed_functions) do

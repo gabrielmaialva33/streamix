@@ -66,17 +66,24 @@ provider = Providers.get_provider(provider_id)
 The following tests enforce these rules:
 
 - `test/streamix/architecture/boundary_ownership_test.exs`
-  - boundaries do not depend on the broad facade;
   - public contracts do not overlap;
   - the retired `Streamix.Iptv` facade does not come back.
 - `test/streamix/architecture/application_boundary_consumers_test.exs`
   - production modules outside the IPTV implementation use the owner of every
     already-classified contract.
 - `test/streamix/architecture/application_boundaries_test.exs`
-  - the web layer uses focused boundaries instead of the broad facade.
-- `test/streamix/architecture_boundaries_test.exs`
+  - every boundary call made by the web layer is exported, and every boundary
+    is used by it.
+- `test/streamix/architecture/context_boundaries_test.exs`
+  - web and contexts reach another context only through its public module.
+- `test/streamix/architecture/layer_dependencies_test.exs`
   - web code does not call `Repo` directly and domain code does not depend on
     `StreamixWeb` outside the composition root.
+- `test/streamix/architecture/test_layout_test.exs`
+  - one module per file, and tests mirror their source paths.
+
+A call to a module that does not exist fails the build under
+`--warnings-as-errors`, so no test has to look for calls to the retired facade.
 
 ## Adding a capability
 

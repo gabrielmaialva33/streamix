@@ -23,24 +23,6 @@ defmodule Streamix.Architecture.ApplicationBoundariesTest do
     [:Streamix, :Search] => Streamix.Search
   }
 
-  test "the web layer does not depend on the broad Streamix.Iptv facade" do
-    violations =
-      @web_root
-      |> source_files()
-      |> Enum.flat_map(fn path ->
-        textual_iptv_references(path) ++ ast_iptv_references(path)
-      end)
-      |> Enum.uniq()
-      |> Enum.sort()
-
-    assert violations == [], """
-    StreamixWeb must use the focused application boundaries instead of
-    Streamix.Iptv:
-
-    #{format_violations(violations)}
-    """
-  end
-
   test "every focused boundary call made by StreamixWeb is exported" do
     calls =
       @web_root
@@ -163,44 +145,6 @@ defmodule Streamix.Architecture.ApplicationBoundariesTest do
 
   defp boundary_module(module_parts), do: Map.get(@boundary_aliases, module_parts)
 
-  defp textual_iptv_references(path) do
-    path
-    |> File.read!()
-    |> String.split("\n")
-    |> Enum.with_index(1)
-    |> Enum.flat_map(fn {line, line_number} ->
-      if Regex.match?(~r/\bStreamix\.Iptv\b|\bIptv\.|alias\s+Streamix\.\{[^}]*\bIptv\b/, line) do
-        [{relative_path(path), line_number, :textual_iptv_reference}]
-      else
-        []
-      end
-    end)
-  end
-
-  defp ast_iptv_references(path) do
-    ast = parse_file!(path)
-
-    {_ast, references} =
-      Macro.prewalk(ast, MapSet.new(), fn
-        {:__aliases__, meta, module_parts} = node, acc ->
-          if iptv_module?(module_parts) do
-            reference = {relative_path(path), meta[:line] || 0, {:iptv_module, module_parts}}
-            {node, MapSet.put(acc, reference)}
-          else
-            {node, acc}
-          end
-
-        node, acc ->
-          {node, acc}
-      end)
-
-    MapSet.to_list(references)
-  end
-
-  defp iptv_module?([:Iptv | _rest]), do: true
-  defp iptv_module?([:Streamix, :Iptv | _rest]), do: true
-  defp iptv_module?(_module_parts), do: false
-
   defp source_files(root) do
     root
     |> Path.join("**/*.ex")
@@ -215,14 +159,6 @@ defmodule Streamix.Architecture.ApplicationBoundariesTest do
   end
 
   defp relative_path(path), do: Path.relative_to(path, @project_root)
-
-  defp format_violations([]), do: "No violations."
-
-  defp format_violations(violations) do
-    Enum.map_join(violations, "\n", fn {path, line, reason} ->
-      "  - #{path}:#{line} #{inspect(reason)}"
-    end)
-  end
 
   defp format_missing_calls([]), do: "No missing calls."
 
