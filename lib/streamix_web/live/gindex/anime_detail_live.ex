@@ -20,12 +20,17 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
   @impl true
-  def mount(%{"id" => anime_id}, _session, socket) do
-    user_id = socket.assigns.current_scope.user.id
+  def mount(_params, _session, socket) do
+    {:ok, assign(socket, user_id: socket.assigns.current_scope.user.id)}
+  end
+
+  @impl true
+  def handle_params(%{"id" => anime_id}, _uri, socket) do
+    user_id = socket.assigns.user_id
 
     case Streamix.Catalog.get_gindex_anime_with_seasons(anime_id) do
       nil ->
-        {:ok,
+        {:noreply,
          socket
          |> put_flash(:error, "Anime não encontrado")
          |> push_navigate(to: ~p"/browse/animes?source=gindex")}
@@ -55,9 +60,8 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
               if(first_release_id, do: MapSet.new([first_release_id]), else: MapSet.new())
           )
           |> assign(is_favorite: is_favorite)
-          |> assign(user_id: user_id)
 
-        {:ok, socket}
+        {:noreply, socket}
     end
   end
 

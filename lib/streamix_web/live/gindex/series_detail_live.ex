@@ -22,12 +22,17 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
   @impl true
-  def mount(%{"id" => series_id}, _session, socket) do
-    user_id = socket.assigns.current_scope.user.id
+  def mount(_params, _session, socket) do
+    {:ok, assign(socket, user_id: socket.assigns.current_scope.user.id)}
+  end
+
+  @impl true
+  def handle_params(%{"id" => series_id}, _uri, socket) do
+    user_id = socket.assigns.user_id
 
     case Streamix.Catalog.get_gindex_series_with_seasons(series_id) do
       nil ->
-        {:ok,
+        {:noreply,
          socket
          |> put_flash(:error, "Série não encontrada")
          |> push_navigate(to: ~p"/browse/series?source=gindex")}
@@ -57,9 +62,8 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
               if(first_season_id, do: MapSet.new([first_season_id]), else: MapSet.new())
           )
           |> assign(is_favorite: is_favorite)
-          |> assign(user_id: user_id)
 
-        {:ok, socket}
+        {:noreply, socket}
     end
   end
 

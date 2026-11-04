@@ -20,20 +20,25 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
     only: [extension_badge: 1, rating_badge: 1, year_badge: 1]
 
   @impl true
-  def mount(%{"id" => movie_id} = params, _session, socket) do
-    user_id = socket.assigns.current_scope.user.id
+  def mount(_params, _session, socket) do
+    {:ok, assign(socket, user_id: socket.assigns.current_scope.user.id)}
+  end
+
+  @impl true
+  def handle_params(%{"id" => movie_id} = params, _uri, socket) do
+    user_id = socket.assigns.user_id
     return_to = ReturnPath.safe(params["return_to"])
 
     case Streamix.Catalog.get_movie(movie_id) do
       nil ->
-        {:ok,
+        {:noreply,
          socket
          |> put_flash(:error, "Filme não encontrado")
          |> push_navigate(to: ~p"/gindex/movies")}
 
       movie ->
         if is_nil(movie.gindex_path) do
-          {:ok,
+          {:noreply,
            socket
            |> put_flash(:error, "Filme não pertence ao GIndex")
            |> push_navigate(to: ~p"/gindex/movies")}
@@ -54,9 +59,8 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
             |> assign(display_title: display_title)
             |> assign(source_badges: SourceBadges.badges(movie))
             |> assign(is_favorite: is_favorite)
-            |> assign(user_id: user_id)
 
-          {:ok, socket}
+          {:noreply, socket}
         end
     end
   end

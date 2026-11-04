@@ -34,34 +34,26 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
       synopsis_section: 1
     ]
 
-  # Mount for /providers/:provider_id/series/:series_id/episode/:id (user
-  # provider). Must come first: the browse clause's pattern also matches
-  # these params.
   @impl true
-  def mount(
-        %{"provider_id" => _, "series_id" => series_id, "id" => episode_id} = params,
-        _session,
-        socket
-      ) do
-    user_id = socket.assigns.current_scope.user.id
-    return_to = ReturnPath.safe(params["return_to"])
-
-    Detail.with_provider(socket, :provider, params, fn provider ->
-      mount_with_provider(socket, provider, series_id, episode_id, user_id, :provider, return_to)
-    end)
+  def mount(_params, _session, socket) do
+    {:ok, assign(socket, user_id: socket.assigns.current_scope.user.id)}
   end
 
-  # Mount for /browse/series/:series_id/episode/:id (global provider)
-  def mount(%{"series_id" => series_id, "id" => episode_id} = params, _session, socket) do
-    user_id = socket.assigns.current_scope.user.id
+  @impl true
+  def handle_params(%{"series_id" => series_id, "id" => episode_id} = params, _uri, socket) do
+    mode = if Map.has_key?(params, "provider_id"), do: :provider, else: :browse
     return_to = ReturnPath.safe(params["return_to"])
+    user_id = socket.assigns.user_id
 
-    Detail.with_provider(socket, :browse, %{}, fn provider ->
-      mount_with_provider(socket, provider, series_id, episode_id, user_id, :browse, return_to)
-    end)
+    {:ok, socket} =
+      Detail.with_provider(socket, mode, params, fn provider ->
+        load_with_provider(socket, provider, series_id, episode_id, user_id, mode, return_to)
+      end)
+
+    {:noreply, socket}
   end
 
-  defp mount_with_provider(socket, provider, series_id, episode_id, user_id, mode, return_to) do
+  defp load_with_provider(socket, provider, series_id, episode_id, user_id, mode, return_to) do
     episode = Detail.get_episode_with_context!(episode_id)
     series = episode.season.series
 
@@ -72,7 +64,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
        |> put_flash(:error, "Episódio não encontrado")
        |> push_navigate(to: back_path(return_to, mode, provider, series_id))}
     else
-      mount_episode_found(socket, provider, episode, series, user_id, mode, return_to)
+      load_episode_found(socket, provider, episode, series, user_id, mode, return_to)
     end
   rescue
     Ecto.NoResultsError ->
@@ -82,7 +74,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
        |> redirect(to: ~p"/")}
   end
 
-  defp mount_episode_found(socket, provider, episode, series, user_id, mode, return_to) do
+  defp load_episode_found(socket, provider, episode, series, user_id, mode, return_to) do
     user = socket.assigns.current_scope.user
     is_favorite = Detail.favorite?(user_id, "series", series.id)
 

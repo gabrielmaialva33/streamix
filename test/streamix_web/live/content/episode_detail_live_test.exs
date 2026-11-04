@@ -27,6 +27,35 @@ defmodule StreamixWeb.Content.EpisodeDetailLiveTest do
     %{user: user, global: global}
   end
 
+  test "mount does not load route-dependent episode data" do
+    socket = %Phoenix.LiveView.Socket{
+      assigns: %{__changed__: %{}, current_scope: %{user: %{id: 42}}}
+    }
+
+    assert {:ok, mounted} = StreamixWeb.Content.EpisodeDetailLive.mount(%{}, %{}, socket)
+    assert mounted.assigns.user_id == 42
+    refute Map.has_key?(mounted.assigns, :episode)
+  end
+
+  test "patching the episode URL refreshes detail content", %{
+    conn: conn,
+    user: user,
+    global: global
+  } do
+    series = create_series!(global, %{name: "Patch Series"})
+    season = create_season!(series, 1)
+    first = create_episode!(season, global, 1, %{title: "Primeiro episódio"})
+    second = create_episode!(season, global, 2, %{title: "Segundo episódio"})
+
+    {:ok, view, _html} =
+      live(log_in_user(conn, user), "/browse/series/#{series.id}/episode/#{first.id}")
+
+    assert has_element?(view, "h1", "Primeiro episódio")
+    render_patch(view, "/browse/series/#{series.id}/episode/#{second.id}")
+    assert has_element?(view, "h1", "Segundo episódio")
+    refute has_element?(view, "h1", "Primeiro episódio")
+  end
+
   test "lists equivalent episode copies with badges, health and premium lock, and navigates on selection keeping return_to",
        %{conn: conn, user: user, global: global} do
     alt_provider =
