@@ -11,7 +11,7 @@ import { readSourceSync as readFileSync } from "./support/player_hook_source.js"
 
 // Execute the production hook methods with browser/transport boundaries supplied explicitly.
 const source = readFileSync(new URL("../hooks/video_player.js", import.meta.url), "utf8")
-  .replace(/^export const playerComposition/gm, "const playerComposition")
+  .replace(/^export const (playerComposition|playerSessionLifecycle)/gm, "const $1")
   .replace(/^import[\s\S]*?;\n/gm, "")
   .replace("export default VideoPlayer;", "globalThis.hook = VideoPlayer;");
 function harness({ intent = null, streamType = "hls" } = {}) {
