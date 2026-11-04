@@ -361,4 +361,60 @@ defmodule StreamixWeb.PlayerComponentsTest do
     assert menu_class =~ "max-w-[calc(100vw-2rem)]"
     assert menu_class =~ "-right-12 sm:right-0"
   end
+
+  test "rendered catalog container feeds the real JS capability parser without invented hints" do
+    for {content_type, extension, expected} <- [
+          {:movie, "WEBM", "webm"},
+          {:episode, "mp4", "mp4"}
+        ] do
+      html =
+        render_component(&PlayerComponents.video_player/1,
+          content: %{id: 42, title: "Synthetic", container_extension: extension},
+          content_type: content_type,
+          stream_url: "/stream/42",
+          on_close: "close_player"
+        )
+
+      document = Floki.parse_fragment!(html)
+      assert Floki.attribute(document, "#video-player-container", "data-container") == [expected]
+
+      for attribute <-
+            ~w(data-video-codec data-audio-codec data-width data-height data-bitrate data-framerate) do
+        assert Floki.attribute(document, "#video-player-container", attribute) == []
+      end
+
+      [rendered_container] =
+        Floki.attribute(document, "#video-player-container", "data-container")
+
+      dataset = %{"container" => rendered_container}
+
+      script = """
+      import { configurationFromPlayerElement } from './assets/js/player/media_capability_policy.js';
+      console.log(JSON.stringify(configurationFromPlayerElement({dataset: JSON.parse(process.argv[1])})));
+      """
+
+      {output, 0} =
+        System.cmd("node", ["--input-type=module", "-e", script, Jason.encode!(dataset)],
+          cd: Path.expand("../../..", __DIR__)
+        )
+
+      configuration = Jason.decode!(output)
+      assert configuration["video"]["contentType"] =~ "video/#{expected}"
+      assert configuration["video"]["width"] == 1920
+    end
+
+    html =
+      render_component(&PlayerComponents.video_player/1,
+        content: %{id: 43, title: "Synthetic without metadata"},
+        content_type: :movie,
+        stream_url: "/stream/43",
+        on_close: "close_player"
+      )
+
+    assert Floki.attribute(
+             Floki.parse_fragment!(html),
+             "#video-player-container",
+             "data-container"
+           ) == []
+  end
 end
