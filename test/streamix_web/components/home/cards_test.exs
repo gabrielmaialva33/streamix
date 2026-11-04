@@ -138,6 +138,18 @@ defmodule StreamixWeb.Home.CardsTest do
         recommendations: [movie]
       )
 
+    refute home_html =~ ~s(href="/browse/movies")
+
+    defaults =
+      render_component(&Carousel.content_carousel/1,
+        type: :movies,
+        title: "Filmes",
+        items: [movie]
+      )
+
+    assert defaults =~ ~s(id="carousel-movies-filmes")
+    assert defaults =~ ~s(href="/browse/movies")
+
     assert home_html =~ "media-shelf-track"
     assert home_html =~ "media-shelf-card--poster-home"
     refute home_html =~ "w-[30vw]"

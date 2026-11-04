@@ -8,6 +8,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLiveTest do
   alias Streamix.Iptv.{CatalogItem, Episode, Season, Series}
   alias Streamix.Iptv.Streaming.ProviderRuntime
   alias Streamix.Repo
+  alias StreamixWeb.Content.EpisodeDetailLive
 
   setup do
     ProviderRuntime.reset()
@@ -32,7 +33,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLiveTest do
       assigns: %{__changed__: %{}, current_scope: %{user: %{id: 42}}}
     }
 
-    assert {:ok, mounted} = StreamixWeb.Content.EpisodeDetailLive.mount(%{}, %{}, socket)
+    assert {:ok, mounted} = EpisodeDetailLive.mount(%{}, %{}, socket)
     assert mounted.assigns.user_id == 42
     refute Map.has_key?(mounted.assigns, :episode)
   end
