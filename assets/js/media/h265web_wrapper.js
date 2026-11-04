@@ -164,7 +164,7 @@ export class H265webWrapper {
     this.video.style.display = "none";
     this.mountEl.classList.remove("hidden");
 
-    log.debug("[h265web] load_media", { url, core: this.preferCore });
+    log.debug("[h265web] load_media", { core: this.preferCore });
     player.load_media(url);
 
     if (options.startTime && options.startTime > 0) {

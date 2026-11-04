@@ -258,11 +258,11 @@ export async function preloadCommonWasm({ stream_type, source_type } = {}) {
         const buffer = await response.arrayBuffer();
         const module = await WebAssembly.compile(buffer);
         preloadedWasm.set(url, module);
-        log.debug(`Pre-loaded WASM: ${url.split("/").pop()}`);
+        log.debug(`Pre-loaded WASM codec: ${codecId}`);
       }
     } catch (e) {
       // Silently fail - pre-loading is optional optimization
-      log.debug(`Pre-load failed for ${url}:`, e.message);
+      log.debug(`Pre-load failed for codec ${codecId}:`, e.message);
     }
   });
 
@@ -542,7 +542,7 @@ export class AVPlayerWrapper {
         container: this.container,
         getWasm: (type, codecId) => {
           const url = getWasmUrl(type, codecId);
-          log.debug(`getWasm: type=${type}, codecId=${codecId}, url=${url}`);
+          log.debug(`getWasm: type=${type}, codecId=${codecId}`);
           return url;
         },
         enableHardware: accelerationConfig.enableHardware,
@@ -722,7 +722,7 @@ export class AVPlayerWrapper {
 
     this.currentUrl = url;
     this._subtitleChosen = false;
-    log.debug("Loading:", url);
+    log.debug("Loading stream");
     log.debug("Load options:", options);
     log.debug("Container:", this.container);
     log.debug("Player instance:", this.player);

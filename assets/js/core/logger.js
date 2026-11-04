@@ -1,3 +1,5 @@
+import { sanitizeDiagnosticPayload } from "./diagnostic_payload.js";
+
 /**
  * Logger Wrapper
  *
@@ -51,6 +53,7 @@ export function setErrorReporter(callback) {
  * Format log message with prefix
  */
 function formatMessage(prefix, args) {
+  args = sanitizeDiagnosticPayload(args);
   if (typeof args[0] === "string") {
     return [`[${prefix}] ${args[0]}`, ...args.slice(1)];
   }

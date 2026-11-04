@@ -64,7 +64,6 @@ export class AvbridgeWrapper {
 
     this.player = await this._mod.createPlayer(opts);
     log.debug("[Avbridge] player created", {
-      url,
       strategy: this.player.getDiagnostics?.()?.strategy,
     });
 

@@ -2023,7 +2023,7 @@ const VideoPlayer = {
     }
 
     this.playerUIController.showLoading();
-    log.info("Initializing player with URL:", this.streamUrl);
+    log.info("Initializing player");
     log.debug("Streaming mode:", this.streamingMode);
     log.debug("Content type:", this.contentType);
     log.debug("Source type:", this.sourceType);
