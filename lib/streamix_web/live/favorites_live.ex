@@ -43,10 +43,21 @@ defmodule StreamixWeb.FavoritesLive do
       |> assign(counts: load_counts(user_id, show_adult))
       |> assign(sync_favorites: sync_favorites)
       |> stream(:favorites, [])
-      |> load_favorites()
 
     {:ok, socket, temporary_assigns: [loading: false]}
   end
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    {:noreply,
+     socket
+     |> assign(filter: normalize_filter(params["type"]), page: 0, end_of_list: false)
+     |> stream(:favorites, [], reset: true)
+     |> load_favorites()}
+  end
+
+  defp normalize_filter(type) when type in ~w(all live_channel movie series episode), do: type
+  defp normalize_filter(_type), do: "all"
 
   # ============================================
   # Event Handlers
@@ -55,15 +66,9 @@ defmodule StreamixWeb.FavoritesLive do
   @doc false
   @impl true
   def handle_event("filter", %{"type" => type}, socket) do
-    socket =
-      socket
-      |> assign(filter: type)
-      |> assign(page: 0)
-      |> assign(end_of_list: false)
-      |> stream(:favorites, [], reset: true)
-      |> load_favorites()
-
-    {:noreply, socket}
+    type = normalize_filter(type)
+    path = if type == "all", do: ~p"/favorites", else: ~p"/favorites?type=#{type}"
+    {:noreply, push_patch(socket, to: path)}
   end
 
   def handle_event("load_more", _, socket) do
