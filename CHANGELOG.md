@@ -9,6 +9,10 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Added
 
+- A Netflix-style player: chrome, pause screen, episodes panel, gestures and keyboard controls, a startup screen with
+  the title's cover and plain-words loading stages, and "fill screen" as the default framing on desktop and phones.
+- Playback telemetry records why a session ended (`end_reason`), why an engine was chosen (`engine_reason`) and which
+  build the browser ran (`client_revision`).
 - Provider-aware public catalog discovery through `GET /api/v1/catalog/providers`, including safe capabilities and
   synchronized counts without upstream URLs or credentials.
 - `provider_id` and `provider_type` filters across public listings, categories, featured, home, curated shelves,
@@ -46,6 +50,13 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Changed
 
+- A title whose provider has to probe its sources opens at once on a startup screen and plays when a source is named;
+  a probe that fails, or one slower than its budget while another provider has the title, moves to that provider
+  server-side, so the first try plays.
+- VOD blocks stream to the viewer while they download, a dropped upstream connection resumes from the first missing
+  byte, readahead grows for providers slow to answer, and providers are ranked by how their VOD actually plays.
+- Live HLS reuses its synthetic master playlist and prefetches the first live segment.
+- Confirmed missing VOD files are hidden for seven days, and buffering metrics count rebuffering only.
 - **Breaking:** catalog success responses now use a consistent `data` envelope and put pagination, applied filters,
   totals, and section metadata under `meta`. Error responses retain the stable `error.code` / `error.message` shape.
 - Catalog path and query parameters are now cast and validated from the executable schema before controller code runs;
@@ -125,6 +136,18 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   "Série · T1 E1" with the episode title below, and Minha lista moves the type off the poster.
 - Minha lista uses the poster grid with touch-visible actions, Histórico no longer stacks its type badge on the
   progress bar, and the Guia has compact phone rows and category chips without the "Canais |" prefix.
+
+### Fixed
+
+- A terminal playback error is recorded as an error, not as a cancelled or restarted session.
+- The first tap on a phone shows the player controls at once.
+
+### Security
+
+- `return_to` links are followed only when they point to a path on this site. Five pages accepted `/\host`, which
+  browsers treat as `//host`, so a crafted link could send a viewer to another site.
+- Logged failure reasons go through `Streamix.SafeLog`, so upstream URLs and credentials inside a reason no longer
+  reach the logs as written.
 
 ## [v0.0.1] - 2026-04-13
 

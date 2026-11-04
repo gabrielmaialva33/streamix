@@ -148,11 +148,18 @@ assets/
 
 ## Core Contexts
 
+Delivery code (controllers, LiveViews, workers) calls these modules and nothing beneath them.
+
 | Context     | Module                | Responsibility                                                  |
 |-------------|-----------------------|-----------------------------------------------------------------|
 | Accounts    | `Streamix.Accounts`   | Users, password auth, roles, session tokens, settings           |
 | Access      | `Streamix.Access`     | Permissions and role/user grants                                |
-| IPTV        | `Streamix.Iptv`       | Providers, sync, catalog access, EPG, favorites, history        |
+| Catalog     | `Streamix.Catalog`    | Movies, series, episodes, channels, categories, shelves, assets |
+| Search      | `Streamix.Search`     | Search, autocomplete, semantic discovery, TMDB lookup           |
+| Library     | `Streamix.Library`    | Favorites, watch history, playback progress                     |
+| Playback    | `Streamix.Playback`   | Playability, source selection, failover, stream URLs, proxying  |
+| Providers   | `Streamix.Providers`  | Provider lifecycle, visibility, health, sync                    |
+| Guide       | `Streamix.Guide`      | EPG sync and TV-guide queries                                   |
 | GIndex      | `Streamix.Gindex`     | Drive discovery, quota-aware ingestion, and URL resolution      |
 | Torrent     | `Streamix.Torrent`    | Torrent sources, catalog synchronization, and stream lifecycle  |
 | AI          | `Streamix.AI`         | Embeddings, semantic search, user analytics, Qdrant integration |
@@ -161,6 +168,10 @@ assets/
 | Subtitles   | `Streamix.Subtitles`  | Subtitle discovery, normalization, and conversion               |
 | Watch Party | `Streamix.WatchParty` | Rooms, playback sync, chat, presence                            |
 | Queue       | `Streamix.Queue`      | Optional RabbitMQ + Broadway execution path                     |
+
+The six IPTV boundaries (Catalog through Guide) are implemented under `Streamix.Iptv.*`, which is internal. There is
+no `Streamix.Iptv` module: the old compatibility facade was retired and a test keeps it retired. A public
+function/arity has exactly one owning boundary — see [`docs/application-boundaries.md`](docs/application-boundaries.md).
 
 ## Routes and Surfaces
 
@@ -210,11 +221,21 @@ API surfaces under `/api/v1`:
 - Keep one module per file.
 - Bind the result of `if` / `case` / `cond`; rebinding inside the block does not escape.
 - Context entrypoints should take `user_id` or `scope` first when authorization matters.
+- Logging: a constant message plus metadata. Never interpolate a reason, URL or upstream response into the message;
+  pass it as `reason: Streamix.SafeLog.redact_inspect(reason)` (URLs: `SafeLog.redact_url/1`). New metadata keys
+  must be added to the `:default_formatter` list in `config/config.exs` or they are dropped.
+- Workers live in `lib/streamix/workers/` (grouped by source in subfolders) and `use Oban.Worker`.
 
 ### Phoenix / LiveView
 
 - Current user lives at `@current_scope.user`, never `@current_user`.
-- Use `<Layouts.app flash={@flash} current_scope={@current_scope}>` for standard LiveViews.
+- Layouts come from the router: each `live_session` sets `layout:`. LiveViews do not wrap themselves in
+  `<Layouts.app>`.
+- A `return_to` parameter is only read through `StreamixWeb.ReturnPath.safe/1` and only written with
+  `StreamixWeb.ReturnPath.append/2`; never hand-roll the check.
+- `lib/streamix_web/` root holds only cross-cutting web infrastructure (endpoint, router, user_auth, stream_token,
+  presence, telemetry, gettext, locale, return_path). Everything else goes in `live/`, `controllers/`, `components/`,
+  `plugs/`, `on_mount/`, `telemetry/`, `content/` or `catalog/`.
 - Use `<.link navigate={}>` and `<.link patch={}>`, never `live_redirect` / `live_patch`.
 - Collections in LiveView must use streams, not raw list assigns with append/prepend DOM updates.
 - Use colocated hooks or `assets/js/hooks`; no inline `<script>` tags.
@@ -240,7 +261,8 @@ API surfaces under `/api/v1`:
 
 - Tailwind CSS v4 only. No `@apply`, no `tailwind.config.js`, no daisyUI rollout.
 - Frontend packages come from `assets/package.json`; remember `npm ci`.
-- The web app currently supports dark mode by default and a client-side light mode toggle.
+- The web app is dark-only. Colors come from the tokens in `assets/css/theme.css`.
+- JS conventions (module roles, imports, timers, logging, tests) live in [`assets/README.md`](assets/README.md).
 - PWA sources live in `priv/manifest.json` and `priv/sw.js`; controllers serve both with release-aware cache headers.
 
 ## Testing
@@ -250,7 +272,18 @@ API surfaces under `/api/v1`:
 - Prefer `start_supervised!/1` for processes started in tests.
 - Do not use `Process.sleep/1` when a monitored process or message assertion is possible.
 - Test rendered structure by DOM ids / stable selectors rather than fragile raw HTML text when possible.
-- Run `mix precommit` before considering work complete.
+- Run `mix precommit` before considering work complete; `mix dialyzer` and, for frontend changes,
+  `cd assets && npm run lint && npm test` are also CI gates.
+- The test database name must end in `_test` (`TEST_DATABASE_URL`), or the runtime safety guard refuses it.
+- Architecture tests in `test/streamix/architecture/` enforce boundaries, module layout and test mirroring; fix the
+  code, not the test.
+
+## Commits and Changelog
+
+- Commit subjects follow `type(scope): summary` with `type` in `feat`, `fix`, `perf`, `refactor`, `test`, `docs`,
+  `chore`, `ci`, `style`. One theme per commit; the body says why.
+- A change a user, operator or API consumer can notice gets a line under `## [Unreleased]` in `CHANGELOG.md`
+  (Added / Changed / Fixed / Security) in the same commit.
 
 ## Boundaries - Never
 
@@ -258,15 +291,13 @@ API surfaces under `/api/v1`:
 - Provider credentials are stored via `Streamix.Iptv.EncryptedField`; never log or persist plaintext passwords.
 - All Xtream calls go through `Streamix.Iptv.XtreamClient`; all GIndex HTTP calls go through
   `Streamix.Gindex.Client`.
-- **Context boundaries**: `Streamix.Iptv`, `Streamix.Gindex`, `Streamix.Torrent`, `Streamix.AI`,
-  `Streamix.Billing`, `Streamix.Qoe`, `Streamix.Subtitles`, `Streamix.WatchParty`, `Streamix.Queue`,
-  `Streamix.Accounts`, and `Streamix.Access` are the public entry points. **Never** `alias` a schema
-  or sub-module of another context from web /
-  LiveView / controller code (e.g. `alias Streamix.Iptv.Movie` is wrong — call
-  `Streamix.Iptv.get_movie!/1` instead). Same rule applies between contexts: `Access` does
-  not `alias Streamix.Iptv.Provider` — it goes through `Streamix.Iptv.get_provider/1`.
-  Internals under `Streamix.Iptv.Streaming.*`, `Streamix.Iptv.Sync.*`, `Streamix.Gindex.*`,
-  `Streamix.Torrent.*` may be reorganised at will; only the facade is stable.
+- **Context boundaries**: the modules in the Core Contexts table, plus `Streamix.Gindex`, `Streamix.Torrent`,
+  `Streamix.Embedplay` and `Streamix.Subtitles`, are the public entry points. **Never** `alias` a schema or
+  sub-module of another context from web / LiveView / controller code (e.g. `alias Streamix.Iptv.Movie` is wrong —
+  call `Streamix.Catalog.get_movie!/1` instead). Same rule applies between contexts: `Access` does not
+  `alias Streamix.Iptv.Provider` — it goes through `Streamix.Providers.get_provider/1`. Internals under
+  `Streamix.Iptv.*`, `Streamix.Gindex.*`, `Streamix.Torrent.*` may be reorganised at will; only the boundary is
+  stable. A new public function goes on the boundary that owns it — never on a second boundary.
 - Do not consume single-use IPTV tokens while resolving redirect chains. Use the existing manual redirect approach.
 - RabbitMQ is optional. Respect `RABBITMQ_ENABLED`; the default path is Oban.
 - GIndex is rate-limited hard. Keep sequential behavior where the code expects it.
