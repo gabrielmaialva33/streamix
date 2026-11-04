@@ -7,7 +7,12 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["js/**/*.js"]
+    "includes": [
+      "assets/js/**/*.js",
+      "assets/js/smoke/**/*.cjs",
+      "assets/js/smoke/**/*.mjs",
+      "priv/sw.js"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -45,5 +50,29 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["assets/js/smoke/**/*.cjs", "assets/js/smoke/**/*.mjs"],
+      "javascript": {
+        "globals": ["process", "Buffer", "__dirname", "require", "module"]
+      },
+      "formatter": {
+        "enabled": false
+      }
+    },
+    {
+      "includes": ["priv/sw.js"],
+      "javascript": {
+        "globals": ["self", "caches", "clients"]
+      },
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    }
+  ]
 }
