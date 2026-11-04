@@ -1,3 +1,7 @@
+import { createLogger } from "./logger.js";
+
+const log = createLogger("lazy_hook");
+
 const LIFECYCLE_METHODS = new Set([
   "mounted",
   "beforeUpdate",
@@ -83,7 +87,7 @@ export function createLazyHook(name, loader, { shouldLoad = () => true } = {}) {
           globalThis.__streamixLazyHookErrors[name] = detail;
         }
 
-        console.error(`[Streamix] Failed to load ${name} hook`, error);
+        log.error(`[Streamix] Failed to load ${name} hook`, error);
       }
     },
 

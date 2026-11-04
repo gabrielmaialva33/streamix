@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
+import { readSourceSync as readFileSync } from "./support/player_hook_source.js";
 
 const hookSource = readFileSync(new URL("../hooks/video_player.js", import.meta.url), "utf8");
 const integrationSource = readFileSync(
@@ -17,7 +17,7 @@ test("VideoPlayer composes browser integration and keeps compatibility delegates
 
   assert.match(
     hookSource,
-    /import \{ createPlaybackBrowserIntegration \} from "\.\.\/player\/playback_browser_integration\.js";/,
+    /import \{ createPlaybackBrowserIntegration \} from "(?:\.\.\/player|\.)\/playback_browser_integration\.js";/,
   );
   assert.ok(
     hook.includes(

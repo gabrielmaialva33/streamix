@@ -1,10 +1,14 @@
 import {
+  isAppleTouch as isIosWebKit,
+  isStandalone as isStandalonePwa,
+} from "../core/browser_environment.js";
+import {
   clearStreamixCaches,
   fetchExpectedCacheName,
   repairPwaApp,
   streamixCacheNames,
-} from "./cache_management";
-import { promptForPwaInstall, pwaInstallMode } from "./pwa_install";
+} from "./cache_management.js";
+import { promptForPwaInstall, pwaInstallMode } from "./pwa_install.js";
 
 const LAST_ROUTE_KEY = "streamix:pwa-last-route";
 const LAST_ROUTE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
@@ -105,12 +109,6 @@ const showConnectionToast = (state) => {
 
 export function installPwaRuntime({ getLiveSocket }) {
   const displayModeQuery = window.matchMedia?.("(display-mode: standalone)");
-  const isIosWebKit = () =>
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  const isStandalonePwa = () =>
-    displayModeQuery?.matches === true || window.navigator.standalone === true;
-
   const applyPwaModeClasses = () => {
     const standalone = isStandalonePwa();
     const ios = isIosWebKit();

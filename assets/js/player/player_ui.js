@@ -1,3 +1,6 @@
+import { hasTouch } from "../core/browser_environment.js";
+import { playerOverlays } from "./player_overlays.js";
+
 /**
  * Player UI Manager
  *
@@ -5,8 +8,8 @@
  * HTML structure is in HEEX templates - this only manages state/visibility.
  */
 
-import { createFocusTrap } from "../core/focus_trap.js";
 import { bufferDiagnosticsEnabled } from "./player_diagnostics_visibility.js";
+import { playerMenus } from "./player_menus.js";
 
 /**
  * PlayerUI class - manages UI state updates
@@ -80,7 +83,7 @@ export class PlayerUI {
     // Controls visibility state
     this.controlsVisible = true;
     this.controlsTimeout = null;
-    this.isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+    this.isTouchDevice = hasTouch();
     this.elements.controls?.classList.toggle("touch-device", this.isTouchDevice);
     this.nativeControlsMode = false;
 
@@ -93,73 +96,11 @@ export class PlayerUI {
   // ============================================
 
   setupMenuFocusTraps() {
-    // Speed menu
-    const speedMenu = this.container.querySelector("#speed-menu");
-    const speedBtn = this.container.querySelector("#speed-btn");
-    if (speedMenu && speedBtn) {
-      this.setupMenuFocusTrap(speedMenu, speedBtn, "speed");
-    }
-
-    // Settings menu
-    const settingsMenu = this.container.querySelector("#settings-menu");
-    const settingsBtn = this.container.querySelector("#settings-btn");
-    if (settingsMenu && settingsBtn) {
-      this.setupMenuFocusTrap(settingsMenu, settingsBtn, "settings");
-    }
-
-    // Tracks menu
-    const tracksMenu = this.container.querySelector("#tracks-menu");
-    const tracksBtn = this.container.querySelector("#tracks-btn");
-    if (tracksMenu && tracksBtn) {
-      this.setupMenuFocusTrap(tracksMenu, tracksBtn, "tracks");
-    }
+    return playerMenus.setupMenuFocusTraps.call(this);
   }
 
   setupMenuFocusTrap(menu, triggerBtn, name) {
-    const focusTrap = createFocusTrap(menu, {
-      returnFocusTo: triggerBtn,
-      onEscape: () => {
-        menu.classList.add("hidden");
-        menu.style.display = "none";
-        triggerBtn.setAttribute("aria-expanded", "false");
-      },
-    });
-
-    this.focusTraps.set(name, focusTrap);
-
-    const checkVisibility = () => {
-      const isHidden =
-        menu.classList.contains("hidden") ||
-        menu.style.display === "none" ||
-        (typeof window !== "undefined" && window.getComputedStyle
-          ? window.getComputedStyle(menu).display === "none"
-          : false);
-
-      if (isHidden) {
-        focusTrap.deactivate();
-        triggerBtn.setAttribute("aria-expanded", "false");
-      } else {
-        focusTrap.activate();
-        triggerBtn.setAttribute("aria-expanded", "true");
-      }
-    };
-
-    // Use MutationObserver to detect when menu visibility changes
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.attributeName === "class" || mutation.attributeName === "style") {
-          checkVisibility();
-        }
-      }
-    });
-
-    observer.observe(menu, { attributes: true, attributeFilter: ["class", "style"] });
-
-    // Store observer for cleanup
-    if (!this._menuObservers) {
-      this._menuObservers = [];
-    }
-    this._menuObservers.push(observer);
+    return playerMenus.setupMenuFocusTrap.call(this, menu, triggerBtn, name);
   }
 
   // ============================================
@@ -763,122 +704,31 @@ export class PlayerUI {
    * @param {string} quality - The new quality level (e.g., "720p", "Auto: 1080p")
    */
   showQualityChange(quality) {
-    // Remove existing notification
-    const existing = this.container.querySelector(".quality-toast");
-    if (existing) existing.remove();
-
-    const toast = document.createElement("div");
-    toast.className =
-      "quality-toast absolute top-4 right-4 pointer-events-none z-30 animate-fade-in-out";
-
-    // Create using DOM API for security
-    const inner = document.createElement("div");
-    inner.className =
-      "px-3 py-1.5 rounded bg-black/70 backdrop-blur-sm text-white text-sm font-medium flex items-center gap-2";
-
-    // HD icon
-    const icon = document.createElement("span");
-    icon.className = "text-xs bg-white/20 px-1 rounded";
-    icon.textContent = "HD";
-
-    const text = document.createElement("span");
-    text.textContent = quality;
-
-    inner.appendChild(icon);
-    inner.appendChild(text);
-    toast.appendChild(inner);
-    this.container.appendChild(toast);
-
-    // Remove after animation
-    setTimeout(() => toast.remove(), 2000);
+    return playerOverlays.showQualityChange.call(this, quality);
   }
 
   showAutoplayBlocked() {
-    this.hideLoading({ force: true });
-    const overlay = this.container.querySelector("#autoplay-overlay");
-    if (overlay) {
-      overlay.classList.remove("hidden");
-    }
+    return playerOverlays.showAutoplayBlocked.call(this);
   }
 
   hideAutoplayBlocked() {
-    const overlay = this.container.querySelector("#autoplay-overlay");
-    if (overlay) {
-      overlay.classList.add("hidden");
-    }
+    return playerOverlays.hideAutoplayBlocked.call(this);
   }
 
   showResumeToast(resumeSeconds, onRestart) {
-    const toast = this.container.querySelector("#resume-toast");
-    const timeText = this.container.querySelector("#resume-time-text");
-    const restartBtn = this.container.querySelector("#resume-restart-btn");
-    if (!toast) return;
-
-    if (timeText) {
-      timeText.textContent = this.formatTime(resumeSeconds);
-    }
-
-    if (restartBtn && typeof onRestart === "function") {
-      restartBtn.onclick = () => {
-        this.hideResumeToast();
-        onRestart();
-      };
-    }
-
-    toast.classList.remove("hidden");
-    const rAF = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (cb) => cb();
-    rAF(() => {
-      toast.classList.remove("opacity-0", "-translate-y-2");
-    });
-
-    if (this._resumeToastTimeout) clearTimeout(this._resumeToastTimeout);
-    this._resumeToastTimeout = setTimeout(() => {
-      this.hideResumeToast();
-    }, 5000);
+    return playerOverlays.showResumeToast.call(this, resumeSeconds, onRestart);
   }
 
   hideResumeToast() {
-    if (this._resumeToastTimeout) {
-      clearTimeout(this._resumeToastTimeout);
-      this._resumeToastTimeout = null;
-    }
-    const toast = this.container.querySelector("#resume-toast");
-    if (!toast) return;
-
-    toast.classList.add("opacity-0", "-translate-y-2");
-    setTimeout(() => {
-      toast.classList.add("hidden");
-    }, 300);
+    return playerOverlays.hideResumeToast.call(this);
   }
 
   showEndedOverlay(onReplay, onBack) {
-    const overlay = this.container.querySelector("#ended-overlay");
-    const replayBtn = this.container.querySelector("#ended-replay-btn");
-    const backBtn = this.container.querySelector("#ended-back-btn");
-    if (!overlay) return;
-
-    if (replayBtn && typeof onReplay === "function") {
-      replayBtn.onclick = () => {
-        this.hideEndedOverlay();
-        onReplay();
-      };
-    }
-
-    if (backBtn && typeof onBack === "function") {
-      backBtn.onclick = () => {
-        this.hideEndedOverlay();
-        onBack();
-      };
-    }
-
-    overlay.classList.remove("hidden");
+    return playerOverlays.showEndedOverlay.call(this, onReplay, onBack);
   }
 
   hideEndedOverlay() {
-    const overlay = this.container.querySelector("#ended-overlay");
-    if (overlay) {
-      overlay.classList.add("hidden");
-    }
+    return playerOverlays.hideEndedOverlay.call(this);
   }
 
   // ============================================
@@ -888,30 +738,20 @@ export class PlayerUI {
   destroy() {
     this.clearHideControlsTimeout();
 
+    if (this._loadingShowTimeout) {
+      clearTimeout(this._loadingShowTimeout);
+      this._loadingShowTimeout = null;
+    }
+
     // Clear loading safety timeout
     if (this._loadingSafetyTimeout) {
       clearTimeout(this._loadingSafetyTimeout);
       this._loadingSafetyTimeout = null;
     }
 
-    if (this._resumeToastTimeout) {
-      clearTimeout(this._resumeToastTimeout);
-      this._resumeToastTimeout = null;
-    }
+    playerOverlays.destroy.call(this);
 
-    // Cleanup focus traps
-    for (const focusTrap of this.focusTraps.values()) {
-      focusTrap.deactivate();
-    }
-    this.focusTraps.clear();
-
-    // Cleanup mutation observers
-    if (this._menuObservers) {
-      for (const observer of this._menuObservers) {
-        observer.disconnect();
-      }
-      this._menuObservers = [];
-    }
+    playerMenus.destroy.call(this);
   }
 }
 

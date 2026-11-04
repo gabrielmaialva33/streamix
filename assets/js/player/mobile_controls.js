@@ -1,3 +1,4 @@
+import { hasTouch } from "../core/browser_environment.js";
 import { LifecycleScope } from "./lifecycle_scope.js";
 import { nextTapGesture, pinchFit } from "./player_gestures.js";
 
@@ -37,8 +38,10 @@ export function createMobileControls({
   let initialPinchDistance = null;
   let pinching = false;
   let suppressClickUntil = -1;
-  const isTouchDevice =
-    "ontouchstart" in environment.window || environment.navigator.maxTouchPoints > 0;
+  const isTouchDevice = hasTouch({
+    windowRef: environment.window,
+    navigatorRef: environment.navigator,
+  });
   const locked = () => root.dataset.playerLocked !== undefined;
   const blocked = () => locked() || shouldUseNativeControls() || Boolean(root.dataset.playerPanel);
   const viewer = () => root.dataset.partyRole === "viewer";

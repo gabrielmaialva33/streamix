@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readSource as readFile } from "./support/player_hook_source.js";
 
 const hookUrl = new URL("../hooks/video_player.js", import.meta.url);
 const coordinatorUrl = new URL("../player/playback_engine_activation.js", import.meta.url);
@@ -28,11 +28,12 @@ function methodIndex(hook, methodName, fromIndex = 0) {
   return indexes.length > 0 ? Math.min(...indexes) : -1;
 }
 
-function methodSlice(hook, methodName, nextMethodName) {
+function methodSlice(hook, methodName) {
   const start = methodIndex(hook, methodName);
-  const end = methodIndex(hook, nextMethodName, start + 1);
+  const closing = /^ {2}},?$/m.exec(hook.slice(start));
+  const end = closing ? start + closing.index + closing[0].length : -1;
   assert.notEqual(start, -1, `missing ${methodName}()`);
-  assert.notEqual(end, -1, `missing boundary after ${methodName}()`);
+  assert.ok(end > start, `missing closing brace for ${methodName}()`);
   return hook.slice(start, end);
 }
 
@@ -42,25 +43,25 @@ test("VideoPlayer composes one engine activation coordinator behind an explicit 
 
   assert.match(
     hook,
-    /import \{ createPlaybackEngineActivation \} from "\.\.\/player\/playback_engine_activation\.js";/,
+    /import \{ createPlaybackEngineActivation \} from "(?:\.\.\/player|\.)\/playback_engine_activation\.js";/,
   );
   assert.match(
     hook,
-    /import \{ createHlsEngineActivation \} from "\.\.\/player\/hls_engine_activation\.js";/,
+    /import \{ createHlsEngineActivation \} from "(?:\.\.\/player|\.)\/hls_engine_activation\.js";/,
   );
   assert.match(
     hook,
-    /createMpegtsEngineActivation,[\s\S]*from "\.\.\/player\/mpegts_engine_activation\.js";/,
+    /createMpegtsEngineActivation,[\s\S]*from "(?:\.\.\/player|\.)\/mpegts_engine_activation\.js";/,
   );
   assert.match(
     hook,
-    /import \{ createNativeEngineActivation \} from "\.\.\/player\/native_engine_activation\.js";/,
+    /import \{ createNativeEngineActivation \} from "(?:\.\.\/player|\.)\/native_engine_activation\.js";/,
   );
   assert.match(hook, /this\.nativeEngineActivation = createNativeEngineActivation\(\{ host \}\);/);
   assert.match(hook, /\[ENGINE_SELECTION\.NATIVE\]: this\.nativeEngineActivation,/);
   assert.match(
     hook,
-    /import \{ createAvPlayerEngineActivation \} from "\.\.\/player\/avplayer_engine_activation\.js";/,
+    /import \{ createAvPlayerEngineActivation \} from "(?:\.\.\/player|\.)\/avplayer_engine_activation\.js";/,
   );
   assert.match(
     hook,
@@ -71,11 +72,11 @@ test("VideoPlayer composes one engine activation coordinator behind an explicit 
   assert.doesNotMatch(playerState, /avPlayerTimeInterval/);
   assert.match(
     hook,
-    /import \{ createAvbridgeEngineActivation \} from "\.\.\/player\/avbridge_engine_activation\.js";/,
+    /import \{ createAvbridgeEngineActivation \} from "(?:\.\.\/player|\.)\/avbridge_engine_activation\.js";/,
   );
   assert.match(
     hook,
-    /import \{ createH265webEngineActivation \} from "\.\.\/player\/h265web_engine_activation\.js";/,
+    /import \{ createH265webEngineActivation \} from "(?:\.\.\/player|\.)\/h265web_engine_activation\.js";/,
   );
   assert.match(hook, /\[ENGINE_SELECTION\.AVBRIDGE\]: this\.avbridgeEngineActivation,/);
   assert.match(hook, /\[ENGINE_SELECTION\.H265WEB\]: this\.h265webEngineActivation,/);
@@ -165,7 +166,7 @@ test("extracted engine entrypoints stay thin compatibility delegates on the hook
     "MPEG-TS transition completed without an engine",
     "HLS engine was not registered by StreamLoader",
     "new NativeBufferManager",
-    'from "../media/native_buffer"',
+    'from "../media/native_buffer.js"',
     "createNativePlaybackEngine",
     "createMediaElementEngine",
     "detectAudioIssue",
@@ -293,11 +294,7 @@ test("engine activations consume the host contract and never reach for the hook 
 
 test("every host callback of the activation host resolves to a method the hook still defines", async () => {
   const hook = await source(hookUrl);
-  const start = hook.indexOf("  buildPlaybackEngineActivationHost() {");
-  const end = hook.indexOf("  initPlaybackEngineActivation() {", start);
-  assert.ok(start >= 0 && end > start, "host builder must exist before the activation wiring");
-
-  const hostBuilder = hook.slice(start, end);
+  const hostBuilder = methodSlice(hook, "buildPlaybackEngineActivationHost");
   const referenced = new Set(
     [...hostBuilder.matchAll(/this\.([A-Za-z_$][\w$]*)\(/g)].map((match) => match[1]),
   );

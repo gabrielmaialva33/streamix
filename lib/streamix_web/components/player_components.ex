@@ -108,6 +108,7 @@ defmodule StreamixWeb.PlayerComponents do
       data-next-episode={@next_episode_json}
       data-expected-duration={@expected_duration}
       data-stream-type={@stream_type}
+      data-container={Metadata.media_container(@content)}
       data-player-poster={@poster}
       data-provider-id={@provider_id}
       data-player-lifecycle-logs={@player_lifecycle_logs}

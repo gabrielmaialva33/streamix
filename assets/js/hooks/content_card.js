@@ -1,3 +1,4 @@
+import { canHover } from "../core/browser_environment.js";
 import { favoriteActionLabel, updateFavoritePreviewButton } from "./content_card_state.js";
 
 function shouldAvoidSpeculativePreload(navigatorRef = globalThis.navigator) {
@@ -40,7 +41,7 @@ let preloadAVPlayerPromise = null;
 async function ensurePreloadFunctionLoaded() {
   if (!preloadAVPlayerWasm) {
     try {
-      const module = await import("../media/avplayer_wrapper");
+      const module = await import("../media/avplayer_wrapper.js");
       preloadAVPlayerWasm = module.preloadCommonWasm;
     } catch (_e) {
       // Module may not exist yet
@@ -107,9 +108,7 @@ const ContentCard = {
 
     // Hover delay (Netflix uses ~600ms)
     this.hoverDelay = 600;
-    this.supportsHover =
-      window.matchMedia?.("(hover: hover) and (pointer: fine)").matches ??
-      !("ontouchstart" in window);
+    this.supportsHover = canHover();
 
     // Bind handlers
     this.handleMouseEnter = this.handleMouseEnter.bind(this);

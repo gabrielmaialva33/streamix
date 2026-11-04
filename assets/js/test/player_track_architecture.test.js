@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readSource as readFile } from "./support/player_hook_source.js";
 
 const avplayerWrapperUrl = new URL("../media/avplayer_wrapper.js", import.meta.url);
 const controllerUrl = new URL("../player/player_track_controller.js", import.meta.url);
@@ -103,7 +103,7 @@ test("native subtitle DOM lifecycle stays behind NativeSubtitleController", asyn
 
   assert.match(
     hook,
-    /import \{ createNativeSubtitleController \} from "\.\.\/player\/native_subtitle_controller\.js";/,
+    /import \{ createNativeSubtitleController \} from "(?:\.\.\/player|\.)\/native_subtitle_controller\.js";/,
   );
   assert.match(hook, /this\.nativeSubtitleController = createNativeSubtitleController\(\{/);
   assert.match(operations, /getNativeSubtitleController\(\)\?\.select\(trackIndex\)/);
@@ -160,7 +160,7 @@ test("external subtitle acquisition stays behind SubtitleSourceResolver", async 
 
   assert.match(
     hook,
-    /import \{ createSubtitleSourceResolver \} from "\.\.\/player\/subtitle_source_resolver\.js";/,
+    /import \{ createSubtitleSourceResolver \} from "(?:\.\.\/player|\.)\/subtitle_source_resolver\.js";/,
   );
   assert.match(hook, /this\.subtitleSourceResolver = createSubtitleSourceResolver\(\{/);
   assert.match(operations, /getSubtitleSourceResolver\(\)\?\.resolve\(\{/);
@@ -187,12 +187,12 @@ test("VideoPlayer creates one track controller with narrow composition boundarie
 
   assert.match(
     hook,
-    /import \{ createPlayerTrackController \} from "\.\.\/player\/player_track_controller\.js";/,
+    /import \{ createPlayerTrackController \} from "(?:\.\.\/player|\.)\/player_track_controller\.js";/,
   );
   assert.match(hook, /this\.playerTrackController = createPlayerTrackController\(\{/);
   assert.match(
     hook,
-    /import \{ createTrackOperations \} from "\.\.\/player\/track_operations\.js";/,
+    /import \{ createTrackOperations \} from "(?:\.\.\/player|\.)\/track_operations\.js";/,
   );
   assert.match(
     hook,
@@ -353,7 +353,7 @@ test("track presentation stays behind PlayerTrackPresentationController", async 
 
   assert.match(
     hook,
-    /import \{ createPlayerTrackPresentationController \} from "\.\.\/player\/player_track_presentation_controller\.js";/,
+    /import \{ createPlayerTrackPresentationController \} from "(?:\.\.\/player|\.)\/player_track_presentation_controller\.js";/,
   );
   assert.match(
     hook,
@@ -413,7 +413,7 @@ test("the background track probe and probed selections live in TrackProbeControl
 
   assert.match(
     hook,
-    /import \{ createTrackProbeController \} from "\.\.\/player\/track_probe_controller\.js";/,
+    /import \{ createTrackProbeController \} from "(?:\.\.\/player|\.)\/track_probe_controller\.js";/,
   );
   assert.match(hook, /this\.trackProbeController = createTrackProbeController\(\{/);
   assert.match(

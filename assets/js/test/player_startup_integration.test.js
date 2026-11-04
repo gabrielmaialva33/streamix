@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 import { ENGINE_ID, PLAYBACK_STATE } from "../player/engine_contract.js";
@@ -8,9 +7,11 @@ import { PlaybackSession } from "../player/playback_session.js";
 import { playerRecommendationKey } from "../player/player_preferences.js";
 import { ProviderEngineMemory } from "../player/provider_engine_memory.js";
 import { clock } from "./support/playback_clock.js";
+import { readSourceSync as readFileSync } from "./support/player_hook_source.js";
 
 // Execute the production hook methods with browser/transport boundaries supplied explicitly.
 const source = readFileSync(new URL("../hooks/video_player.js", import.meta.url), "utf8")
+  .replace(/^export const (playerComposition|playerSessionLifecycle)/gm, "const $1")
   .replace(/^import[\s\S]*?;\n/gm, "")
   .replace("export default VideoPlayer;", "globalThis.hook = VideoPlayer;");
 function harness({ intent = null, streamType = "hls" } = {}) {

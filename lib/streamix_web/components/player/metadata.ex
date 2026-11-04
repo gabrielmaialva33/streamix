@@ -79,6 +79,16 @@ defmodule StreamixWeb.PlayerComponents.Metadata do
 
   def stream_type_hint(_content_type, _content, _source_type), do: nil
 
+  # Only persisted catalog facts belong in the capability dataset. The cached
+  # track metadata contains audio/subtitle labels, not RFC 6381 video codecs,
+  # resolution or bitrate; title/TMDB hints must not invent those properties.
+  @spec media_container(map()) :: String.t() | nil
+  def media_container(%{container_extension: value}) when is_binary(value) do
+    value |> String.trim() |> String.trim_leading(".") |> bare_extension()
+  end
+
+  def media_container(_content), do: nil
+
   @spec title(map(), atom()) :: String.t() | nil
   def title(content, type) when type in [:live, :live_channel] do
     Map.get(content, :name)

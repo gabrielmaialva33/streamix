@@ -1,3 +1,5 @@
+import { withTimeout } from "../core/async_primitives.js";
+
 const TIMEOUT = Symbol("playback-engine-timeout");
 
 export function resolvePlaybackResumeTime(player, fallback = 0) {
@@ -20,18 +22,13 @@ export async function awaitPlaybackOperation(
 ) {
   if (!result || typeof result.then !== "function") return result;
 
-  let timeoutId;
-
-  try {
-    return await Promise.race([
-      result,
-      new Promise((_, reject) => {
-        timeoutId = timerApi.setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timeoutId !== undefined) timerApi.clearTimeout(timeoutId);
-  }
+  return withTimeout(result, {
+    timeoutMs,
+    timerApi,
+    onTimeout: () => {
+      throw new Error(timeoutMessage);
+    },
+  });
 }
 
 const scheduleNextTurn = (callback) => globalThis.setTimeout(callback, 0);
@@ -104,23 +101,11 @@ export class PlaybackEngineTeardownQueue {
 async function settleEngineCall(name, result, { timeoutMs, timerApi, onError }) {
   if (!result || typeof result.then !== "function") return;
 
-  let timeoutId;
-
   try {
-    const outcome = await Promise.race([
-      result,
-      new Promise((resolve) => {
-        timeoutId = timerApi.setTimeout(() => resolve(TIMEOUT), timeoutMs);
-      }),
-    ]);
-
-    if (outcome === TIMEOUT) {
-      onError(name, new Error(`${name} timed out after ${timeoutMs}ms`));
-    }
+    const outcome = await withTimeout(result, { timeoutMs, timerApi, onTimeout: () => TIMEOUT });
+    if (outcome === TIMEOUT) onError(name, new Error(`${name} timed out after ${timeoutMs}ms`));
   } catch (error) {
     onError(name, error);
-  } finally {
-    if (timeoutId !== undefined) timerApi.clearTimeout(timeoutId);
   }
 }
 
