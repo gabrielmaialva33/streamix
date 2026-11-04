@@ -1,4 +1,4 @@
-defmodule StreamixWeb.LiveAcceptance do
+defmodule StreamixWeb.OnMount.LiveAcceptance do
   @moduledoc """
   LiveView `on_mount` callback that allows Playwright E2E tests to share the
   test process's Ecto sandbox with LiveView processes.

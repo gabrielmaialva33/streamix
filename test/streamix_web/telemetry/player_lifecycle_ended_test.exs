@@ -1,7 +1,7 @@
-defmodule StreamixWeb.PlayerLifecycleEndedTest do
+defmodule StreamixWeb.Telemetry.PlayerLifecycleEndedTest do
   use ExUnit.Case, async: true
 
-  alias StreamixWeb.PlayerLifecycleTelemetry
+  alias StreamixWeb.Telemetry.PlayerLifecycle
 
   test "preserves ended as a bounded lifecycle state" do
     assert %{
@@ -10,7 +10,7 @@ defmodule StreamixWeb.PlayerLifecycleEndedTest do
              to_state: "ended",
              state_reason: "media_ended"
            } =
-             PlayerLifecycleTelemetry.normalize(%{
+             PlayerLifecycle.normalize(%{
                "stage" => "player_state_changed",
                "from_state" => "playing",
                "to_state" => "ended",

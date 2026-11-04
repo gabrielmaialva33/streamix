@@ -8,7 +8,7 @@ defmodule StreamixWeb.Api.V1.ImageResizeController do
       GET /api/v1/catalog/images/resize?url=<encoded>&w=480[&h=<n>][&q=<1-100>]
 
   Flow:
-    1. Validate the `url` against `StreamixWeb.UrlValidator` — the same
+    1. Validate the `url` against `Streamix.Security.UrlValidator` — the same
        SSRF guard the stream proxy uses.
     2. Compute a deterministic cache key (`sha256(url|w|h|q)`) and check
        the on-disk cache. A hit is served directly as `image/jpeg` with a
@@ -25,7 +25,7 @@ defmodule StreamixWeb.Api.V1.ImageResizeController do
   use StreamixWeb, :controller
 
   alias StreamixWeb.Api.V1.Response
-  alias StreamixWeb.UrlValidator
+  alias Streamix.Security.UrlValidator
 
   require Logger
 

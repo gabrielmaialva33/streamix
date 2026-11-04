@@ -1,8 +1,8 @@
-defmodule StreamixWeb.PlayerLifecycleTelemetryTest do
+defmodule StreamixWeb.Telemetry.PlayerLifecycleTest do
   # Telemetry handlers are global and must not observe events from concurrent tests.
   use ExUnit.Case, async: false
 
-  alias StreamixWeb.PlayerLifecycleTelemetry
+  alias StreamixWeb.Telemetry.PlayerLifecycle
 
   test "normalizes the bounded browser lifecycle vocabulary" do
     assert %{
@@ -18,7 +18,7 @@ defmodule StreamixWeb.PlayerLifecycleTelemetryTest do
              state_reason: "media_playing",
              url_present: false
            } =
-             PlayerLifecycleTelemetry.normalize(%{
+             PlayerLifecycle.normalize(%{
                "stage" => "player_state_changed",
                "engine" => "MPEGTS",
                "current_stream_type" => "xtream",
@@ -40,7 +40,7 @@ defmodule StreamixWeb.PlayerLifecycleTelemetryTest do
              from_state: "ready",
              to_state: "recovering"
            } =
-             PlayerLifecycleTelemetry.normalize(%{
+             PlayerLifecycle.normalize(%{
                stage: "player_state_changed",
                engine: "hls",
                stream_type: "hls",
@@ -52,7 +52,7 @@ defmodule StreamixWeb.PlayerLifecycleTelemetryTest do
 
   test "does not retain stream URLs or credentials" do
     normalized =
-      PlayerLifecycleTelemetry.normalize(%{
+      PlayerLifecycle.normalize(%{
         "stage" => "player_state_changed",
         "stream_url" => "https://user:password@example.test/live.ts",
         "proxy_url" => "https://proxy.test/secret-token",
@@ -69,7 +69,7 @@ defmodule StreamixWeb.PlayerLifecycleTelemetryTest do
 
   test "bounds diagnostic text and collapses unknown metric labels" do
     normalized =
-      PlayerLifecycleTelemetry.normalize(%{
+      PlayerLifecycle.normalize(%{
         "stage" => String.duplicate("s", 200),
         "engine" => "custom-engine-per-user",
         "from_state" => "invented-from-state",
@@ -96,7 +96,7 @@ defmodule StreamixWeb.PlayerLifecycleTelemetryTest do
     attach([:streamix, :player, :state_transition])
 
     assert :ok =
-             PlayerLifecycleTelemetry.observe(%{
+             PlayerLifecycle.observe(%{
                "stage" => "player_state_changed",
                "engine" => "avplayer",
                "from_state" => "loading",
@@ -112,7 +112,7 @@ defmodule StreamixWeb.PlayerLifecycleTelemetryTest do
     attach([:streamix, :player, :state_transition_invalid])
 
     assert :ok =
-             PlayerLifecycleTelemetry.observe(%{
+             PlayerLifecycle.observe(%{
                "stage" => "player_state_transition_invalid",
                "engine" => "unexpected",
                "from_state" => "idle",
@@ -128,7 +128,7 @@ defmodule StreamixWeb.PlayerLifecycleTelemetryTest do
     attach([:streamix, :player, :state_transition_invalid])
 
     assert :ok =
-             PlayerLifecycleTelemetry.observe(%{
+             PlayerLifecycle.observe(%{
                "stage" => "player_engine_selected",
                "engine" => "native"
              })
@@ -137,9 +137,9 @@ defmodule StreamixWeb.PlayerLifecycleTelemetryTest do
   end
 
   test "malformed payloads remain a no-op" do
-    assert :ok = PlayerLifecycleTelemetry.observe(nil)
-    assert :ok = PlayerLifecycleTelemetry.observe("invalid")
-    assert :ok = PlayerLifecycleTelemetry.observe([])
+    assert :ok = PlayerLifecycle.observe(nil)
+    assert :ok = PlayerLifecycle.observe("invalid")
+    assert :ok = PlayerLifecycle.observe([])
   end
 
   defp attach(event_name) do

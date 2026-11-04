@@ -1,8 +1,8 @@
-defmodule StreamixWeb.PlayerQoeTelemetryTest do
+defmodule StreamixWeb.Telemetry.PlayerQoeTest do
   # Telemetry handlers are global and must not observe events from concurrent tests.
   use ExUnit.Case, async: false
 
-  alias StreamixWeb.PlayerQoeTelemetry
+  alias StreamixWeb.Telemetry.PlayerQoe
 
   test "normalizes bounded numeric QoE measurements" do
     assert %{
@@ -21,7 +21,7 @@ defmodule StreamixWeb.PlayerQoeTelemetryTest do
                reason: "ended"
              }
            } =
-             PlayerQoeTelemetry.normalize(%{
+             PlayerQoe.normalize(%{
                "qoe_event" => "finish",
                "engine" => "MPEGTS",
                "live" => true,
@@ -37,7 +37,7 @@ defmodule StreamixWeb.PlayerQoeTelemetryTest do
 
   test "collapses unknown labels and invalid measurements" do
     normalized =
-      PlayerQoeTelemetry.normalize(%{
+      PlayerQoe.normalize(%{
         "qoe_event" => "custom-event-per-session",
         "engine" => "custom-engine-per-user",
         "startup_ms" => -10,
@@ -58,7 +58,7 @@ defmodule StreamixWeb.PlayerQoeTelemetryTest do
     attach([:streamix, :player, :qoe])
 
     assert :ok =
-             PlayerQoeTelemetry.observe(%{
+             PlayerQoe.observe(%{
                "stage" => "player_qoe",
                "qoe_event" => "playing",
                "engine" => "hls",
@@ -84,9 +84,9 @@ defmodule StreamixWeb.PlayerQoeTelemetryTest do
   test "ignores unrelated lifecycle events and malformed payloads" do
     attach([:streamix, :player, :qoe])
 
-    assert :ok = PlayerQoeTelemetry.observe(%{"stage" => "player_engine_selected"})
-    assert :ok = PlayerQoeTelemetry.observe(nil)
-    assert :ok = PlayerQoeTelemetry.observe([])
+    assert :ok = PlayerQoe.observe(%{"stage" => "player_engine_selected"})
+    assert :ok = PlayerQoe.observe(nil)
+    assert :ok = PlayerQoe.observe([])
     refute_receive {:telemetry, _, _, _}
   end
 

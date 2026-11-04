@@ -635,7 +635,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   end
 
   def handle_event("player_lifecycle", params, socket) do
-    StreamixWeb.PlayerLifecycleTelemetry.observe(params)
+    StreamixWeb.Telemetry.PlayerLifecycle.observe(params)
     {:noreply, socket}
   end
 

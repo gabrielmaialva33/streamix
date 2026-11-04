@@ -1,4 +1,4 @@
-defmodule StreamixWeb.CacheBodyReader do
+defmodule StreamixWeb.Plugs.CacheBodyReader do
   @moduledoc """
   Plug.Parsers body reader that keeps the raw request body for signed webhooks.
   """

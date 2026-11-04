@@ -6,7 +6,7 @@ defmodule StreamixWeb.Router do
   # E2E tests with Playwright need the sandbox hook to run *before* UserAuth,
   # which does DB queries. In prod this resolves to `[]`.
   @sandbox_on_mount if Application.compile_env(:streamix, :sql_sandbox),
-                      do: [StreamixWeb.LiveAcceptance],
+                      do: [StreamixWeb.OnMount.LiveAcceptance],
                       else: []
 
   pipeline :browser do

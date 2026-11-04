@@ -28,7 +28,7 @@ defmodule StreamixWeb.PlayerLive do
   alias Streamix.Torrent
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.PlayerComponents.Metadata
-  alias StreamixWeb.PlayerLifecycleTelemetry
+  alias StreamixWeb.Telemetry.PlayerLifecycle
   alias StreamixWeb.PlayerSourceFailover
   alias StreamixWeb.ReturnPath
 
@@ -129,7 +129,7 @@ defmodule StreamixWeb.PlayerLive do
   # other player event already goes through this normalizer — it bounds the
   # text and matches the engine against a known list.
   def handle_event("player_error", params, socket) do
-    normalized = PlayerLifecycleTelemetry.normalize(params)
+    normalized = PlayerLifecycle.normalize(params)
 
     :telemetry.execute(
       [:streamix, :player, :error],
@@ -246,7 +246,7 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   def handle_event("player_lifecycle", params, socket) do
-    PlayerLifecycleTelemetry.observe(params)
+    PlayerLifecycle.observe(params)
     {:noreply, socket}
   end
 

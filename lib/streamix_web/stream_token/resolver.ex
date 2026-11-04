@@ -22,7 +22,7 @@ defmodule StreamixWeb.StreamToken.Resolver do
   alias Streamix.Access
   alias Streamix.Accounts
   alias Streamix.Gindex
-  alias StreamixWeb.UrlValidator
+  alias Streamix.Security.UrlValidator
 
   # Token expires in 2 hours (reduced from 24h for security).
   @token_max_age 7_200

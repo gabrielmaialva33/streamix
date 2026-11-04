@@ -1,4 +1,4 @@
-defmodule StreamixWeb.PlayerQoeTelemetry do
+defmodule StreamixWeb.Telemetry.PlayerQoe do
   @moduledoc """
   Normalizes bounded Quality of Experience measurements from the browser.
 
