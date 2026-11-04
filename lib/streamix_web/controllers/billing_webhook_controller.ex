@@ -32,9 +32,13 @@ defmodule StreamixWeb.BillingWebhookController do
         |> json(%{error: %{code: "timeout", message: "handler timed out, please retry"}})
 
       {:error, reason} ->
+        Logger.warning(
+          "[Billing] Stripe webhook rejected: #{Streamix.SafeLog.redact_inspect(reason)}"
+        )
+
         conn
         |> put_status(:unprocessable_entity)
-        |> json(%{error: %{code: "webhook_rejected", message: inspect(reason)}})
+        |> json(%{error: %{code: "webhook_rejected", message: "Webhook could not be processed"}})
     end
   end
 

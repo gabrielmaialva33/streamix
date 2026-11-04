@@ -79,6 +79,29 @@ defmodule StreamixWeb.BillingWebhookControllerTest do
     assert %{"error" => %{"code" => "invalid_signature"}} = json_response(conn, 400)
   end
 
+  test "rejected signed events never expose internal reasons", %{conn: conn} do
+    raw_body =
+      Phoenix.json_library().encode!(%{
+        "type" => "checkout.session.completed",
+        "data" => %{"object" => %{}}
+      })
+
+    ExUnit.CaptureLog.capture_log(fn ->
+      result =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("stripe-signature", stripe_signature(raw_body))
+        |> post(~p"/api/billing/webhooks/stripe", raw_body)
+
+      assert json_response(result, 422) == %{
+               "error" => %{
+                 "code" => "webhook_rejected",
+                 "message" => "Webhook could not be processed"
+               }
+             }
+    end)
+  end
+
   defp stripe_signature(raw_body) do
     timestamp = System.system_time(:second)
 
