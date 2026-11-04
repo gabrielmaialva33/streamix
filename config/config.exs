@@ -341,20 +341,6 @@ config :streamix, Oban,
      ]}
   ]
 
-# IPTV configuration
-config :streamix, Streamix.Iptv,
-  # Sync configuration
-  sync_batch_size: 500,
-  sync_timeout: :timer.minutes(10),
-  # HTTP client timeouts
-  http_timeout: :timer.seconds(60),
-  http_info_timeout: :timer.seconds(10),
-  # Cache TTL in seconds
-  cache_ttl: 3600,
-  # Default pagination
-  default_page_size: 100,
-  max_page_size: 500
-
 # RabbitMQ configuration (Broadway)
 config :streamix, :rabbitmq,
   enabled: false,

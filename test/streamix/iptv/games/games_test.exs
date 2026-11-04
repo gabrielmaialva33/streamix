@@ -2,7 +2,6 @@ defmodule Streamix.Iptv.GamesTest do
   use Streamix.DataCase, async: false
   import Streamix.IptvFixtures
   import Streamix.GamesFixtures
-  alias Streamix.Iptv
   alias Streamix.Iptv.Provider
 
   # 21:00Z is 18:00 in São Paulo. A match that already ended is no longer
@@ -31,12 +30,12 @@ defmodule Streamix.Iptv.GamesTest do
     })
 
     assert [%{title: "Live", live: true}, %{title: "Upcoming", live: false}] =
-             Iptv.list_games(nil, now: now)
+             Streamix.Catalog.list_games(nil, now: now)
 
     # 03:00Z is midnight in São Paulo: an overnight match that started the
     # previous local day stays while it is on air.
     assert [%{title: "Upcoming", live: true}] =
-             Iptv.list_games(nil, now: ~U[2026-10-20 00:30:00Z])
+             Streamix.Catalog.list_games(nil, now: ~U[2026-10-20 00:30:00Z])
   end
 
   test "games flag is operator-only" do
@@ -69,9 +68,13 @@ defmodule Streamix.Iptv.GamesTest do
       Req.Test.json(conn, [payload])
     end)
 
-    assert {:ok, 1} = Iptv.sync_games(provider, http_options: [plug: {Req.Test, __MODULE__}])
-    assert {:ok, 1} = Iptv.sync_games(provider, http_options: [plug: {Req.Test, __MODULE__}])
-    assert [game] = Iptv.list_games(nil, now: now)
+    assert {:ok, 1} =
+             Streamix.Providers.sync_games(provider, http_options: [plug: {Req.Test, __MODULE__}])
+
+    assert {:ok, 1} =
+             Streamix.Providers.sync_games(provider, http_options: [plug: {Req.Test, __MODULE__}])
+
+    assert [game] = Streamix.Catalog.list_games(nil, now: now)
     assert game.live_channel_id == channel.id
     assert game.home_name == "Monza"
     refute inspect(game) =~ provider.password
@@ -106,7 +109,8 @@ defmodule Streamix.Iptv.GamesTest do
       end
     end)
 
-    assert {:ok, 0} = Iptv.sync_games(provider, http_options: [plug: {Req.Test, __MODULE__}])
+    assert {:ok, 0} =
+             Streamix.Providers.sync_games(provider, http_options: [plug: {Req.Test, __MODULE__}])
   end
 
   test "private-network feeds and redirects are blocked before the target is requested" do
@@ -114,7 +118,7 @@ defmodule Streamix.Iptv.GamesTest do
     Req.Test.stub(__MODULE__, fn _conn -> flunk("private target was fetched") end)
 
     assert {:error, :games_unavailable} =
-             Iptv.sync_games(provider, http_options: [plug: {Req.Test, __MODULE__}])
+             Streamix.Providers.sync_games(provider, http_options: [plug: {Req.Test, __MODULE__}])
 
     provider = %{provider | url: "https://93.184.216.34"}
 
@@ -127,7 +131,7 @@ defmodule Streamix.Iptv.GamesTest do
     end)
 
     assert {:error, :games_unavailable} =
-             Iptv.sync_games(provider, http_options: [plug: {Req.Test, __MODULE__}])
+             Streamix.Providers.sync_games(provider, http_options: [plug: {Req.Test, __MODULE__}])
   end
 
   test "malformed or oversized responses return safe errors and preserve existing rows" do
@@ -138,7 +142,9 @@ defmodule Streamix.Iptv.GamesTest do
       Req.Test.stub(__MODULE__, fn conn -> Plug.Conn.send_resp(conn, 200, body) end)
 
       assert {:error, :games_unavailable} =
-               Iptv.sync_games(provider, http_options: [plug: {Req.Test, __MODULE__}])
+               Streamix.Providers.sync_games(provider,
+                 http_options: [plug: {Req.Test, __MODULE__}]
+               )
 
       assert Repo.get(Streamix.Iptv.SportsMatch, game.id)
     end
@@ -170,8 +176,10 @@ defmodule Streamix.Iptv.GamesTest do
       Req.Test.json(conn, [payload, forged, %{}, nil, %{"data" => nil}])
     end)
 
-    assert {:ok, 2} = Iptv.sync_games(provider, http_options: [plug: {Req.Test, __MODULE__}])
-    assert Iptv.list_games(nil) == []
+    assert {:ok, 2} =
+             Streamix.Providers.sync_games(provider, http_options: [plug: {Req.Test, __MODULE__}])
+
+    assert Streamix.Catalog.list_games(nil) == []
     rows = Repo.all(Streamix.Iptv.SportsMatch)
     assert Enum.all?(rows, &is_nil(&1.live_channel_id))
     assert Enum.any?(rows, &is_nil(&1.home_logo_url))
@@ -179,8 +187,11 @@ defmodule Streamix.Iptv.GamesTest do
     # A later sync resolves a channel that was previously missing.
     channel_fixture(provider, %{stream_id: 72})
     Req.Test.stub(__MODULE__, fn conn -> Req.Test.json(conn, [payload]) end)
-    assert {:ok, 1} = Iptv.sync_games(provider, http_options: [plug: {Req.Test, __MODULE__}])
-    assert [mapped] = Iptv.list_games(nil)
+
+    assert {:ok, 1} =
+             Streamix.Providers.sync_games(provider, http_options: [plug: {Req.Test, __MODULE__}])
+
+    assert [mapped] = Streamix.Catalog.list_games(nil)
     assert mapped.live_channel_id != channel.id
   end
 
@@ -198,8 +209,11 @@ defmodule Streamix.Iptv.GamesTest do
     long_logo = "https://images.example.com/" <> String.duplicate("a", 300) <> ".png"
     payload = put_in(payload, ["data", "teams", "home", "image"], long_logo)
     Req.Test.stub(__MODULE__, fn conn -> Req.Test.json(conn, [payload, payload]) end)
-    assert {:ok, 1} = Iptv.sync_games(provider, http_options: [plug: {Req.Test, __MODULE__}])
-    assert [before] = Iptv.list_games(nil)
+
+    assert {:ok, 1} =
+             Streamix.Providers.sync_games(provider, http_options: [plug: {Req.Test, __MODULE__}])
+
+    assert [before] = Streamix.Catalog.list_games(nil)
     assert before.home_logo_url == long_logo
 
     payload =
@@ -207,8 +221,11 @@ defmodule Streamix.Iptv.GamesTest do
       |> put_in(["data", "timer", "end"], to_string(DateTime.to_unix(DateTime.add(now, 7200))))
 
     Req.Test.stub(__MODULE__, fn conn -> Req.Test.json(conn, [payload]) end)
-    assert {:ok, 1} = Iptv.sync_games(provider, http_options: [plug: {Req.Test, __MODULE__}])
-    assert [updated] = Iptv.list_games(nil)
+
+    assert {:ok, 1} =
+             Streamix.Providers.sync_games(provider, http_options: [plug: {Req.Test, __MODULE__}])
+
+    assert [updated] = Streamix.Catalog.list_games(nil)
     assert updated.id == before.id
     assert updated.title == "Updated match title"
     assert updated.ends_at == DateTime.add(now, 7200)

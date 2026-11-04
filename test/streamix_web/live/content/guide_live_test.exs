@@ -109,7 +109,7 @@ defmodule StreamixWeb.Content.GuideLiveTest do
       refute has_element?(view, "#guide-channel-#{other.id}")
 
       assert {:ok, :added} =
-               Streamix.Iptv.toggle_favorite(user.id, "live_channel", channel.id, %{
+               Streamix.Library.toggle_favorite(user.id, "live_channel", channel.id, %{
                  content_name: channel.name,
                  content_icon: channel.stream_icon
                })

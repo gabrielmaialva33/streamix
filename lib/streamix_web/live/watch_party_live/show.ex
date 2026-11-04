@@ -13,6 +13,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   alias Streamix.SafeLog
   alias StreamixWeb.PlayerComponents.Metadata
   alias StreamixWeb.{PlayerSourceFailover, Presence}
+  alias StreamixWeb.Telemetry.PlayerLifecycle
   alias StreamixWeb.WatchPartyLive.Status
 
   require Logger
@@ -635,7 +636,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   end
 
   def handle_event("player_lifecycle", params, socket) do
-    StreamixWeb.Telemetry.PlayerLifecycle.observe(params)
+    PlayerLifecycle.observe(params)
     {:noreply, socket}
   end
 

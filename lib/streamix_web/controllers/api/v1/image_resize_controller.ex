@@ -24,8 +24,8 @@ defmodule StreamixWeb.Api.V1.ImageResizeController do
 
   use StreamixWeb, :controller
 
-  alias StreamixWeb.Api.V1.Response
   alias Streamix.Security.UrlValidator
+  alias StreamixWeb.Api.V1.Response
 
   require Logger
 

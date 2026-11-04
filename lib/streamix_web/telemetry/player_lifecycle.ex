@@ -9,6 +9,8 @@ defmodule StreamixWeb.Telemetry.PlayerLifecycle do
 
   require Logger
 
+  alias StreamixWeb.Telemetry.PlayerQoe
+
   @known_engines MapSet.new(~w(native hls mpegts avplayer avbridge h265web unknown))
 
   @known_states MapSet.new(
@@ -34,7 +36,7 @@ defmodule StreamixWeb.Telemetry.PlayerLifecycle do
 
   @spec observe(map()) :: :ok
   def observe(params) when is_map(params) do
-    StreamixWeb.Telemetry.PlayerQoe.observe(params)
+    PlayerQoe.observe(params)
     event = normalize(params)
     emit_metric(event)
     maybe_log(event)

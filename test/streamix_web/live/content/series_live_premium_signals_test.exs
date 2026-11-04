@@ -4,8 +4,6 @@ defmodule StreamixWeb.Content.SeriesLivePremiumSignalsTest do
   import Phoenix.LiveViewTest
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
-
-  alias Streamix.Iptv
   alias Streamix.Iptv.{CatalogItem, Series}
   alias Streamix.Repo
 
@@ -96,7 +94,7 @@ defmodule StreamixWeb.Content.SeriesLivePremiumSignalsTest do
 
       render_hook(view, "toggle_favorite", %{"id" => private_series.id, "type" => "series"})
 
-      refute Iptv.favorite?(user.id, "series", private_series.id)
+      refute Streamix.Library.favorite?(user.id, "series", private_series.id)
     end
   end
 end

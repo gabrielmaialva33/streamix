@@ -1,8 +1,6 @@
 defmodule Streamix.Iptv.CatalogFacadeTest do
   use Streamix.DataCase, async: true
 
-  alias Streamix.Iptv
-
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
@@ -23,7 +21,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
 
       result =
         provider.id
-        |> Iptv.list_movies(limit: 10)
+        |> Streamix.Catalog.list_movies(limit: 10)
         |> Enum.find(&(&1.id == movie.id))
 
       assert result
@@ -56,7 +54,8 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
         %{catalog_item_id: matching.catalog_item_id, category_id: category.id}
       ])
 
-      results = Iptv.list_visible_live_channels(user.id, category_id: category.id, limit: 10)
+      results =
+        Streamix.Catalog.list_visible_live_channels(user.id, category_id: category.id, limit: 10)
 
       assert Enum.map(results, & &1.id) == [matching.id]
       refute Enum.any?(results, &(&1.id == other.id))
@@ -96,7 +95,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
       ])
 
       results =
-        Iptv.list_movies(provider.id,
+        Streamix.Catalog.list_movies(provider.id,
           category_id: category.id,
           dedupe: true,
           limit: 10,
@@ -128,7 +127,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
         })
 
       results =
-        Iptv.list_movies(provider.id,
+        Streamix.Catalog.list_movies(provider.id,
           dedupe: true,
           show_adult: true,
           limit: 10,
@@ -138,7 +137,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
       assert MapSet.new(results, & &1.id) == MapSet.new([first.id, second.id])
 
       visible_results =
-        Iptv.list_visible_movies(user.id,
+        Streamix.Catalog.list_visible_movies(user.id,
           dedupe: true,
           show_adult: true,
           limit: 10,
@@ -166,7 +165,8 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
           stream_id: 1_002
         })
 
-      results = Iptv.list_movies(provider.id, dedupe: true, limit: 10, sort: "name_asc")
+      results =
+        Streamix.Catalog.list_movies(provider.id, dedupe: true, limit: 10, sort: "name_asc")
 
       assert Enum.map(results, & &1.id) == [newer.id]
       refute Enum.any?(results, &(&1.id == older.id))
@@ -214,7 +214,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
         %{catalog_item_id: movie_b.catalog_item_id, category_id: category_b.id}
       ])
 
-      variants = Iptv.list_movie_variants(movie_b, user.id)
+      variants = Streamix.Playback.list_movie_variants(movie_b, user.id)
 
       assert Enum.map(variants, & &1.id) == [movie_b.id, movie_a.id]
       assert Enum.map(variants, & &1.provider.name) == ["Provider B", "Provider A"]
@@ -245,7 +245,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
           stream_id: 3_100_002
         })
 
-      assert Enum.map(Iptv.list_movie_variants(selected, user.id), & &1.id) == []
+      assert Enum.map(Streamix.Playback.list_movie_variants(selected, user.id), & &1.id) == []
     end
 
     test "list_movie_variants/3 without a user only returns public and global copies" do
@@ -258,7 +258,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
       _private_copy = movie_fixture(private, %{name: "Anonymous Feature", tmdb_id: "4242"})
 
       assert movie
-             |> Iptv.list_movie_variants(nil)
+             |> Streamix.Playback.list_movie_variants(nil)
              |> Enum.map(& &1.id)
              |> Enum.sort() == Enum.sort([movie.id, global_copy.id])
     end
@@ -284,7 +284,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
           stream_id: 1_102
         })
 
-      results = Iptv.list_visible_movies(user.id, search: "Same Movie", limit: 10)
+      results = Streamix.Catalog.list_visible_movies(user.id, search: "Same Movie", limit: 10)
 
       assert Enum.map(results, & &1.id) == [newer.id]
       refute Enum.any?(results, &(&1.id == older.id))
@@ -322,7 +322,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
           stream_id: 1_303
         })
 
-      results = Iptv.list_visible_movies(user.id, search: "Thing", limit: 10)
+      results = Streamix.Catalog.list_visible_movies(user.id, search: "Thing", limit: 10)
       result_ids = MapSet.new(results, & &1.id)
 
       assert MapSet.member?(result_ids, localized_variant.id)
@@ -352,7 +352,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
         })
       end
 
-      results = Iptv.list_visible_movies(user.id, limit: 5)
+      results = Streamix.Catalog.list_visible_movies(user.id, limit: 5)
 
       assert length(results) == 5
 
@@ -381,7 +381,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
 
       result =
         provider.id
-        |> Iptv.list_series(limit: 10)
+        |> Streamix.Catalog.list_series(limit: 10)
         |> Enum.find(&(&1.id == series.id))
 
       assert result
@@ -429,7 +429,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
       ])
 
       results =
-        Iptv.list_series(provider.id,
+        Streamix.Catalog.list_series(provider.id,
           category_id: category.id,
           dedupe: true,
           limit: 10,
@@ -452,7 +452,8 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
           series_id: 1_003
         })
 
-      results = Iptv.list_series(provider.id, search: "Desencanto", dedupe: true, limit: 10)
+      results =
+        Streamix.Catalog.list_series(provider.id, search: "Desencanto", dedupe: true, limit: 10)
 
       assert Enum.map(results, & &1.id) == [series.id]
     end
@@ -478,7 +479,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
           series_id: 1_202
         })
 
-      results = Iptv.list_visible_series(user.id, search: "Same Show", limit: 10)
+      results = Streamix.Catalog.list_visible_series(user.id, search: "Same Show", limit: 10)
 
       assert Enum.map(results, & &1.id) == [newer.id]
       assert Enum.all?(results, &Ecto.assoc_loaded?(&1.genres))
@@ -515,7 +516,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
           stream_id: 1_403
         })
 
-      results = Iptv.search_movies(user.id, "Evil Island", limit: 10)
+      results = Streamix.Search.search_movies(user.id, "Evil Island", limit: 10)
 
       assert Enum.map(results, & &1.id) == [canonical.id]
       refute Enum.any?(results, &(&1.id in [year_in_title.id, no_year.id]))
@@ -541,7 +542,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
           stream_id: 1_405
         })
 
-      results = Iptv.search_movies(user.id, "Mummy Search", limit: 10)
+      results = Streamix.Search.search_movies(user.id, "Mummy Search", limit: 10)
 
       assert Enum.sort(Enum.map(results, & &1.id)) ==
                Enum.sort([remake_original.id, remake_new.id])
@@ -571,7 +572,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
           stream_id: 1_409
         })
 
-      results = Iptv.search_movies(user.id, "Zombie Saga", limit: 2)
+      results = Streamix.Search.search_movies(user.id, "Zombie Saga", limit: 2)
 
       assert length(results) == 2
       assert low_rated.id in Enum.map(results, & &1.id)
@@ -607,7 +608,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
           series_id: 1_503
         })
 
-      results = Iptv.search_series(user.id, "Dark Absolute", limit: 10)
+      results = Streamix.Search.search_series(user.id, "Dark Absolute", limit: 10)
 
       assert Enum.map(results, & &1.id) == [canonical.id]
     end
@@ -623,7 +624,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
 
       Repo.insert_all("series_genres", [%{series_id: matching.id, genre_id: drama.id}])
 
-      results = Iptv.list_visible_series(user.id, genre_id: drama.id, limit: 10)
+      results = Streamix.Catalog.list_visible_series(user.id, genre_id: drama.id, limit: 10)
 
       assert Enum.map(results, & &1.id) == [matching.id]
       refute Enum.any?(results, &(&1.id == other.id))
@@ -640,7 +641,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
 
       Repo.insert_all("movie_genres", [%{movie_id: matching.id, genre_id: action.id}])
 
-      results = Iptv.list_visible_movies(user.id, genre_id: action.id, limit: 10)
+      results = Streamix.Catalog.list_visible_movies(user.id, genre_id: action.id, limit: 10)
 
       assert Enum.map(results, & &1.id) == [matching.id]
       refute Enum.any?(results, &(&1.id == other.id))
@@ -676,7 +677,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
         %{series_id: series_a.id, genre_id: niche.id}
       ])
 
-      genres = Iptv.list_genres_for(:series)
+      genres = Streamix.Iptv.Catalog.list_genres_for(:series)
       slugs = Enum.map(genres, & &1.slug)
 
       drama_index = Enum.find_index(slugs, &(&1 == "drama"))
@@ -720,7 +721,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
           series_id: 1_403
         })
 
-      results = Iptv.list_visible_series(user.id, search: "Returned", limit: 10)
+      results = Streamix.Catalog.list_visible_series(user.id, search: "Returned", limit: 10)
       result_ids = MapSet.new(results, & &1.id)
 
       assert MapSet.member?(result_ids, localized_variant.id)
@@ -750,8 +751,8 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
         })
       end
 
-      results = Iptv.list_visible_series(user.id, limit: 5)
-      next_results = Iptv.list_visible_series(user.id, limit: 5, offset: 5)
+      results = Streamix.Catalog.list_visible_series(user.id, limit: 5)
+      next_results = Streamix.Catalog.list_visible_series(user.id, limit: 5, offset: 5)
 
       assert length(results) == 5
       assert length(next_results) == 5
@@ -792,7 +793,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
         })
 
       result =
-        Iptv.list_public_movies(limit: 50)
+        Streamix.Catalog.list_public_movies(limit: 50)
         |> Enum.find(&(&1.id == movie.id))
 
       assert result
@@ -830,13 +831,17 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
       ])
 
       assert [hydrated] =
-               Iptv.list_visible_movies_by_ids(user.id, [adult.id, regular.id], show_adult: false)
+               Streamix.Catalog.list_visible_movies_by_ids(user.id, [adult.id, regular.id],
+                 show_adult: false
+               )
 
       assert hydrated.id == regular.id
       assert hydrated.stream_icon == "http://example.com/visible-recommendation.jpg"
 
       assert Enum.map(
-               Iptv.list_visible_movies_by_ids(user.id, [adult.id, regular.id], show_adult: true),
+               Streamix.Catalog.list_visible_movies_by_ids(user.id, [adult.id, regular.id],
+                 show_adult: true
+               ),
                & &1.id
              ) == [adult.id, regular.id]
     end
@@ -865,11 +870,14 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
         %{catalog_item_id: adult_movie.catalog_item_id, category_id: adult_category.id}
       ])
 
-      {:ok, _provider} = Iptv.update_provider(inactive_provider, %{is_active: false})
+      {:ok, _provider} =
+        Streamix.Providers.update_provider(inactive_provider, %{is_active: false})
 
       ids = [private_movie.id, adult_movie.id, public_movie.id, inactive_movie.id, -1]
 
-      assert Enum.map(Iptv.list_public_movies_by_ids(ids), & &1.id) == [public_movie.id]
+      assert Enum.map(Streamix.Catalog.list_public_movies_by_ids(ids), & &1.id) == [
+               public_movie.id
+             ]
     end
 
     test "ranked series hydration enforces user visibility, active provider and adult preference" do
@@ -899,17 +907,18 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
         %{catalog_item_id: adult_series.catalog_item_id, category_id: adult_category.id}
       ])
 
-      {:ok, _provider} = Iptv.update_provider(inactive_provider, %{is_active: false})
+      {:ok, _provider} =
+        Streamix.Providers.update_provider(inactive_provider, %{is_active: false})
 
       ids = [private_series.id, adult_series.id, visible_series.id, inactive_series.id]
 
       assert Enum.map(
-               Iptv.list_visible_series_by_ids(user.id, ids, show_adult: false),
+               Streamix.Catalog.list_visible_series_by_ids(user.id, ids, show_adult: false),
                & &1.id
              ) == [visible_series.id]
 
       assert Enum.map(
-               Iptv.list_visible_series_by_ids(user.id, ids, show_adult: true),
+               Streamix.Catalog.list_visible_series_by_ids(user.id, ids, show_adult: true),
                & &1.id
              ) == [adult_series.id, visible_series.id]
     end
@@ -933,7 +942,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
         })
 
       result =
-        Iptv.list_new_releases(limit: 20)
+        Streamix.Catalog.list_new_releases(limit: 20)
         |> Enum.find(&(&1.id == movie.id))
 
       assert result
@@ -961,7 +970,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
           year: year + 1
         })
 
-      ids = Enum.map(Iptv.list_new_releases(limit: 200), & &1.id)
+      ids = Enum.map(Streamix.Catalog.list_new_releases(limit: 200), & &1.id)
 
       assert released.id in ids
       refute announced.id in ids
@@ -1001,14 +1010,18 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
         %{catalog_item_id: adult.catalog_item_id, category_id: adult_category.id}
       ])
 
-      assert Enum.map(Iptv.list_trending_movies(limit: 10, show_adult: false), & &1.id) == [
+      assert Enum.map(
+               Streamix.Catalog.list_trending_movies(limit: 10, show_adult: false),
+               & &1.id
+             ) == [
                regular.id
              ]
 
-      assert Enum.map(Iptv.list_trending_movies(limit: 10, show_adult: true), & &1.id) == [
-               adult.id,
-               regular.id
-             ]
+      assert Enum.map(Streamix.Catalog.list_trending_movies(limit: 10, show_adult: true), & &1.id) ==
+               [
+                 adult.id,
+                 regular.id
+               ]
     end
 
     test "ranked catalog queries apply offsets in SQL-sized pages" do
@@ -1026,10 +1039,19 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
           })
         end
 
-      assert Enum.map(Iptv.list_new_releases(limit: 1, offset: 1), & &1.id) == [second.id]
-      assert Enum.map(Iptv.list_top_10_movies(limit: 1, offset: 1), & &1.id) == [second.id]
-      assert Enum.map(Iptv.list_trending("movies", limit: 1, offset: 1), & &1.id) == [second.id]
-      assert Enum.map(Iptv.list_new_releases(limit: 1), & &1.id) == [first.id]
+      assert Enum.map(Streamix.Catalog.list_new_releases(limit: 1, offset: 1), & &1.id) == [
+               second.id
+             ]
+
+      assert Enum.map(Streamix.Catalog.list_top_10_movies(limit: 1, offset: 1), & &1.id) == [
+               second.id
+             ]
+
+      assert Enum.map(Streamix.Catalog.list_trending("movies", limit: 1, offset: 1), & &1.id) == [
+               second.id
+             ]
+
+      assert Enum.map(Streamix.Catalog.list_new_releases(limit: 1), & &1.id) == [first.id]
     end
 
     test "list_top_10_series/1 returns lightweight series cards" do
@@ -1050,7 +1072,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
         })
 
       result =
-        Iptv.list_top_10_series(limit: 20)
+        Streamix.Catalog.list_top_10_series(limit: 20)
         |> Enum.find(&(&1.id == series.id))
 
       assert result
@@ -1075,7 +1097,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
         })
 
       result =
-        Iptv.list_public_series(limit: 50)
+        Streamix.Catalog.list_public_series(limit: 50)
         |> Enum.find(&(&1.id == series.id))
 
       assert result

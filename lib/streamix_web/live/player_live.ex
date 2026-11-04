@@ -28,9 +28,9 @@ defmodule StreamixWeb.PlayerLive do
   alias Streamix.Torrent
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.PlayerComponents.Metadata
-  alias StreamixWeb.Telemetry.PlayerLifecycle
   alias StreamixWeb.PlayerSourceFailover
   alias StreamixWeb.ReturnPath
+  alias StreamixWeb.Telemetry.PlayerLifecycle
 
   @torrent_peer_target 30
   @token_refresh_min_interval_ms 5_000

@@ -1,7 +1,7 @@
 defmodule Streamix.Iptv.ChannelsFacadeTest do
   use Streamix.DataCase, async: true
 
-  alias Streamix.Iptv
+  alias Streamix.Iptv.Channels
 
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
@@ -16,7 +16,7 @@ defmodule Streamix.Iptv.ChannelsFacadeTest do
       provider = provider_fixture(user)
       channels_fixture(provider, 3)
 
-      channels = Iptv.list_live_channels(provider.id)
+      channels = Streamix.Catalog.list_live_channels(provider.id)
 
       assert length(channels) == 3
     end
@@ -25,7 +25,7 @@ defmodule Streamix.Iptv.ChannelsFacadeTest do
       user = user_fixture()
       provider = provider_fixture(user)
 
-      assert Iptv.list_live_channels(provider.id) == []
+      assert Streamix.Catalog.list_live_channels(provider.id) == []
     end
 
     test "supports limit option" do
@@ -33,7 +33,7 @@ defmodule Streamix.Iptv.ChannelsFacadeTest do
       provider = provider_fixture(user)
       channels_fixture(provider, 10)
 
-      channels = Iptv.list_live_channels(provider.id, limit: 5)
+      channels = Streamix.Catalog.list_live_channels(provider.id, limit: 5)
 
       assert length(channels) == 5
     end
@@ -43,8 +43,8 @@ defmodule Streamix.Iptv.ChannelsFacadeTest do
       provider = provider_fixture(user)
       channels_fixture(provider, 10)
 
-      all = Iptv.list_live_channels(provider.id)
-      offset = Iptv.list_live_channels(provider.id, offset: 5)
+      all = Streamix.Catalog.list_live_channels(provider.id)
+      offset = Streamix.Catalog.list_live_channels(provider.id, offset: 5)
 
       assert length(offset) == 5
       refute hd(all).id == hd(offset).id
@@ -63,7 +63,7 @@ defmodule Streamix.Iptv.ChannelsFacadeTest do
       private_channel = channel_fixture(own_private, %{name: "Private News"})
       other_channel = channel_fixture(other_private, %{name: "Other News"})
 
-      results = Iptv.list_visible_live_channels(user.id, search: "News", limit: 10)
+      results = Streamix.Catalog.list_visible_live_channels(user.id, search: "News", limit: 10)
       result_ids = MapSet.new(results, & &1.id)
 
       assert MapSet.member?(result_ids, global_channel.id)
@@ -79,7 +79,7 @@ defmodule Streamix.Iptv.ChannelsFacadeTest do
       channel_fixture(provider, %{name: "CNN News"})
       channel_fixture(provider, %{name: "ESPN Sports"})
 
-      channels = Iptv.list_live_channels(provider.id, search: "News")
+      channels = Streamix.Catalog.list_live_channels(provider.id, search: "News")
 
       assert length(channels) == 2
       assert Enum.all?(channels, &String.contains?(&1.name, "News"))
@@ -92,7 +92,7 @@ defmodule Streamix.Iptv.ChannelsFacadeTest do
       provider = provider_fixture(user)
       channels_fixture(provider, 4)
 
-      assert Iptv.count_live_channels(provider.id) == 4
+      assert Channels.count(provider.id) == 4
     end
 
     test "mirrors the search filter from list/2" do
@@ -106,8 +106,8 @@ defmodule Streamix.Iptv.ChannelsFacadeTest do
 
       opts = [search: "News"]
 
-      assert Iptv.count_live_channels(provider.id, opts) ==
-               length(Iptv.list_live_channels(provider.id, opts))
+      assert Channels.count(provider.id, opts) ==
+               length(Streamix.Catalog.list_live_channels(provider.id, opts))
     end
 
     test "returns zero when no channels match the filter" do
@@ -115,7 +115,7 @@ defmodule Streamix.Iptv.ChannelsFacadeTest do
       provider = provider_fixture(user)
       channel_fixture(provider, %{name: "BBC News"})
 
-      assert Iptv.count_live_channels(provider.id, search: "does-not-exist") == 0
+      assert Channels.count(provider.id, search: "does-not-exist") == 0
     end
   end
 
@@ -125,12 +125,12 @@ defmodule Streamix.Iptv.ChannelsFacadeTest do
       provider = provider_fixture(user)
       channel = channel_fixture(provider)
 
-      assert Iptv.get_live_channel!(channel.id).id == channel.id
+      assert Channels.get!(channel.id).id == channel.id
     end
 
     test "raises if channel does not exist" do
       assert_raise Ecto.NoResultsError, fn ->
-        Iptv.get_live_channel!(0)
+        Channels.get!(0)
       end
     end
   end

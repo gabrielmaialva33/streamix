@@ -1,8 +1,6 @@
 defmodule Streamix.Iptv.HistoryFacadeTest do
   use Streamix.DataCase, async: true
   use Oban.Testing, repo: Streamix.Repo
-
-  alias Streamix.Iptv
   alias Streamix.Iptv.{Episode, Season}
   alias Streamix.Workers.UpdateUserProfileWorker
 
@@ -20,7 +18,7 @@ defmodule Streamix.Iptv.HistoryFacadeTest do
       channel = channel_fixture(provider)
       watch_history_fixture(user, channel, 120)
 
-      history = Iptv.list_watch_history(user.id)
+      history = Streamix.Library.list_watch_history(user.id)
 
       assert length(history) == 1
       assert hd(history).content_id == channel.id
@@ -36,7 +34,7 @@ defmodule Streamix.Iptv.HistoryFacadeTest do
       watch_history_fixture(user, ch1)
       watch_history_fixture(user, ch2)
 
-      history = Iptv.list_watch_history(user.id)
+      history = Streamix.Library.list_watch_history(user.id)
       assert length(history) == 2
 
       content_ids = Enum.map(history, & &1[:content_id]) |> MapSet.new()
@@ -57,12 +55,12 @@ defmodule Streamix.Iptv.HistoryFacadeTest do
         })
 
       {:ok, _entry} =
-        Iptv.add_watch_history(user.id, "movie", movie.id, %{
+        Streamix.Library.add_watch_history(user.id, "movie", movie.id, %{
           progress_seconds: 42,
           duration_seconds: 120
         })
 
-      [entry] = Iptv.list_home_history(user.id, limit: 6)
+      [entry] = Streamix.Library.list_home_history(user.id, limit: 6)
 
       assert entry.content_type == "movie"
       assert entry.content_id == movie.id
@@ -115,12 +113,12 @@ defmodule Streamix.Iptv.HistoryFacadeTest do
         |> Repo.insert!()
 
       {:ok, _entry} =
-        Iptv.add_watch_history(user.id, "episode", episode.id, %{
+        Streamix.Library.add_watch_history(user.id, "episode", episode.id, %{
           progress_seconds: 42,
           duration_seconds: 120
         })
 
-      [entry] = Iptv.list_home_history(user.id, limit: 6)
+      [entry] = Streamix.Library.list_home_history(user.id, limit: 6)
 
       assert entry.content_id == episode.id
       assert entry.series_name == "Dawson's Creek"
@@ -137,7 +135,7 @@ defmodule Streamix.Iptv.HistoryFacadeTest do
       channel = channel_fixture(provider)
 
       assert {:ok, %{} = entry} =
-               Iptv.add_watch_history(user.id, "live_channel", channel.id, %{
+               Streamix.Library.add_watch_history(user.id, "live_channel", channel.id, %{
                  duration_seconds: 300
                })
 
@@ -155,7 +153,7 @@ defmodule Streamix.Iptv.HistoryFacadeTest do
       user = user_fixture()
 
       assert {:error, _changeset} =
-               Iptv.add_watch_history(user.id, "movie", -1, %{duration_seconds: 300})
+               Streamix.Library.add_watch_history(user.id, "movie", -1, %{duration_seconds: 300})
 
       refute_enqueued(
         worker: UpdateUserProfileWorker,
@@ -177,8 +175,8 @@ defmodule Streamix.Iptv.HistoryFacadeTest do
       Repo.delete_all(Oban.Job)
       refute_enqueued(worker: UpdateUserProfileWorker)
 
-      assert {:ok, 5} = Iptv.clear_watch_history(user.id)
-      assert Iptv.list_watch_history(user.id) == []
+      assert {:ok, 5} = Streamix.Library.clear_watch_history(user.id)
+      assert Streamix.Library.list_watch_history(user.id) == []
 
       assert_enqueued(
         worker: UpdateUserProfileWorker,
@@ -225,18 +223,18 @@ defmodule Streamix.Iptv.HistoryFacadeTest do
         |> Repo.insert!()
 
       {:ok, _} =
-        Iptv.add_watch_history(user.id, "episode", episode_one.id, %{
+        Streamix.Library.add_watch_history(user.id, "episode", episode_one.id, %{
           progress_seconds: 30,
           duration_seconds: 120
         })
 
       {:ok, _} =
-        Iptv.add_watch_history(user.id, "episode", episode_two.id, %{
+        Streamix.Library.add_watch_history(user.id, "episode", episode_two.id, %{
           progress_seconds: 90,
           duration_seconds: 180
         })
 
-      assert Iptv.get_series_progress_map(user.id, [series.id]) == %{series.id => 0.5}
+      assert Streamix.Library.get_series_progress_map(user.id, [series.id]) == %{series.id => 0.5}
     end
   end
 end

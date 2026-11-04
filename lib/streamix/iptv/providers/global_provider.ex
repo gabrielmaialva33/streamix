@@ -7,6 +7,7 @@ defmodule Streamix.Iptv.GlobalProvider do
   """
 
   alias Streamix.Iptv.Provider
+  alias Streamix.Iptv.Providers
   alias Streamix.Repo
 
   import Ecto.Query
@@ -97,7 +98,7 @@ defmodule Streamix.Iptv.GlobalProvider do
         {:error, :not_found}
 
       provider ->
-        Streamix.Iptv.sync_provider(provider)
+        Providers.sync(provider)
     end
   end
 

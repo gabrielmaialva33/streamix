@@ -15,9 +15,9 @@ defmodule Streamix.CredoChecks.ContextBoundaryTest do
   test "accepts calls through a public context facade" do
     """
     defmodule StreamixWeb.Example do
-      alias Streamix.Iptv
+      alias Streamix.Catalog
 
-      def load(id), do: Iptv.get_movie(id)
+      def load(id), do: Catalog.get_movie(id)
     end
     """
     |> to_source_file("lib/streamix_web/example.ex")

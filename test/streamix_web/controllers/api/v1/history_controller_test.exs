@@ -5,7 +5,6 @@ defmodule StreamixWeb.Api.V1.HistoryControllerTest do
   import Streamix.IptvFixtures
 
   alias Streamix.Accounts
-  alias Streamix.Iptv
 
   setup do
     original_api_keys = Application.get_env(:streamix, :api_keys, [])
@@ -46,7 +45,7 @@ defmodule StreamixWeb.Api.V1.HistoryControllerTest do
       assert response["content_type"] == "movie"
       assert response["content_id"] == movie.id
       movie_id = movie.id
-      assert [%{content_id: ^movie_id}] = Iptv.list_watch_history(user.id)
+      assert [%{content_id: ^movie_id}] = Streamix.Library.list_watch_history(user.id)
     end
 
     test "blocks recording another user's private playable content", %{conn: conn} do
@@ -66,7 +65,7 @@ defmodule StreamixWeb.Api.V1.HistoryControllerTest do
         |> json_response(404)
 
       assert response["error"]["code"] == "content_not_found"
-      assert Iptv.list_watch_history(user.id) == []
+      assert Streamix.Library.list_watch_history(user.id) == []
     end
 
     test "rejects negative, partial, and non-boolean progress values", %{conn: conn} do
@@ -94,7 +93,7 @@ defmodule StreamixWeb.Api.V1.HistoryControllerTest do
         assert response["error"]["code"] == "invalid_progress"
       end
 
-      assert Iptv.list_watch_history(user.id) == []
+      assert Streamix.Library.list_watch_history(user.id) == []
     end
   end
 

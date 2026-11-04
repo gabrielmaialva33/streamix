@@ -1,7 +1,5 @@
 defmodule Streamix.Iptv.GindexStreamFacadeTest do
   use Streamix.DataCase, async: true
-
-  alias Streamix.Iptv
   alias Streamix.Iptv.{Episode, Season}
 
   import Streamix.IptvFixtures
@@ -19,7 +17,7 @@ defmodule Streamix.Iptv.GindexStreamFacadeTest do
   test "returns and updates the movie stream projection", %{provider: provider} do
     movie = movie_fixture(provider, %{gindex_path: "/1:/Movies/example.mkv"})
 
-    assert {:ok, source} = Iptv.get_gindex_stream_source(:movie, movie.id)
+    assert {:ok, source} = Streamix.Playback.get_gindex_stream_source(:movie, movie.id)
 
     assert source == %{
              base_url: "https://stream.gindex.example",
@@ -29,10 +27,17 @@ defmodule Streamix.Iptv.GindexStreamFacadeTest do
            }
 
     expires_at = ~U[2026-08-04 15:30:00Z]
-    assert :ok = Iptv.put_gindex_stream_cache(:movie, movie.id, "https://cdn/movie", expires_at)
+
+    assert :ok =
+             Streamix.Playback.put_gindex_stream_cache(
+               :movie,
+               movie.id,
+               "https://cdn/movie",
+               expires_at
+             )
 
     assert {:ok, %{cached_url: "https://cdn/movie", cached_until: ^expires_at}} =
-             Iptv.get_gindex_stream_source(:movie, movie.id)
+             Streamix.Playback.get_gindex_stream_source(:movie, movie.id)
   end
 
   test "returns and updates the episode stream projection", %{provider: provider} do
@@ -57,14 +62,14 @@ defmodule Streamix.Iptv.GindexStreamFacadeTest do
       })
       |> Repo.insert!()
 
-    assert {:ok, source} = Iptv.get_gindex_stream_source(:episode, episode.id)
+    assert {:ok, source} = Streamix.Playback.get_gindex_stream_source(:episode, episode.id)
     assert source.base_url == "https://stream.gindex.example"
     assert source.path == "/1:/Series/example/S01E01.mkv"
 
     expires_at = ~U[2026-08-04 16:30:00Z]
 
     assert :ok =
-             Iptv.put_gindex_stream_cache(
+             Streamix.Playback.put_gindex_stream_cache(
                :episode,
                episode.id,
                "https://cdn/episode",
@@ -72,18 +77,22 @@ defmodule Streamix.Iptv.GindexStreamFacadeTest do
              )
 
     assert {:ok, %{cached_url: "https://cdn/episode", cached_until: ^expires_at}} =
-             Iptv.get_gindex_stream_source(:episode, episode.id)
+             Streamix.Playback.get_gindex_stream_source(:episode, episode.id)
   end
 
   test "returns explicit boundary errors", %{provider: provider} do
     movie = movie_fixture(provider)
 
-    assert {:error, :not_gindex_movie} = Iptv.get_gindex_stream_source(:movie, movie.id)
-    assert {:error, :movie_not_found} = Iptv.get_gindex_stream_source(:movie, -1)
-    assert {:error, :episode_not_found} = Iptv.get_gindex_stream_source(:episode, -1)
-    assert {:error, :unsupported_type} = Iptv.get_gindex_stream_source(:channel, movie.id)
+    assert {:error, :not_gindex_movie} =
+             Streamix.Playback.get_gindex_stream_source(:movie, movie.id)
+
+    assert {:error, :movie_not_found} = Streamix.Playback.get_gindex_stream_source(:movie, -1)
+    assert {:error, :episode_not_found} = Streamix.Playback.get_gindex_stream_source(:episode, -1)
+
+    assert {:error, :unsupported_type} =
+             Streamix.Playback.get_gindex_stream_source(:channel, movie.id)
 
     assert {:error, :invalid_cache} =
-             Iptv.put_gindex_stream_cache(:movie, movie.id, "", DateTime.utc_now())
+             Streamix.Playback.put_gindex_stream_cache(:movie, movie.id, "", DateTime.utc_now())
   end
 end

@@ -19,7 +19,7 @@ defmodule Streamix.Gindex.Sync.MoviesTest do
 
     assert Repo.aggregate(Movie, :count) == 1
 
-    known_paths = Streamix.Iptv.gindex_known_paths(provider.id, :movies)
+    known_paths = Streamix.Providers.gindex_known_paths(provider.id, :movies)
     assert MapSet.member?(known_paths, movie.gindex_path)
     assert MapSet.member?(known_paths, "/1:/Filmes/2026/")
 

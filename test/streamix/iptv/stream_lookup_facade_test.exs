@@ -1,7 +1,5 @@
 defmodule Streamix.Iptv.StreamLookupFacadeTest do
   use Streamix.DataCase, async: true
-
-  alias Streamix.Iptv
   alias Streamix.Iptv.{Episode, Season}
 
   import Streamix.AccountsFixtures
@@ -13,7 +11,7 @@ defmodule Streamix.Iptv.StreamLookupFacadeTest do
       provider = provider_fixture(user)
       movie = movie_fixture(provider, %{stream_icon: "http://example.com/poster.jpg"})
 
-      result = Iptv.get_movie_for_stream(movie.id)
+      result = Streamix.Playback.get_movie_for_stream(movie.id)
 
       assert result.id == movie.id
       assert Ecto.assoc_loaded?(result.provider)
@@ -48,7 +46,7 @@ defmodule Streamix.Iptv.StreamLookupFacadeTest do
         })
         |> Repo.insert!()
 
-      result = Iptv.get_episode_for_stream(episode.id)
+      result = Streamix.Playback.get_episode_for_stream(episode.id)
 
       assert result.id == episode.id
       assert Ecto.assoc_loaded?(result.season)
@@ -81,7 +79,7 @@ defmodule Streamix.Iptv.StreamLookupFacadeTest do
         external_id: "2"
       })
 
-      categories = Iptv.list_categories(provider.id)
+      categories = Streamix.Catalog.list_categories(provider.id)
 
       names = Enum.map(categories, & &1.name)
       assert "News" in names

@@ -4,8 +4,6 @@ defmodule Streamix.Library do
 
   This context owns favorites, watch history, playback progress, and the
   personalization refresh triggered after successful history writes.
-  `Streamix.Iptv` keeps compatibility delegates while callers migrate to this
-  focused boundary.
   """
 
   require Logger
@@ -147,5 +145,5 @@ defmodule Streamix.Library do
 
   # User-library maintenance
 
-  defdelegate cleanup_orphaned_user_data(user_id, opts), to: Streamix.Iptv.Sync
+  defdelegate cleanup_orphaned_user_data(user_id \\ nil, opts \\ []), to: Streamix.Iptv.Sync
 end

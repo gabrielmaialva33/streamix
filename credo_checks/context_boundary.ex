@@ -11,7 +11,7 @@ defmodule Streamix.CredoChecks.ContextBoundary do
     category: :design,
     explanations: [
       check: """
-      Web modules and workers must call public context facades such as `Streamix.Iptv`.
+      Web modules and workers must call public context facades such as `Streamix.Catalog`.
       Reaching into schemas or internal modules couples the delivery layer to
       implementation details and makes context refactors unsafe.
       """

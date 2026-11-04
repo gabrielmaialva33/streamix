@@ -5,7 +5,6 @@ defmodule StreamixWeb.HomeDataTest do
   import Streamix.IptvFixtures
 
   alias Streamix.Cache
-  alias Streamix.Iptv
   alias StreamixWeb.HomeData
 
   setup do
@@ -25,7 +24,9 @@ defmodule StreamixWeb.HomeDataTest do
       same_title = movie_fixture(second, %{name: "Outro Filme"})
 
       for {movie, minutes_ago} <- [{older, 40}, {other, 30}, {same_title, 20}, {latest, 10}] do
-        {:ok, entry} = Iptv.add_watch_history(user.id, "movie", movie.id, %{progress_seconds: 10})
+        {:ok, entry} =
+          Streamix.Library.add_watch_history(user.id, "movie", movie.id, %{progress_seconds: 10})
+
         watched_at = DateTime.utc_now(:second) |> DateTime.add(-minutes_ago * 60)
 
         Streamix.Repo.query!("UPDATE watch_progress SET last_watched_at = $1 WHERE id = $2", [
@@ -48,11 +49,11 @@ defmodule StreamixWeb.HomeDataTest do
 
       socket = home_socket(user, featured: {:movie, movie})
 
-      refute Iptv.favorite?(user.id, "movie", movie.id)
+      refute Streamix.Library.favorite?(user.id, "movie", movie.id)
 
       socket = HomeData.toggle_content_favorite(socket, "movie", Integer.to_string(movie.id))
 
-      assert Iptv.favorite?(user.id, "movie", movie.id)
+      assert Streamix.Library.favorite?(user.id, "movie", movie.id)
       assert MapSet.member?(socket.assigns.movie_favorites_map, movie.id)
       assert socket.assigns.featured_favorite
 
@@ -66,7 +67,7 @@ defmodule StreamixWeb.HomeDataTest do
       provider = provider_fixture(user)
       series = series_content_fixture(provider, %{title: "Favorited Series"})
 
-      {:ok, _favorite} = Iptv.add_favorite(user.id, "series", series.id)
+      {:ok, _favorite} = Streamix.Library.add_favorite(user.id, "series", series.id)
 
       socket =
         home_socket(user,
@@ -76,7 +77,7 @@ defmodule StreamixWeb.HomeDataTest do
 
       socket = HomeData.toggle_content_favorite(socket, :series, series.id)
 
-      refute Iptv.favorite?(user.id, "series", series.id)
+      refute Streamix.Library.favorite?(user.id, "series", series.id)
       refute MapSet.member?(socket.assigns.series_favorites_map, series.id)
       refute socket.assigns.featured_favorite
     end
@@ -100,7 +101,7 @@ defmodule StreamixWeb.HomeDataTest do
         %{catalog_item_id: adult.catalog_item_id, category_id: adult_category.id}
       ])
 
-      {:ok, _favorite} = Iptv.add_favorite(user.id, "movie", adult.id)
+      {:ok, _favorite} = Streamix.Library.add_favorite(user.id, "movie", adult.id)
 
       socket =
         user

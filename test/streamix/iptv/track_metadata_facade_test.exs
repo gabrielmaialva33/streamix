@@ -1,7 +1,7 @@
 defmodule Streamix.Iptv.TrackMetadataFacadeTest do
   use Streamix.DataCase, async: true
 
-  alias Streamix.{Gindex, Iptv}
+  alias Streamix.Gindex
   alias Streamix.Iptv.{Episode, Season}
 
   import Streamix.AccountsFixtures
@@ -16,11 +16,13 @@ defmodule Streamix.Iptv.TrackMetadataFacadeTest do
     movie = movie_fixture(provider, %{gindex_path: "/movies/demo.mkv"})
     metadata = %{"audio" => [%{"codec" => "aac"}], "subtitle" => []}
 
-    assert {:ok, source} = Iptv.get_media_track_source(:movie, movie.id)
+    assert {:ok, source} = Streamix.Catalog.get_media_track_source(:movie, movie.id)
     assert source == %{id: movie.id, gindex_path: "/movies/demo.mkv", track_metadata: nil}
 
-    assert :ok = Iptv.put_media_track_metadata(:movie, movie.id, metadata)
-    assert {:ok, %{track_metadata: ^metadata}} = Iptv.get_media_track_source(:movie, movie.id)
+    assert :ok = Streamix.Catalog.put_media_track_metadata(:movie, movie.id, metadata)
+
+    assert {:ok, %{track_metadata: ^metadata}} =
+             Streamix.Catalog.get_media_track_source(:movie, movie.id)
 
     assert {:ok, %{audio: [%{"codec" => "aac"}], subtitle: [], probed_at: nil}} =
              Gindex.fetch_media_tracks(:movie, movie.id)
@@ -46,7 +48,7 @@ defmodule Streamix.Iptv.TrackMetadataFacadeTest do
       })
       |> Repo.insert!()
 
-    assert {:ok, source} = Iptv.get_media_track_source(:episode, episode.id)
+    assert {:ok, source} = Streamix.Catalog.get_media_track_source(:episode, episode.id)
     assert source.id == episode.id
     assert source.gindex_path == "/series/demo-s01e01.mkv"
   end
@@ -55,13 +57,17 @@ defmodule Streamix.Iptv.TrackMetadataFacadeTest do
     missing_id = System.unique_integer([:positive])
     regular_movie = movie_fixture(provider)
 
-    assert {:error, :not_found} = Iptv.get_media_track_source(:movie, missing_id)
-    assert {:error, :not_found} = Iptv.put_media_track_metadata(:movie, missing_id, %{})
+    assert {:error, :not_found} = Streamix.Catalog.get_media_track_source(:movie, missing_id)
+
+    assert {:error, :not_found} =
+             Streamix.Catalog.put_media_track_metadata(:movie, missing_id, %{})
 
     assert {:error, :invalid_metadata} =
-             Iptv.put_media_track_metadata(:movie, provider.id, "not-a-map")
+             Streamix.Catalog.put_media_track_metadata(:movie, provider.id, "not-a-map")
 
-    assert {:error, :unsupported_type} = Iptv.get_media_track_source(:live_channel, provider.id)
+    assert {:error, :unsupported_type} =
+             Streamix.Catalog.get_media_track_source(:live_channel, provider.id)
+
     assert {:error, :not_gindex} = Gindex.fetch_media_tracks(:movie, regular_movie.id)
   end
 end

@@ -61,7 +61,7 @@ defmodule Streamix.ArchitectureBoundariesTest do
     """
   end
 
-  test "production callers use Library instead of the Iptv compatibility facade" do
+  test "production callers use Library for personal-library operations" do
     violations =
       @lib_root
       |> source_files()
@@ -69,8 +69,8 @@ defmodule Streamix.ArchitectureBoundariesTest do
       |> Enum.flat_map(&iptv_library_call_violations/1)
 
     assert violations == [], """
-    Personal-library operations must use Streamix.Library. Streamix.Iptv keeps these
-    delegates only as a compatibility facade and must not gain new internal callers.
+    Personal-library operations must use Streamix.Library; the old Streamix.Iptv
+    facade is retired.
 
     #{format_call_violations(violations)}
     """

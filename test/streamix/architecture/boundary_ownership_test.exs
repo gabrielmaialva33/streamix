@@ -13,8 +13,6 @@ defmodule Streamix.Architecture.BoundaryOwnershipTest do
     {Streamix.Search, "lib/streamix/search.ex", :Search}
   ]
 
-  @delegate_targets Map.new(@owned_boundaries, fn {module, _path, target} -> {target, module} end)
-
   test "owned boundaries never call or delegate to the broad compatibility facade" do
     Enum.each(@owned_boundaries, fn {module, relative_path, _target} ->
       path = Path.join(@project_root, relative_path)
@@ -51,40 +49,13 @@ defmodule Streamix.Architecture.BoundaryOwnershipTest do
     """
   end
 
-  test "Streamix.Iptv preserves every owned-boundary compatibility arity" do
-    Code.ensure_loaded!(Streamix.Iptv)
+  test "the broad Streamix.Iptv facade stays retired" do
+    refute File.exists?(@facade_path), """
+    lib/streamix/iptv.ex was the compatibility facade; it was retired once every caller
+    moved to a focused boundary. Add the function to the boundary that owns it instead.
+    """
 
-    Enum.each(@owned_boundaries, fn {module, _relative_path, _target} ->
-      Code.ensure_loaded!(module)
-
-      missing =
-        Enum.reject(module.__info__(:functions), fn {function, arity} ->
-          function_exported?(Streamix.Iptv, function, arity)
-        end)
-
-      assert missing == [],
-             "Streamix.Iptv is missing compatibility delegates for " <>
-               "#{inspect(module)}: #{inspect(missing)}"
-    end)
-  end
-
-  test "the compatibility facade routes every owned arity to its boundary" do
-    routed = @facade_path |> parse_file!() |> facade_delegate_routes()
-
-    Enum.each(@owned_boundaries, fn {module, _relative_path, _target} ->
-      Code.ensure_loaded!(module)
-
-      expected = MapSet.new(module.__info__(:functions))
-      actual = Map.get(routed, module, MapSet.new())
-      missing = expected |> MapSet.difference(actual) |> MapSet.to_list() |> Enum.sort()
-
-      assert missing == [], """
-      Streamix.Iptv exports compatibility functions for #{inspect(module)}, but these
-      arities are not routed through the owning boundary:
-
-      #{inspect(missing, pretty: true)}
-      """
-    end)
+    refute Code.ensure_loaded?(Streamix.Iptv)
   end
 
   defp facade_dependency_violations(ast) do
@@ -121,49 +92,6 @@ defmodule Streamix.Architecture.BoundaryOwnershipTest do
     do: module_parts in [[:Iptv], [:Streamix, :Iptv]]
 
   defp broad_facade_target?(_target), do: false
-
-  defp facade_delegate_routes(ast) do
-    {_ast, routes} =
-      Macro.prewalk(ast, %{}, fn
-        {:defdelegate, _meta, [{function, _call_meta, args}, options]} = node, acc
-        when is_atom(function) and is_list(args) and is_list(options) ->
-          case delegate_boundary(Keyword.get(options, :to)) do
-            nil ->
-              {node, acc}
-
-            module ->
-              signatures = expanded_signatures(function, args)
-              {node, Map.update(acc, module, signatures, &MapSet.union(&1, signatures))}
-          end
-
-        node, acc ->
-          {node, acc}
-      end)
-
-    routes
-  end
-
-  defp delegate_boundary({:__aliases__, _, [target]}), do: Map.get(@delegate_targets, target)
-
-  defp delegate_boundary({:__aliases__, _, [:Streamix, boundary]}) do
-    expected = Module.safe_concat(Streamix, boundary)
-
-    Enum.find_value(@owned_boundaries, fn {module, _path, _target} ->
-      if module == expected, do: module
-    end)
-  end
-
-  defp delegate_boundary(_target), do: nil
-
-  defp expanded_signatures(function, args) do
-    maximum = length(args)
-    defaults = Enum.count(args, &match?({:\\, _, [_argument, _default]}, &1))
-    minimum = maximum - defaults
-
-    minimum..maximum
-    |> Enum.map(&{function, &1})
-    |> MapSet.new()
-  end
 
   defp parse_file!(path) do
     path

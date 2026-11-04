@@ -1,14 +1,13 @@
 defmodule Streamix.Workers.SyncProviderWorkerTest do
   use Streamix.DataCase, async: false
-
-  alias Streamix.Iptv
   alias Streamix.Workers.SyncProviderWorker
 
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
   setup do
-    previous = Application.get_env(:streamix, :sync_provider_worker_iptv_module, Iptv)
+    previous =
+      Application.get_env(:streamix, :sync_provider_worker_iptv_module, Streamix.Providers)
 
     on_exit(fn ->
       Application.put_env(:streamix, :sync_provider_worker_iptv_module, previous)
@@ -77,7 +76,7 @@ defmodule Streamix.Workers.SyncProviderWorkerTest do
       SyncProviderWorker.perform(job)
 
       # Verify status was updated (even if sync failed)
-      updated = Iptv.get_provider!(provider.id)
+      updated = Streamix.Providers.get_provider!(provider.id)
       assert updated.sync_status in ["syncing", "failed"]
     end
 
@@ -148,7 +147,7 @@ defmodule Streamix.Workers.SyncProviderWorkerTest do
       job = %Oban.Job{args: %{"provider_id" => provider.id}}
 
       assert :ok = SyncProviderWorker.perform(job)
-      assert Iptv.get_provider!(provider.id).sync_status == "completed"
+      assert Streamix.Providers.get_provider!(provider.id).sync_status == "completed"
     end
 
     test "persists failed when the provider started in failed state" do
@@ -164,7 +163,7 @@ defmodule Streamix.Workers.SyncProviderWorkerTest do
       job = %Oban.Job{args: %{"provider_id" => provider.id}}
 
       assert {:error, :forced_failure} = SyncProviderWorker.perform(job)
-      assert Iptv.get_provider!(provider.id).sync_status == "failed"
+      assert Streamix.Providers.get_provider!(provider.id).sync_status == "failed"
     end
 
     @tag :integration
@@ -178,7 +177,7 @@ defmodule Streamix.Workers.SyncProviderWorkerTest do
       # Will fail because we can't connect to the fake provider URL
       SyncProviderWorker.perform(job)
 
-      updated = Iptv.get_provider!(provider.id)
+      updated = Streamix.Providers.get_provider!(provider.id)
       assert updated.sync_status == "failed"
     end
   end

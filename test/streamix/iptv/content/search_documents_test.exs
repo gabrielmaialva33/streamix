@@ -4,8 +4,6 @@ defmodule Streamix.Iptv.SearchDocumentsTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
-  alias Streamix.Iptv
-
   test "returns ordered movie projections scoped by provider and cursor" do
     user = user_fixture()
     provider = provider_fixture(user)
@@ -16,7 +14,7 @@ defmodule Streamix.Iptv.SearchDocumentsTest do
     _other = movie_fixture(other_provider, %{title: "Other"})
 
     assert [document] =
-             Iptv.list_search_documents(:movies, provider.id, after_id: first.id)
+             Streamix.Search.list_search_documents(:movies, provider.id, after_id: first.id)
 
     assert document.id == second.id
     assert document.title == "Second"
@@ -29,7 +27,7 @@ defmodule Streamix.Iptv.SearchDocumentsTest do
     provider = provider_fixture(user, %{is_active: false})
     _series = series_content_fixture(provider, %{title: "Hidden"})
 
-    assert Iptv.list_search_documents(:series, provider.id) == []
+    assert Streamix.Search.list_search_documents(:series, provider.id) == []
   end
 
   test "splits anime out of series the same way the catalog does" do
@@ -48,10 +46,10 @@ defmodule Streamix.Iptv.SearchDocumentsTest do
         gindex_path: "/1:/Séries/Series Title/"
       })
 
-    assert [anime_document] = Iptv.list_search_documents(:animes, provider.id)
+    assert [anime_document] = Streamix.Search.list_search_documents(:animes, provider.id)
     assert anime_document.id == anime.id
 
-    series_ids = Iptv.list_search_documents(:series, provider.id) |> Enum.map(& &1.id)
+    series_ids = Streamix.Search.list_search_documents(:series, provider.id) |> Enum.map(& &1.id)
     assert series.id in series_ids
     refute anime.id in series_ids
   end
@@ -62,14 +60,14 @@ defmodule Streamix.Iptv.SearchDocumentsTest do
 
     series = series_content_fixture(provider, %{title: "Xtream Series"})
 
-    assert [document] = Iptv.list_search_documents(:series, provider.id)
+    assert [document] = Streamix.Search.list_search_documents(:series, provider.id)
     assert document.id == series.id
-    assert Iptv.list_search_documents(:animes, provider.id) == []
+    assert Streamix.Search.list_search_documents(:animes, provider.id) == []
   end
 
   test "validates the indexing cursor at the context boundary" do
     assert_raise ArgumentError, fn ->
-      Iptv.list_search_documents(:movies, nil, after_id: -1)
+      Streamix.Search.list_search_documents(:movies, nil, after_id: -1)
     end
   end
 end
