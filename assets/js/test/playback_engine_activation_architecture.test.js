@@ -165,7 +165,7 @@ test("extracted engine entrypoints stay thin compatibility delegates on the hook
     "MPEG-TS transition completed without an engine",
     "HLS engine was not registered by StreamLoader",
     "new NativeBufferManager",
-    'from "../media/native_buffer"',
+    'from "../media/native_buffer.js"',
     "createNativePlaybackEngine",
     "createMediaElementEngine",
     "detectAudioIssue",

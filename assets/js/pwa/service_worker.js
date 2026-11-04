@@ -1,6 +1,6 @@
-import { getEnvInfo } from "../core/logger";
-import { checkPwaCacheFreshness } from "./cache_management";
-import { createControllerChangeGuard } from "./service_worker_runtime";
+import { getEnvInfo } from "../core/logger.js";
+import { checkPwaCacheFreshness } from "./cache_management.js";
+import { createControllerChangeGuard } from "./service_worker_runtime.js";
 
 const showUpdateToast = (waitingWorker) => {
   if (document.getElementById("sw-update-toast")) return;

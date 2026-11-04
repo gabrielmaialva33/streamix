@@ -1,25 +1,25 @@
-import { playerLogger as log, setErrorReporter } from "../core/logger";
-import { getCapabilitySummary, getMediaDecodingInfo } from "../media/codec_detector";
-import { CodecAwareABR } from "../media/codec_priority";
-import { NetworkMonitor } from "../media/network_monitor";
-import { isHlsJsSupported, isMpegtsSupported } from "../media/player_libs";
+import { playerLogger as log, setErrorReporter } from "../core/logger.js";
+import { getCapabilitySummary, getMediaDecodingInfo } from "../media/codec_detector.js";
+import { CodecAwareABR } from "../media/codec_priority.js";
+import { NetworkMonitor } from "../media/network_monitor.js";
+import { isHlsJsSupported, isMpegtsSupported } from "../media/player_libs.js";
 import {
   buildQualityProbeCandidates,
   detectQualityCodec,
   qualityVideoCodec,
-} from "../media/quality_probe";
-import { resolveStreamType } from "../media/stream_loader";
+} from "../media/quality_probe.js";
+import { resolveStreamType } from "../media/stream_loader.js";
 import {
   ContentType,
   FeatureFlags,
   getStreamingConfig,
   selectStreamingMode,
-} from "../media/streaming_config";
-import { isWebCodecsSupported } from "../media/webcodecs_decoder";
-import { isMSEInWorkersSupported } from "../media/worker_mse";
-import { createAspectRatioController } from "../player/aspect_ratio_controller";
-import { createAudioController, usesNativeAudioControls } from "../player/audio_controller";
-import { audioOutputVolume } from "../player/audio_state";
+} from "../media/streaming_config.js";
+import { isWebCodecsSupported } from "../media/webcodecs_decoder.js";
+import { isMSEInWorkersSupported } from "../media/worker_mse.js";
+import { createAspectRatioController } from "../player/aspect_ratio_controller.js";
+import { createAudioController, usesNativeAudioControls } from "../player/audio_controller.js";
+import { audioOutputVolume } from "../player/audio_state.js";
 import { createAvbridgeEngineActivation } from "../player/avbridge_engine_activation.js";
 import { createAvPlayerEngineActivation } from "../player/avplayer_engine_activation.js";
 import {
@@ -30,40 +30,40 @@ import {
   PLAYBACK_STATE,
 } from "../player/engine_contract.js";
 import { createEngineRecoveryPolicy } from "../player/engine_recovery_policy.js";
-import { selectEngineDecision } from "../player/engine_selector";
+import { selectEngineDecision } from "../player/engine_selector.js";
 import {
   createErrorReport,
   detectErrorPatterns,
   formatErrorForLog,
-} from "../player/error_telemetry";
-import { evaluateFallbackAttempt } from "../player/fallback_policy";
+} from "../player/error_telemetry.js";
+import { evaluateFallbackAttempt } from "../player/fallback_policy.js";
 import { createH265webEngineActivation } from "../player/h265web_engine_activation.js";
 import { createHlsEngineActivation } from "../player/hls_engine_activation.js";
 import { createHlsRecoveryCoordinator } from "../player/hls_recovery_coordinator.js";
 import { createIosPwaPlaybackController } from "../player/ios_pwa_playback_controller.js";
-import { LifecycleScope } from "../player/lifecycle_scope";
+import { LifecycleScope } from "../player/lifecycle_scope.js";
 import {
   configurationFromPlayerElement,
   probeMediaCapability,
-} from "../player/media_capability_policy";
+} from "../player/media_capability_policy.js";
 import { createMediaEventBindings } from "../player/media_event_bindings.js";
-import { createMobileControls } from "../player/mobile_controls";
+import { createMobileControls } from "../player/mobile_controls.js";
 import {
   createMpegtsEngineActivation,
   FLV_UNSUPPORTED_MESSAGE,
 } from "../player/mpegts_engine_activation.js";
 import { createMpegtsRecoveryCoordinator } from "../player/mpegts_recovery_coordinator.js";
-import { NativeBufferingController } from "../player/native_buffering_controller";
+import { NativeBufferingController } from "../player/native_buffering_controller.js";
 import { createNativeEngineActivation } from "../player/native_engine_activation.js";
-import { configureNativePlaybackElement as configureNativeElement } from "../player/native_playback_controller";
+import { configureNativePlaybackElement as configureNativeElement } from "../player/native_playback_controller.js";
 import { createNativeSubtitleController } from "../player/native_subtitle_controller.js";
-import { NextEpisodeController } from "../player/next_episode_controller";
-import { emitPlaybackEvent, installPlaybackBridge } from "../player/playback_bridge";
+import { NextEpisodeController } from "../player/next_episode_controller.js";
+import { emitPlaybackEvent, installPlaybackBridge } from "../player/playback_bridge.js";
 import { createPlaybackBrowserIntegration } from "../player/playback_browser_integration.js";
-import { createPlaybackCommandController } from "../player/playback_command_controller";
+import { createPlaybackCommandController } from "../player/playback_command_controller.js";
 import { createPlaybackEngineActivation } from "../player/playback_engine_activation.js";
 import { createPlaybackEngineAdapter } from "../player/playback_engine_adapter.js";
-import { PlaybackEngineTeardownQueue } from "../player/playback_engine_lifecycle";
+import { PlaybackEngineTeardownQueue } from "../player/playback_engine_lifecycle.js";
 import { createPlaybackEngineTransitionController } from "../player/playback_engine_transition_controller.js";
 import {
   getPlaybackResourcePolicy,
@@ -73,7 +73,7 @@ import {
   isFirefoxBrowser,
   isStandalonePwa,
   scheduleLowPriority,
-} from "../player/playback_environment";
+} from "../player/playback_environment.js";
 import { consumePlaybackIntent } from "../player/playback_intent.js";
 import { createPlaybackOrchestrator } from "../player/playback_orchestrator.js";
 import { PlaybackRecoveryGuard } from "../player/playback_recovery_guard.js";
@@ -92,11 +92,11 @@ import {
   savePreferAVPlayer,
   saveSubtitleTrack,
   saveVolume,
-} from "../player/player_preferences";
-import { createInitialPlayerState } from "../player/player_state";
+} from "../player/player_preferences.js";
+import { createInitialPlayerState } from "../player/player_state.js";
 import { createPlayerTrackController } from "../player/player_track_controller.js";
 import { createPlayerTrackPresentationController } from "../player/player_track_presentation_controller.js";
-import { PlayerUI } from "../player/player_ui";
+import { PlayerUI } from "../player/player_ui.js";
 import { createPlayerUiController } from "../player/player_ui_controller.js";
 import { ProviderEngineMemory } from "../player/provider_engine_memory.js";
 import { createSourceFailoverController } from "../player/source_failover_controller.js";

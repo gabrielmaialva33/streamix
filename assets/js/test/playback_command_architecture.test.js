@@ -17,7 +17,7 @@ test("VideoPlayer composes one transport-command controller", () => {
 
   assert.match(
     hookSource,
-    /import \{ createPlaybackCommandController \} from "\.\.\/player\/playback_command_controller";/,
+    /import \{ createPlaybackCommandController \} from "\.\.\/player\/playback_command_controller\.js";/,
   );
   assert.ok(
     normalized.includes(

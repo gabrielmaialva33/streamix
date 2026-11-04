@@ -19,7 +19,7 @@
 // The engine selector tries avbridge first for GIndex MKV/HEVC, and
 // falls back to AVPlayerWrapper on any init error.
 
-import { avplayerLogger as log } from "../core/logger";
+import { avplayerLogger as log } from "../core/logger.js";
 
 export class AvbridgeWrapper {
   constructor(options = {}) {
