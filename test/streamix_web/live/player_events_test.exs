@@ -1,16 +1,15 @@
-defmodule StreamixWeb.PlayerLifecycleHandlersTest do
+defmodule StreamixWeb.PlayerEventsTest do
   # Telemetry handlers are global and must not observe events from concurrent tests.
   use ExUnit.Case, async: false
 
-  alias StreamixWeb.PlayerLive
-  alias StreamixWeb.WatchPartyLive.Show
+  alias StreamixWeb.PlayerEvents
 
-  test "PlayerLive forwards lifecycle transitions to bounded telemetry" do
+  test "lifecycle transitions reach bounded telemetry" do
     attach([:streamix, :player, :state_transition])
     socket = %Phoenix.LiveView.Socket{}
 
-    assert {:noreply, ^socket} =
-             PlayerLive.handle_event(
+    assert {:halt, ^socket} =
+             PlayerEvents.handle_event(
                "player_lifecycle",
                %{
                  "stage" => "player_state_changed",
@@ -25,12 +24,12 @@ defmodule StreamixWeb.PlayerLifecycleHandlersTest do
                     %{engine: "hls", from_state: "loading", to_state: "playing"}}
   end
 
-  test "Watch Party forwards invalid lifecycle transitions to bounded telemetry" do
+  test "invalid lifecycle transitions reach bounded telemetry without the URL" do
     attach([:streamix, :player, :state_transition_invalid])
     socket = %Phoenix.LiveView.Socket{}
 
-    assert {:noreply, ^socket} =
-             Show.handle_event(
+    assert {:halt, ^socket} =
+             PlayerEvents.handle_event(
                "player_lifecycle",
                %{
                  "stage" => "player_state_transition_invalid",
@@ -44,6 +43,11 @@ defmodule StreamixWeb.PlayerLifecycleHandlersTest do
 
     assert_receive {:telemetry, [:streamix, :player, :state_transition_invalid], %{count: 1},
                     %{engine: "mpegts", from_state: "idle", to_state: "playing"}}
+  end
+
+  test "an event the player does not share continues to the LiveView" do
+    socket = %Phoenix.LiveView.Socket{}
+    assert {:cont, ^socket} = PlayerEvents.handle_event("progress_update", %{}, socket)
   end
 
   test "Prometheus metrics expose both state-transition counters" do

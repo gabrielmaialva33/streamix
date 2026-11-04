@@ -9,11 +9,11 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   import StreamixWeb.PlayerHelpers
   import StreamixWeb.WatchPartyComponents
 
-  alias Streamix.{Accounts, Billing, Library, WatchParty}
+  alias Streamix.{Billing, Library, WatchParty}
   alias Streamix.SafeLog
   alias StreamixWeb.PlayerComponents.Metadata
+  alias StreamixWeb.PlayerEvents
   alias StreamixWeb.{PlayerSourceFailover, Presence}
-  alias StreamixWeb.Telemetry.PlayerLifecycle
   alias StreamixWeb.WatchPartyLive.Status
 
   require Logger
@@ -27,6 +27,8 @@ defmodule StreamixWeb.WatchPartyLive.Show do
 
   @impl true
   def mount(%{"invite_code" => invite_code}, _session, socket) do
+    socket = PlayerEvents.attach(socket)
+
     user_id = socket.assigns.current_scope.user.id
 
     with %{} = room <- WatchParty.get_room_by_invite_with_content(invite_code),
@@ -598,46 +600,9 @@ defmodule StreamixWeb.WatchPartyLive.Show do
 
   def handle_event("buffering", _params, socket), do: {:noreply, socket}
 
-  def handle_event("streaming_mode_changed", %{"mode" => mode}, socket) do
-    {:noreply, assign(socket, streaming_mode: safe_streaming_mode(mode))}
-  end
-
-  def handle_event("set_quality", %{"level" => level}, socket),
-    do: {:noreply, push_event(socket, "set_quality", %{level: level})}
-
-  def handle_event("set_audio_track", %{"track" => track}, socket),
-    do: {:noreply, push_event(socket, "set_audio_track", %{track: track})}
-
-  def handle_event("set_subtitle_track", %{"track" => track}, socket),
-    do: {:noreply, push_event(socket, "set_subtitle_track", %{track: track})}
-
-  def handle_event("adjust_subtitle_offset", %{"delta" => delta}, socket) do
-    case Integer.parse(to_string(delta)) do
-      {delta, ""} ->
-        update_subtitle_offset(
-          socket,
-          socket.assigns.current_scope.user.subtitle_offset_ms + delta
-        )
-
-      _ ->
-        {:noreply, put_flash(socket, :error, "Ajuste de legenda inválido")}
-    end
-  end
-
-  def handle_event("reset_subtitle_offset", _params, socket),
-    do: update_subtitle_offset(socket, 0)
-
-  def handle_event("toggle_pip", _params, socket),
-    do: {:noreply, push_event(socket, "toggle_pip", %{})}
-
   def handle_event("close_player", _params, socket) do
     socket = release_room_connection(socket)
     {:noreply, redirect(socket, to: ~p"/")}
-  end
-
-  def handle_event("player_lifecycle", params, socket) do
-    PlayerLifecycle.observe(params)
-    {:noreply, socket}
   end
 
   # Browser-only events that don't need server state.
@@ -999,21 +964,6 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   defp progress_ref("torrent", %{movie_id: movie_id}), do: {"movie", movie_id}
   defp progress_ref(source_type, %{id: id}), do: {canonical_content_type(source_type), id}
 
-  defp update_subtitle_offset(socket, offset_ms) do
-    user = socket.assigns.current_scope.user
-
-    case Accounts.update_user_settings(user, %{subtitle_offset_ms: offset_ms}) do
-      {:ok, updated_user} ->
-        {:noreply,
-         socket
-         |> assign(current_scope: %{socket.assigns.current_scope | user: updated_user})
-         |> push_event("subtitle_offset_changed", %{offset_ms: updated_user.subtitle_offset_ms})}
-
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Não foi possível ajustar a legenda")}
-    end
-  end
-
   defp current_playback(room) do
     case WatchParty.get_playback_state(room.id) do
       {:ok, playback, _host_id} -> playback
@@ -1183,12 +1133,6 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   defp safe_content_type("gindex_episode"), do: :gindex_episode
   defp safe_content_type("torrent"), do: :torrent
   defp safe_content_type(_type), do: :movie
-
-  defp safe_streaming_mode("low_latency"), do: :low_latency
-  defp safe_streaming_mode("balanced"), do: :balanced
-  defp safe_streaming_mode("quality"), do: :quality
-  defp safe_streaming_mode("adaptive"), do: :adaptive
-  defp safe_streaming_mode(_mode), do: :balanced
 
   defp unavailable_room(socket) do
     {:ok,

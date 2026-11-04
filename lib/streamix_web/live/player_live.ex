@@ -20,7 +20,7 @@ defmodule StreamixWeb.PlayerLive do
 
   require Logger
 
-  alias Streamix.{Access, Accounts, Billing, Library, Playback}
+  alias Streamix.{Access, Billing, Library, Playback}
   import StreamixWeb.PlayerComponents
   import StreamixWeb.PlayerHelpers
 
@@ -28,6 +28,7 @@ defmodule StreamixWeb.PlayerLive do
   alias Streamix.Torrent
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.PlayerComponents.Metadata
+  alias StreamixWeb.PlayerEvents
   alias StreamixWeb.PlayerSourceFailover
   alias StreamixWeb.ReturnPath
   alias StreamixWeb.Telemetry.PlayerLifecycle
@@ -37,6 +38,8 @@ defmodule StreamixWeb.PlayerLive do
 
   @impl true
   def mount(%{"type" => type, "id" => id} = params, _session, socket) do
+    socket = PlayerEvents.attach(socket)
+
     user_id = socket.assigns.current_scope.user.id
     return_to = ReturnPath.safe(params["return_to"])
 
@@ -75,10 +78,6 @@ defmodule StreamixWeb.PlayerLive do
     Billing.touch_playback_session(socket.assigns[:playback_session])
 
     {:noreply, assign(socket, current_time: current_time, duration: duration)}
-  end
-
-  def handle_event("streaming_mode_changed", %{"mode" => mode}, socket) do
-    {:noreply, assign(socket, streaming_mode: safe_streaming_mode(mode))}
   end
 
   def handle_event(
@@ -245,11 +244,6 @@ defmodule StreamixWeb.PlayerLive do
     {:noreply, socket}
   end
 
-  def handle_event("player_lifecycle", params, socket) do
-    PlayerLifecycle.observe(params)
-    {:noreply, socket}
-  end
-
   def handle_event("codec_abr_suggestion", _params, socket) do
     {:noreply, socket}
   end
@@ -276,37 +270,6 @@ defmodule StreamixWeb.PlayerLive do
     Billing.touch_playback_session(socket.assigns[:playback_session])
 
     {:noreply, socket}
-  end
-
-  def handle_event("set_quality", %{"level" => level}, socket) do
-    {:noreply, push_event(socket, "set_quality", %{level: level})}
-  end
-
-  def handle_event("set_audio_track", %{"track" => track}, socket) do
-    {:noreply, push_event(socket, "set_audio_track", %{track: track})}
-  end
-
-  def handle_event("set_subtitle_track", %{"track" => track}, socket) do
-    {:noreply, push_event(socket, "set_subtitle_track", %{track: track})}
-  end
-
-  def handle_event("adjust_subtitle_offset", %{"delta" => delta}, socket) do
-    case Integer.parse(delta) do
-      {delta, ""} ->
-        user = socket.assigns.current_scope.user
-        update_subtitle_offset(socket, user.subtitle_offset_ms + delta)
-
-      _ ->
-        {:noreply, put_flash(socket, :error, "Ajuste de legenda inválido")}
-    end
-  end
-
-  def handle_event("reset_subtitle_offset", _params, socket) do
-    update_subtitle_offset(socket, 0)
-  end
-
-  def handle_event("toggle_pip", _, socket) do
-    {:noreply, push_event(socket, "toggle_pip", %{})}
   end
 
   def handle_event("close_player", _, socket) do
@@ -523,23 +486,6 @@ defmodule StreamixWeb.PlayerLive do
   # ============================================
   # Private Helpers
   # ============================================
-
-  defp update_subtitle_offset(socket, offset_ms) do
-    user = socket.assigns.current_scope.user
-
-    case Accounts.update_user_settings(user, %{subtitle_offset_ms: offset_ms}) do
-      {:ok, updated_user} ->
-        {:noreply,
-         socket
-         |> assign(current_scope: %{socket.assigns.current_scope | user: updated_user})
-         |> push_event("subtitle_offset_changed", %{
-           offset_ms: updated_user.subtitle_offset_ms
-         })}
-
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Não foi possível ajustar a legenda")}
-    end
-  end
 
   defp handle_loaded_content(socket, type, user_id, content, provider, return_to) do
     if Access.plays_global_content?(socket.assigns.current_scope.user, provider) do
@@ -1021,12 +967,6 @@ defmodule StreamixWeb.PlayerLive do
   defp safe_content_type("gindex_episode"), do: :gindex_episode
   defp safe_content_type("torrent"), do: :torrent
   defp safe_content_type(_), do: :live_channel
-
-  defp safe_streaming_mode("low_latency"), do: :low_latency
-  defp safe_streaming_mode("balanced"), do: :balanced
-  defp safe_streaming_mode("quality"), do: :quality
-  defp safe_streaming_mode("adaptive"), do: :adaptive
-  defp safe_streaming_mode(_), do: :balanced
 
   defp normalize_failover_position(value) when is_integer(value) and value >= 0, do: value * 1.0
 
