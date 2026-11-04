@@ -193,7 +193,7 @@ defmodule StreamixWeb.Api.V1.Schemas.Resources do
       genre: string(nullable: true),
       genres: array(object(nil, %{slug: string(), name: string()}, [:slug, :name])),
       poster: string(nullable: true),
-      backdrop: %Schema{anyOf: [string(), array(string())], nullable: true},
+      backdrop: %Schema{anyOf: [string(nullable: true), array(string())]},
       plot: string(nullable: true),
       score: number(nullable: true)
     }
@@ -328,7 +328,7 @@ defmodule StreamixWeb.Api.V1.Schemas.Resources do
       "EpgNowResponse" =>
         object(
           "EpgNowResponse",
-          %{now: dictionary(%Schema{allOf: [ref("EpgProgram")], nullable: true})},
+          %{now: dictionary(%Schema{type: :object, allOf: [ref("EpgProgram")], nullable: true})},
           [:now]
         ),
       "TelemetryRequest" =>

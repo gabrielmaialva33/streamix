@@ -277,6 +277,11 @@ API surfaces under `/api/v1`:
 - Test rendered structure by DOM ids / stable selectors rather than fragile raw HTML text when possible.
 - Run `mix precommit` before considering work complete; `mix dialyzer` and, for frontend changes,
   `cd assets && npm run lint && npm test` are also CI gates.
+- API v1 changes: every `/api/v1` route has an OpenAPI operation, errors go through
+  `action_fallback StreamixWeb.Api.V1.FallbackController` and `Api.V1.Response`, and the spec must pass
+  `mix openapi.spec.json --spec StreamixWeb.Api.V1.OpenApi --start-app=false --vendor-extensions=false <file>`
+  followed by `npm --prefix assets run lint:openapi -- <file>` (a CI gate). In OpenAPI 3.0 `nullable` needs a sibling
+  `type`.
 - The test database name must end in `_test` (`TEST_DATABASE_URL`), or the runtime safety guard refuses it.
 - Architecture tests in `test/streamix/architecture/` enforce boundaries, module layout and test mirroring; fix the
   code, not the test.
