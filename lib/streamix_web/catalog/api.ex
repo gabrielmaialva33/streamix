@@ -5,6 +5,8 @@ defmodule StreamixWeb.Catalog.Api do
 
   require Logger
 
+  alias Streamix.Catalog
+  alias Streamix.Providers
   alias StreamixWeb.Catalog.Pagination
   alias StreamixWeb.Catalog.Params
   alias StreamixWeb.Catalog.Serializer
@@ -15,10 +17,9 @@ defmodule StreamixWeb.Catalog.Api do
     provider_opts = Params.provider_opts(params)
 
     %{
-      data:
-        Streamix.Catalog.get_featured_content(provider_opts) |> Serializer.serialize_featured(),
+      data: Catalog.get_featured_content(provider_opts) |> Serializer.serialize_featured(),
       meta: %{
-        catalog_counts: Streamix.Catalog.get_public_stats(provider_opts),
+        catalog_counts: Catalog.get_public_stats(provider_opts),
         filters: provider_filter_meta(provider_opts)
       }
     }
@@ -26,14 +27,14 @@ defmodule StreamixWeb.Catalog.Api do
 
   def movies(params) do
     opts = Params.movies_opts(params)
-    movies = Streamix.Catalog.list_public_catalog_movies(opts)
-    total = Streamix.Catalog.count_public_catalog_movies(opts)
+    movies = Catalog.list_public_catalog_movies(opts)
+    total = Catalog.count_public_catalog_movies(opts)
 
     page(Enum.map(movies, &Serializer.serialize_movie/1), total, opts)
   end
 
   def movie_detail(id) do
-    case Streamix.Catalog.get_public_movie(id) do
+    case Catalog.get_public_movie(id) do
       nil ->
         {:error, :not_found}
 
@@ -42,7 +43,7 @@ defmodule StreamixWeb.Catalog.Api do
          %{
            data:
              movie
-             |> safe_fetch(&Streamix.Catalog.fetch_movie_info/1)
+             |> safe_fetch(&Catalog.fetch_movie_info/1)
              |> Serializer.serialize_movie_detail()
          }}
     end
@@ -50,8 +51,8 @@ defmodule StreamixWeb.Catalog.Api do
 
   def series(params) do
     opts = Params.series_opts(params)
-    series_list = Streamix.Catalog.list_public_catalog_series(opts)
-    total = Streamix.Catalog.count_public_catalog_series(opts)
+    series_list = Catalog.list_public_catalog_series(opts)
+    total = Catalog.count_public_catalog_series(opts)
 
     page(Enum.map(series_list, &Serializer.serialize_series/1), total, opts)
   end
@@ -63,7 +64,7 @@ defmodule StreamixWeb.Catalog.Api do
   end
 
   def episode_detail(id) do
-    case Streamix.Catalog.get_public_episode(id) do
+    case Catalog.get_public_episode(id) do
       nil ->
         {:error, :not_found}
 
@@ -72,7 +73,7 @@ defmodule StreamixWeb.Catalog.Api do
          %{
            data:
              episode
-             |> safe_fetch(&Streamix.Catalog.fetch_episode_info/1)
+             |> safe_fetch(&Catalog.fetch_episode_info/1)
              |> Serializer.serialize_episode_detail()
          }}
     end
@@ -80,14 +81,14 @@ defmodule StreamixWeb.Catalog.Api do
 
   def channels(params) do
     opts = Params.channels_opts(params)
-    channels = Streamix.Catalog.list_public_catalog_channels(opts)
-    total = Streamix.Catalog.count_public_catalog_channels(opts)
+    channels = Catalog.list_public_catalog_channels(opts)
+    total = Catalog.count_public_catalog_channels(opts)
 
     page(Enum.map(channels, &Serializer.serialize_channel/1), total, opts)
   end
 
   def channel_detail(id) do
-    case Streamix.Catalog.get_public_channel(id) do
+    case Catalog.get_public_channel(id) do
       nil -> {:error, :not_found}
       channel -> {:ok, %{data: Serializer.serialize_channel_detail(channel)}}
     end
@@ -98,7 +99,7 @@ defmodule StreamixWeb.Catalog.Api do
 
     categories =
       opts
-      |> Streamix.Catalog.list_public_categories()
+      |> Catalog.list_public_categories()
       |> Enum.map(fn category ->
         %{
           id: category.id,
@@ -115,7 +116,7 @@ defmodule StreamixWeb.Catalog.Api do
   end
 
   def providers do
-    providers = Streamix.Providers.list_public_providers()
+    providers = Providers.list_public_providers()
 
     %{
       data: Enum.map(providers, &Serializer.serialize_provider/1),
@@ -196,13 +197,13 @@ defmodule StreamixWeb.Catalog.Api do
     sections = [
       featured: fn ->
         provider_opts
-        |> Streamix.Catalog.get_featured_content()
+        |> Catalog.get_featured_content()
         |> Serializer.serialize_featured()
       end,
-      trending_movies: fn -> Streamix.Catalog.list_trending("movie", section_opts) end,
-      recent_movies: fn -> Streamix.Catalog.list_recent("movie", section_opts) end,
-      top_rated_movies: fn -> Streamix.Catalog.list_top_rated("movie", section_opts) end,
-      trending_series: fn -> Streamix.Catalog.list_trending("series", section_opts) end
+      trending_movies: fn -> Catalog.list_trending("movie", section_opts) end,
+      recent_movies: fn -> Catalog.list_recent("movie", section_opts) end,
+      top_rated_movies: fn -> Catalog.list_top_rated("movie", section_opts) end,
+      trending_series: fn -> Catalog.list_trending("series", section_opts) end
     ]
 
     results = run_sections(sections, :timer.seconds(10))
@@ -222,19 +223,19 @@ defmodule StreamixWeb.Catalog.Api do
     }
   end
 
-  def trending(params), do: shelf(params, &Streamix.Catalog.list_trending/2)
-  def recent(params), do: shelf(params, &Streamix.Catalog.list_recent/2)
-  def top_rated(params), do: shelf(params, &Streamix.Catalog.list_top_rated/2)
+  def trending(params), do: shelf(params, &Catalog.list_trending/2)
+  def recent(params), do: shelf(params, &Catalog.list_recent/2)
+  def top_rated(params), do: shelf(params, &Catalog.list_top_rated/2)
 
   def movie_stream(id) do
-    case Streamix.Catalog.get_public_movie(id) do
+    case Catalog.get_public_movie(id) do
       nil -> {:error, :not_found}
       movie -> {:ok, %{data: %{stream_url: StreamUrls.signed_movie_url(movie)}}}
     end
   end
 
   def episode_stream(id) do
-    case Streamix.Catalog.get_public_episode(id) do
+    case Catalog.get_public_episode(id) do
       nil -> {:error, :not_found}
       episode -> {:ok, %{data: %{stream_url: StreamUrls.signed_episode_url(episode)}}}
     end
@@ -245,7 +246,7 @@ defmodule StreamixWeb.Catalog.Api do
   like `movie_detail/1`, so an id that page would 404 also 404s here.
   """
   def movie_sources(id) do
-    case Streamix.Catalog.get_public_movie(id) do
+    case Catalog.get_public_movie(id) do
       nil -> {:error, :not_found}
       movie -> {:ok, %{data: Sources.for_movie(movie)}}
     end
@@ -263,23 +264,23 @@ defmodule StreamixWeb.Catalog.Api do
 
   @doc "Equivalent playable copies of an episode, resolved like `episode_detail/1`."
   def episode_sources(id) do
-    case Streamix.Catalog.get_public_episode(id) do
+    case Catalog.get_public_episode(id) do
       nil -> {:error, :not_found}
       episode -> {:ok, %{data: Sources.for_episode(episode)}}
     end
   end
 
   def channel_stream(id) do
-    case Streamix.Catalog.get_public_channel(id) do
+    case Catalog.get_public_channel(id) do
       nil -> {:error, :not_found}
       channel -> {:ok, %{data: %{stream_url: StreamUrls.signed_channel_url(channel)}}}
     end
   end
 
   defp public_series_with_seasons(id) do
-    case Streamix.Catalog.get_public_series(id) do
+    case Catalog.get_public_series(id) do
       nil -> {:error, :not_found}
-      series -> {:ok, Streamix.Catalog.get_series_with_sync!(series.id)}
+      series -> {:ok, Catalog.get_series_with_sync!(series.id)}
     end
   rescue
     Ecto.NoResultsError -> {:error, :not_found}

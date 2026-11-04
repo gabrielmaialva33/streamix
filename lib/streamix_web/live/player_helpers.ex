@@ -3,6 +3,8 @@ defmodule StreamixWeb.PlayerHelpers do
   Shared helpers for loading playable content.
   Used by PlayerLive and WatchPartyLive.Show.
   """
+  alias Streamix.Catalog
+  alias Streamix.Providers
   alias Streamix.Torrent
   alias StreamixWeb.Catalog.StreamUrls
   alias StreamixWeb.Content.DisplayTitle
@@ -131,17 +133,17 @@ defmodule StreamixWeb.PlayerHelpers do
   associated movie rather than the transient torrent stream id.
   """
   def resolve_catalog_item_id("gindex", %{id: id}),
-    do: Streamix.Catalog.resolve_catalog_item_id("movie", id)
+    do: Catalog.resolve_catalog_item_id("movie", id)
 
   def resolve_catalog_item_id("gindex_episode", %{id: id}),
-    do: Streamix.Catalog.resolve_catalog_item_id("episode", id)
+    do: Catalog.resolve_catalog_item_id("episode", id)
 
   def resolve_catalog_item_id("torrent", %{movie_id: movie_id}),
-    do: Streamix.Catalog.resolve_catalog_item_id("movie", movie_id)
+    do: Catalog.resolve_catalog_item_id("movie", movie_id)
 
   def resolve_catalog_item_id(type, %{id: id})
       when type in ["live_channel", "movie", "series", "episode"] do
-    Streamix.Catalog.resolve_catalog_item_id(type, id)
+    Catalog.resolve_catalog_item_id(type, id)
   end
 
   def resolve_catalog_item_id(_type, _content), do: {:error, :invalid_content_type}
@@ -231,7 +233,7 @@ defmodule StreamixWeb.PlayerHelpers do
   end
 
   defp load_gindex_movie(id) do
-    movie = Streamix.Catalog.get_movie_with_provider!(id)
+    movie = Catalog.get_movie_with_provider!(id)
 
     if movie.gindex_path do
       {:ok, movie, movie.provider}
@@ -241,7 +243,7 @@ defmodule StreamixWeb.PlayerHelpers do
   end
 
   defp load_gindex_episode(id) do
-    episode = Streamix.Catalog.get_episode_with_context!(id)
+    episode = Catalog.get_episode_with_context!(id)
 
     if episode.gindex_path do
       {:ok, episode, episode.season.series.provider}
@@ -254,7 +256,7 @@ defmodule StreamixWeb.PlayerHelpers do
 
   def load_next_episode(type, content, provider, user_id)
       when type in ["episode", "gindex_episode"] do
-    case Streamix.Catalog.get_next_episode(content.id) do
+    case Catalog.get_next_episode(content.id) do
       nil ->
         nil
 
@@ -395,7 +397,7 @@ defmodule StreamixWeb.PlayerHelpers do
   # browser the CDN URL instead), nor for live channels.
   defp maybe_warm_vod_start(type, url, id, provider_id)
        when type in ["movie", "episode"] and is_integer(provider_id) do
-    case Streamix.Providers.get_provider(provider_id) do
+    case Providers.get_provider(provider_id) do
       %{direct_client_playback: true} ->
         :ok
 

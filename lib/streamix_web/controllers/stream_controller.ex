@@ -13,6 +13,7 @@ defmodule StreamixWeb.StreamController do
   require Logger
 
   alias Streamix.Gindex
+  alias Streamix.Providers
   alias Streamix.PublicUrls
   alias Streamix.SafeLog
   alias StreamixWeb.Plugs.ApiKeyAuth
@@ -192,7 +193,7 @@ defmodule StreamixWeb.StreamController do
   # locks the credentials. No-op (chain = [url]) when there's no provider
   # context — keeps raw-URL tokens working unchanged.
   defp derive_url_chain(url, %{provider_id: provider_id}) when is_integer(provider_id) do
-    case Streamix.Providers.get_provider(provider_id) do
+    case Providers.get_provider(provider_id) do
       nil ->
         [url]
 

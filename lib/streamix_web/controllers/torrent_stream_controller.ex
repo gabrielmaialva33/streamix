@@ -26,6 +26,7 @@ defmodule StreamixWeb.TorrentStreamController do
   alias Plug.Conn
 
   alias Streamix.Access
+  alias Streamix.Providers
   alias Streamix.SafeLog
   alias Streamix.Torrent
   # Headers we copy from the rqbit response back to the browser.
@@ -209,7 +210,7 @@ defmodule StreamixWeb.TorrentStreamController do
     # TorrentProvider. The Access gate handles admin / subscribed /
     # explicit-permission paths — we just supply the provider so it
     # can recognize this as global content.
-    case Streamix.Providers.get_torrent_provider() do
+    case Providers.get_torrent_provider() do
       nil ->
         :unauthorized
 

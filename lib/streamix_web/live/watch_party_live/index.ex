@@ -6,6 +6,7 @@ defmodule StreamixWeb.WatchPartyLive.Index do
 
   import StreamixWeb.App.Feedback, only: [empty_state: 1]
 
+  alias Streamix.Catalog
   alias Streamix.WatchParty
   alias StreamixWeb.Helpers.ImageProxy
 
@@ -294,7 +295,7 @@ defmodule StreamixWeb.WatchPartyLive.Index do
   end
 
   defp room_title(room),
-    do: Streamix.Catalog.catalog_item_content_name(room.catalog_item) || "Conteúdo"
+    do: Catalog.catalog_item_content_name(room.catalog_item) || "Conteúdo"
 
-  defp room_icon(room), do: Streamix.Catalog.catalog_item_content_icon(room.catalog_item)
+  defp room_icon(room), do: Catalog.catalog_item_content_icon(room.catalog_item)
 end

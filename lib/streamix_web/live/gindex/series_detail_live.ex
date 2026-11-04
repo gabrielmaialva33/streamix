@@ -3,6 +3,7 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
   LiveView for displaying GIndex series details with seasons and episodes.
   """
   use StreamixWeb, :live_view
+  alias Streamix.Catalog
   alias Streamix.Library
   alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.Content.SourceBadges
@@ -30,7 +31,7 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
   def handle_params(%{"id" => series_id}, _uri, socket) do
     user_id = socket.assigns.user_id
 
-    case Streamix.Catalog.get_gindex_series_with_seasons(series_id) do
+    case Catalog.get_gindex_series_with_seasons(series_id) do
       nil ->
         {:noreply,
          socket

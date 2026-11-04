@@ -14,6 +14,7 @@ defmodule StreamixWeb.TorrentLive do
   import StreamixWeb.App.Filters
   import StreamixWeb.CoreComponents, only: [icon: 1, page_header: 1]
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
+  alias Streamix.Catalog
   alias Streamix.Library
   alias Streamix.Torrent
   alias StreamixWeb.Content.DisplayTitle
@@ -89,7 +90,7 @@ defmodule StreamixWeb.TorrentLive do
 
     case parse_positive_integer(id) do
       {:ok, movie_id} ->
-        movie = Streamix.Catalog.get_movie!(movie_id)
+        movie = Catalog.get_movie!(movie_id)
 
         case FavoriteState.toggle(user_id, "movie", movie_id, %{
                content_name: movie.title || movie.name,

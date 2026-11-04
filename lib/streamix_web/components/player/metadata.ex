@@ -1,6 +1,8 @@
 defmodule StreamixWeb.PlayerComponents.Metadata do
   @moduledoc false
 
+  alias Streamix.PublicUrls
+
   @fourk_hevc_pattern ~r/(2160p|\b4k\b|uhd|hevc|x265|h265|hvc1|hev1)/i
 
   # Streamix's own gateways are already CORS-safe origins. Wrapping the HLS
@@ -20,10 +22,7 @@ defmodule StreamixWeb.PlayerComponents.Metadata do
     if String.contains?(stream_url, @own_stream_routes) do
       stream_url
     else
-      proxy_base =
-        Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.fun")
-
-      "#{proxy_base}/proxy?url=#{URI.encode_www_form(stream_url)}"
+      "#{PublicUrls.stream_proxy()}/proxy?url=#{URI.encode_www_form(stream_url)}"
     end
   end
 

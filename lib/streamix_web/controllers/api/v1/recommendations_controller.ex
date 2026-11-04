@@ -82,6 +82,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   alias Streamix.AI
   alias Streamix.Billing
   alias Streamix.Cache
+  alias Streamix.Catalog
   alias Streamix.Helpers
   alias StreamixWeb.Api.V1.Response
   alias StreamixWeb.Helpers.ImageProxy
@@ -275,9 +276,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
     ids = Enum.map(results, & &1.id)
 
     movies =
-      Streamix.Catalog.list_visible_movies_by_ids(user.id, ids,
-        show_adult: user.show_adult_content
-      )
+      Catalog.list_visible_movies_by_ids(user.id, ids, show_adult: user.show_adult_content)
 
     movies_map = Map.new(movies, &{&1.id, &1})
 
@@ -294,9 +293,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
     ids = Enum.map(results, & &1.id)
 
     series =
-      Streamix.Catalog.list_visible_series_by_ids(user.id, ids,
-        show_adult: user.show_adult_content
-      )
+      Catalog.list_visible_series_by_ids(user.id, ids, show_adult: user.show_adult_content)
 
     series_map = Map.new(series, &{&1.id, &1})
 
@@ -309,15 +306,11 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   end
 
   defp visible_source?(user, "movies", id) do
-    Streamix.Catalog.list_visible_movies_by_ids(user.id, [id],
-      show_adult: user.show_adult_content
-    ) != []
+    Catalog.list_visible_movies_by_ids(user.id, [id], show_adult: user.show_adult_content) != []
   end
 
   defp visible_source?(user, "series", id) do
-    Streamix.Catalog.list_visible_series_by_ids(user.id, [id],
-      show_adult: user.show_adult_content
-    ) != []
+    Catalog.list_visible_series_by_ids(user.id, [id], show_adult: user.show_adult_content) != []
   end
 
   defp parse_content_type(type) when type in ["movies", "series"], do: {:ok, type}
@@ -352,7 +345,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
       genre: Helpers.genre_names(movie.genres),
       genres: Helpers.genre_refs(movie.genres),
       poster: ImageProxy.card(movie.stream_icon),
-      backdrop: Streamix.Catalog.backdrop_urls(movie) |> List.first() |> ImageProxy.hero(),
+      backdrop: Catalog.backdrop_urls(movie) |> List.first() |> ImageProxy.hero(),
       plot: movie.plot,
       score: Map.get(result, :score)
     }
@@ -368,7 +361,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
       genre: Helpers.genre_names(series.genres),
       genres: Helpers.genre_refs(series.genres),
       poster: ImageProxy.card(series.cover),
-      backdrop: Streamix.Catalog.backdrop_urls(series) |> List.first() |> ImageProxy.hero(),
+      backdrop: Catalog.backdrop_urls(series) |> List.first() |> ImageProxy.hero(),
       plot: series.plot,
       score: Map.get(result, :score)
     }

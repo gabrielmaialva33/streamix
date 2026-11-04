@@ -24,6 +24,7 @@ defmodule StreamixWeb.PlayerLive do
   import StreamixWeb.PlayerComponents
   import StreamixWeb.PlayerHelpers
 
+  alias Streamix.Catalog
   alias Streamix.SafeLog
   alias Streamix.Torrent
   alias StreamixWeb.Content.DisplayTitle
@@ -755,7 +756,7 @@ defmodule StreamixWeb.PlayerLive do
   # progress.
   defp load_season_episodes(socket, type, %{season_id: season_id} = content)
        when type in ["episode", "gindex_episode"] and is_integer(season_id) do
-    episodes = Streamix.Catalog.list_season_episodes(season_id)
+    episodes = Catalog.list_season_episodes(season_id)
 
     progress =
       Library.get_watch_progress_map(

@@ -4,6 +4,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
   Releases are stored as "seasons" but displayed as quality variants.
   """
   use StreamixWeb, :live_view
+  alias Streamix.Catalog
   alias Streamix.Library
   alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.Content.SourceBadges
@@ -28,7 +29,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
   def handle_params(%{"id" => anime_id}, _uri, socket) do
     user_id = socket.assigns.user_id
 
-    case Streamix.Catalog.get_gindex_anime_with_seasons(anime_id) do
+    case Catalog.get_gindex_anime_with_seasons(anime_id) do
       nil ->
         {:noreply,
          socket

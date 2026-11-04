@@ -17,6 +17,7 @@ defmodule StreamixWeb.Api.V1.StatusController do
 
   action_fallback StreamixWeb.Api.V1.FallbackController
 
+  alias Streamix.Providers
   alias StreamixWeb.Api.V1.Operations
 
   operation :index,
@@ -38,8 +39,8 @@ defmodule StreamixWeb.Api.V1.StatusController do
   in "should I show a banner?" can check one field.
   """
   def index(conn, _params) do
-    reports = Streamix.Providers.list_provider_health_reports()
-    overall = Streamix.Providers.provider_health_summary(reports)
+    reports = Providers.list_provider_health_reports()
+    overall = Providers.provider_health_summary(reports)
 
     json(conn, %{
       overall: %{

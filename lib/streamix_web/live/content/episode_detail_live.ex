@@ -6,6 +6,8 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   """
   use StreamixWeb, :live_view
 
+  alias Streamix.Catalog
+  alias Streamix.Providers
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Content.SourceBadges
@@ -416,7 +418,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
       |> Enum.reject(&is_nil/1)
       |> Enum.uniq_by(& &1.id)
 
-    statuses = Streamix.Providers.provider_health_statuses(providers)
+    statuses = Providers.provider_health_statuses(providers)
 
     episode_sources =
       Enum.map(candidates, fn candidate ->
@@ -493,7 +495,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   defp present?(value), do: is_binary(value) and value != ""
 
   defp get_series_backdrop(series) do
-    case Streamix.Catalog.backdrop_urls(series) do
+    case Catalog.backdrop_urls(series) do
       [url | _] -> ImageProxy.proxy(url)
       _ -> get_series_backdrop_fallback(series)
     end

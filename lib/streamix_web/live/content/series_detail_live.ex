@@ -4,6 +4,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   Works for both /browse/series/:id (global provider) and /providers/:id/series/:id (user provider).
   """
   use StreamixWeb, :live_view
+  alias Streamix.Catalog
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Content.SeriesSources
@@ -513,8 +514,8 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
           <!-- Image Gallery -->
           <.image_gallery
             images={
-              if Streamix.Catalog.has_images?(@series),
-                do: Streamix.Catalog.image_urls(@series),
+              if Catalog.has_images?(@series),
+                do: Catalog.image_urls(@series),
                 else: []
             }
             alt="Imagem da série"

@@ -5,6 +5,7 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
   use StreamixWeb, :live_component
 
   alias Streamix.Access
+  alias Streamix.Providers
 
   def mount(socket) do
     {:ok,
@@ -18,9 +19,9 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
   def update(%{provider: provider} = assigns, socket) do
     changeset =
       if provider do
-        Streamix.Providers.change_provider(provider)
+        Providers.change_provider(provider)
       else
-        Streamix.Providers.new_provider_changeset()
+        Providers.new_provider_changeset()
       end
 
     {:ok,
@@ -35,9 +36,9 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
   def handle_event("validate", %{"provider" => params}, socket) do
     changeset =
       if socket.assigns.provider do
-        Streamix.Providers.change_provider(socket.assigns.provider, params)
+        Providers.change_provider(socket.assigns.provider, params)
       else
-        Streamix.Providers.new_provider_changeset(params)
+        Providers.new_provider_changeset(params)
       end
       |> Map.put(:action, :validate)
 
@@ -150,7 +151,7 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
     {:noreply,
      start_async(socket, :create_provider, fn ->
        with :ok <- ensure_connection_tested(params, connection_already_tested?) do
-         Streamix.Providers.create_provider(user_id, params)
+         Providers.create_provider(user_id, params)
        end
      end)}
   end
@@ -158,7 +159,7 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
   defp update_provider(socket, provider, params) do
     user_id = socket.assigns.current_scope.user.id
 
-    case Streamix.Providers.update_user_provider(user_id, provider, params) do
+    case Providers.update_user_provider(user_id, provider, params) do
       {:ok, provider} ->
         notify_parent({:saved, provider})
         {:noreply, socket}
@@ -179,7 +180,7 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
   defp format_error(_), do: "Ocorreu um erro desconhecido"
 
   defp test_connection(%{url: url, username: username, password: password}, provider \\ nil) do
-    Streamix.Providers.test_connection(url, username, password, provider: provider)
+    Providers.test_connection(url, username, password, provider: provider)
   end
 
   defp ensure_connection_tested(_params, true), do: :ok

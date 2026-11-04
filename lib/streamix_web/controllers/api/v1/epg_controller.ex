@@ -48,6 +48,7 @@ defmodule StreamixWeb.Api.V1.EpgController do
   import StreamixWeb.Helpers.Params,
     only: [bounded_integer: 4, parse_positive_integer: 1]
 
+  alias Streamix.Providers
   alias StreamixWeb.Api.V1.Response
 
   @max_hours 12
@@ -77,7 +78,7 @@ defmodule StreamixWeb.Api.V1.EpgController do
   def programs(conn, %{"channel_ids" => channel_ids_str} = params) do
     channel_ids = parse_channel_ids(channel_ids_str)
     hours = bounded_integer(params["hours"], 6, 1, @max_hours)
-    provider = Streamix.Providers.get_global_provider()
+    provider = Providers.get_global_provider()
 
     if is_nil(provider) or channel_ids == [] do
       json(conn, %{programs: empty_list_keyed(channel_ids), fetched_until: nil})
@@ -117,7 +118,7 @@ defmodule StreamixWeb.Api.V1.EpgController do
   """
   def now(conn, %{"channel_ids" => channel_ids_str}) do
     channel_ids = parse_channel_ids(channel_ids_str)
-    provider = Streamix.Providers.get_global_provider()
+    provider = Providers.get_global_provider()
 
     if is_nil(provider) or channel_ids == [] do
       json(conn, %{now: empty_keyed(channel_ids)})

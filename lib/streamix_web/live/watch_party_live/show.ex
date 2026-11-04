@@ -10,6 +10,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   import StreamixWeb.WatchPartyComponents
 
   alias Streamix.{Billing, Library, WatchParty}
+  alias Streamix.Catalog
   alias Streamix.SafeLog
   alias StreamixWeb.PlayerComponents.Metadata
   alias StreamixWeb.PlayerEvents
@@ -1016,7 +1017,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   defp assign_server_playback(socket, _command), do: socket
 
   defp room_source_ref(room) do
-    content = Streamix.Catalog.catalog_item_content(room.catalog_item)
+    content = Catalog.catalog_item_content(room.catalog_item)
 
     cond do
       is_binary(room.source_type) and is_integer(room.source_id) and room.source_id > 0 ->

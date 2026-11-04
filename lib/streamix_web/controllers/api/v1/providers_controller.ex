@@ -49,6 +49,7 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
             )
 
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
+  alias Streamix.Providers
   alias StreamixWeb.Api.V1.Response
 
   plug StreamixWeb.Plugs.BearerAuth
@@ -59,7 +60,7 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
   """
   def index(conn, _params) do
     user = conn.assigns.current_scope.user
-    providers = Streamix.Providers.list_providers(user.id)
+    providers = Providers.list_providers(user.id)
 
     json(conn, %{
       providers: Enum.map(providers, &serialize/1)
@@ -83,7 +84,7 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
       visibility: :private
     }
 
-    case Streamix.Providers.create_provider(user.id, attrs) do
+    case Providers.create_provider(user.id, attrs) do
       {:ok, provider} ->
         conn
         |> put_status(:created)
@@ -117,8 +118,8 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
 
     with {:ok, provider_id} <- parse_positive_integer(id),
          provider when not is_nil(provider) <-
-           Streamix.Providers.get_user_provider(user.id, provider_id) do
-      case Streamix.Providers.delete_provider(provider) do
+           Providers.get_user_provider(user.id, provider_id) do
+      case Providers.delete_provider(provider) do
         {:ok, _} ->
           send_resp(conn, :no_content, "")
 
@@ -148,8 +149,8 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
 
     with {:ok, provider_id} <- parse_positive_integer(id),
          provider when not is_nil(provider) <-
-           Streamix.Providers.get_user_provider(user.id, provider_id) do
-      case Streamix.Providers.async_sync_provider(provider) do
+           Providers.get_user_provider(user.id, provider_id) do
+      case Providers.async_sync_provider(provider) do
         {:ok, _job} ->
           conn
           |> put_status(:accepted)

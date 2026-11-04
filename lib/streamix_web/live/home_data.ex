@@ -7,6 +7,7 @@ defmodule StreamixWeb.HomeData do
 
   alias Streamix.AI
   alias Streamix.Cache
+  alias Streamix.Catalog
   alias Streamix.Library
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Content.FavoriteState
@@ -180,14 +181,14 @@ defmodule StreamixWeb.HomeData do
     sections =
       HomeCatalogLoader.load(
         %{
-          featured: fn -> Streamix.Catalog.get_featured_content(show_adult: show_adult) end,
-          stats: fn -> Streamix.Catalog.get_public_stats() end,
+          featured: fn -> Catalog.get_featured_content(show_adult: show_adult) end,
+          stats: fn -> Catalog.get_public_stats() end,
           new_releases: fn ->
-            Streamix.Catalog.list_new_releases(limit: @home_default_limit, show_adult: show_adult)
+            Catalog.list_new_releases(limit: @home_default_limit, show_adult: show_adult)
           end,
           top_10: fn -> load_top_10(show_adult) end,
           movies: fn ->
-            Streamix.Catalog.list_public_movies(
+            Catalog.list_public_movies(
               limit: @home_default_limit,
               show_adult: show_adult
             )
@@ -203,7 +204,7 @@ defmodule StreamixWeb.HomeData do
     stats = normalize_public_stats(stats)
 
     if stale_public_stats?(stats, sections) do
-      Streamix.Catalog.get_public_stats(refresh: true)
+      Catalog.get_public_stats(refresh: true)
       |> normalize_public_stats()
     else
       stats
@@ -324,7 +325,7 @@ defmodule StreamixWeb.HomeData do
 
   defp load_trending(nil, _genre, period, _show_adult, _personalization) do
     Cache.fetch("home:trending:guest:#{period}", @trending_ttl, fn ->
-      Streamix.Catalog.list_trending_movies(
+      Catalog.list_trending_movies(
         limit: @home_default_limit,
         days: period,
         show_adult: false
@@ -351,14 +352,14 @@ defmodule StreamixWeb.HomeData do
 
   defp load_top_10(show_adult) do
     Cache.fetch("home:top_10:adult:#{show_adult}", @top_10_ttl, fn ->
-      Streamix.Catalog.list_top_10_movies(limit: @home_top_10_limit, show_adult: show_adult)
+      Catalog.list_top_10_movies(limit: @home_top_10_limit, show_adult: show_adult)
     end)
   end
 
   defp load_series(user_id, genre, show_adult, personalization \\ nil)
 
   defp load_series(nil, _genre, _show_adult, _personalization) do
-    Streamix.Catalog.list_public_series(limit: @home_default_limit, show_adult: false)
+    Catalog.list_public_series(limit: @home_default_limit, show_adult: false)
   end
 
   defp load_series(user_id, genre, show_adult, personalization) do
@@ -375,7 +376,7 @@ defmodule StreamixWeb.HomeData do
   end
 
   defp load_channels(nil, _category, _show_adult) do
-    Streamix.Catalog.list_public_channels(limit: @home_channels_limit, show_adult: false)
+    Catalog.list_public_channels(limit: @home_channels_limit, show_adult: false)
   end
 
   defp load_channels(user_id, category, show_adult) do
@@ -395,7 +396,7 @@ defmodule StreamixWeb.HomeData do
     # rank side by side.
     recommendations =
       user_id
-      |> Streamix.Catalog.list_visible_movies_by_ids(ids, show_adult: show_adult)
+      |> Catalog.list_visible_movies_by_ids(ids, show_adult: show_adult)
       |> order_by_ids(ids)
       |> TitleIdentity.distinct()
 

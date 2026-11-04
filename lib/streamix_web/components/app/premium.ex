@@ -4,6 +4,8 @@ defmodule StreamixWeb.App.Premium do
   """
 
   use Phoenix.Component
+
+  alias Streamix.Providers
   use StreamixWeb, :verified_routes
 
   import StreamixWeb.CoreComponents
@@ -67,7 +69,7 @@ defmodule StreamixWeb.App.Premium do
     if assigns.current_scope &&
          Streamix.Access.plays_global_content?(
            assigns.current_scope.user,
-           Streamix.Providers.get_global_provider()
+           Providers.get_global_provider()
          ) do
       ~H""
     else

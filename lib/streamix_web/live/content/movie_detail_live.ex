@@ -4,6 +4,8 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   Works for both /browse/movies/:id (global provider) and /providers/:id/movies/:id (user provider).
   """
   use StreamixWeb, :live_view
+  alias Streamix.Catalog
+  alias Streamix.Providers
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Content.SourceBadges
@@ -348,8 +350,8 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           <!-- Image Gallery -->
           <.image_gallery
             images={
-              if Streamix.Catalog.has_images?(@movie),
-                do: Streamix.Catalog.image_urls(@movie),
+              if Catalog.has_images?(@movie),
+                do: Catalog.image_urls(@movie),
                 else: []
             }
             alt="Imagem do filme"
@@ -376,7 +378,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   # ============================================
 
   defp og_image_url(movie) do
-    case Streamix.Catalog.backdrop_urls(movie) do
+    case Catalog.backdrop_urls(movie) do
       [url | _] -> url
       _ -> og_image_url_fallback(movie)
     end
@@ -495,7 +497,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   # Same presentation as the series and episode pages: only what tells the
   # copies apart.
   defp source_options(variants, user) do
-    statuses = Streamix.Providers.provider_health_statuses(Enum.map(variants, & &1.provider))
+    statuses = Providers.provider_health_statuses(Enum.map(variants, & &1.provider))
 
     variants
     |> Enum.with_index()

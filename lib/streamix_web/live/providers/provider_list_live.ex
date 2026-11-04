@@ -5,6 +5,7 @@ defmodule StreamixWeb.Providers.ProviderListLive do
   import StreamixWeb.App.Media
 
   alias Streamix.Accounts
+  alias Streamix.Providers
 
   @impl true
   def mount(_params, _session, socket) do
@@ -19,8 +20,8 @@ defmodule StreamixWeb.Providers.ProviderListLive do
     # anyone else sees only their own, never the system rows.
     providers =
       case Accounts.role_name(user) do
-        "admin" -> Streamix.Providers.list_providers(user_id, scope: :all)
-        _ -> user_id |> Streamix.Providers.list_providers() |> Enum.reject(& &1.is_system)
+        "admin" -> Providers.list_providers(user_id, scope: :all)
+        _ -> user_id |> Providers.list_providers() |> Enum.reject(& &1.is_system)
       end
 
     socket =
@@ -48,7 +49,7 @@ defmodule StreamixWeb.Providers.ProviderListLive do
 
   defp apply_action(socket, :edit, %{"provider_id" => id}) do
     user_id = socket.assigns.current_scope.user.id
-    provider = Streamix.Providers.get_user_provider(user_id, id)
+    provider = Providers.get_user_provider(user_id, id)
 
     socket
     |> assign(page_title: "Editar Provedor")
@@ -66,10 +67,10 @@ defmodule StreamixWeb.Providers.ProviderListLive do
   @impl true
   def handle_event("sync_provider", %{"id" => id}, socket) do
     user_id = socket.assigns.current_scope.user.id
-    provider = Streamix.Providers.get_user_provider(user_id, id)
+    provider = Providers.get_user_provider(user_id, id)
 
     if provider do
-      case Streamix.Providers.async_sync_provider(provider) do
+      case Providers.async_sync_provider(provider) do
         {:ok, _job} ->
           {:noreply,
            socket
@@ -96,10 +97,10 @@ defmodule StreamixWeb.Providers.ProviderListLive do
 
   def handle_event("delete_provider", %{"id" => id}, socket) do
     user_id = socket.assigns.current_scope.user.id
-    provider = Streamix.Providers.get_user_provider(user_id, id)
+    provider = Providers.get_user_provider(user_id, id)
 
     if provider do
-      case Streamix.Providers.delete_provider(provider) do
+      case Providers.delete_provider(provider) do
         {:ok, _} ->
           {:noreply,
            socket
@@ -127,7 +128,7 @@ defmodule StreamixWeb.Providers.ProviderListLive do
   def handle_info({:sync_progress, %{provider_id: id} = payload}, socket) do
     user_id = socket.assigns.current_scope.user.id
 
-    case Streamix.Providers.get_user_provider(user_id, id) do
+    case Providers.get_user_provider(user_id, id) do
       nil ->
         {:noreply, socket}
 
@@ -144,7 +145,7 @@ defmodule StreamixWeb.Providers.ProviderListLive do
   def handle_info({:sync_status, %{provider_id: id, status: status} = payload}, socket) do
     user_id = socket.assigns.current_scope.user.id
 
-    case Streamix.Providers.get_user_provider(user_id, id) do
+    case Providers.get_user_provider(user_id, id) do
       nil ->
         {:noreply, socket}
 

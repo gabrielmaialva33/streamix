@@ -16,7 +16,9 @@ defmodule StreamixWeb.Content.ReelsLive do
   import StreamixWeb.Content.NavigationComponents
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
+  alias Streamix.Catalog
   alias Streamix.Library
+  alias Streamix.Providers
   alias StreamixWeb.Content.Browse
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.Content.HelperComponents
@@ -30,7 +32,7 @@ defmodule StreamixWeb.Content.ReelsLive do
   @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_scope.user
-    global_provider = Streamix.Providers.get_global_provider()
+    global_provider = Providers.get_global_provider()
 
     {:ok,
      socket
@@ -43,7 +45,7 @@ defmodule StreamixWeb.Content.ReelsLive do
      |> assign(tab_counts: tab_counts(user.id))
      |> assign(
        categories:
-         Streamix.Catalog.list_visible_reel_categories(user.id,
+         Catalog.list_visible_reel_categories(user.id,
            show_adult: user.show_adult_content
          )
      )
@@ -245,7 +247,7 @@ defmodule StreamixWeb.Content.ReelsLive do
     user = socket.assigns.user
 
     items =
-      Streamix.Catalog.list_visible_reel_series(user.id,
+      Catalog.list_visible_reel_series(user.id,
         category: socket.assigns.selected_category,
         search: socket.assigns.search,
         show_adult: user.show_adult_content,
@@ -290,7 +292,7 @@ defmodule StreamixWeb.Content.ReelsLive do
   defp tab_counts(user_id) do
     providers =
       user_id
-      |> Streamix.Providers.list_visible_providers()
+      |> Providers.list_visible_providers()
       |> Enum.filter(&(&1.provider_type == :xtream))
 
     Browse.counts(
