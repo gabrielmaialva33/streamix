@@ -1,6 +1,8 @@
-import { getEnvInfo } from "../core/logger.js";
+import { createLogger, getEnvInfo } from "../core/logger.js";
 import { checkPwaCacheFreshness } from "./cache_management.js";
 import { createControllerChangeGuard } from "./service_worker_runtime.js";
+
+const log = createLogger("ServiceWorker");
 
 const showUpdateToast = (waitingWorker) => {
   if (document.getElementById("sw-update-toast")) return;
@@ -112,7 +114,7 @@ export function registerServiceWorker({ isStandalonePwa }) {
     navigator.serviceWorker
       .register("/sw.js")
       .then((registration) => {
-        if (getEnvInfo().isDev) console.log("SW registered:", registration.scope);
+        if (getEnvInfo().isDev) log.log("SW registered");
 
         if (!window.__swUpdateInterval) {
           window.__swUpdateInterval = setInterval(() => registration.update(), 30 * 60 * 1000);
@@ -121,7 +123,7 @@ export function registerServiceWorker({ isStandalonePwa }) {
         watchForUpdates(registration);
         checkPwaCacheFreshness(isStandalonePwa);
       })
-      .catch((error) => console.warn("SW registration failed:", error));
+      .catch((error) => log.warn("SW registration failed:", error));
 
     bindControllerChange();
   });

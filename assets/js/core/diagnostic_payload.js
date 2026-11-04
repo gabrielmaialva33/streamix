@@ -20,7 +20,7 @@ const SENSITIVE_SUFFIXES = [
 
 function isSensitiveKey(key) {
   const normalized = String(key ?? "")
-    .replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
     .toLowerCase();
 
   return SENSITIVE_SUFFIXES.some(

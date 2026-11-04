@@ -1,3 +1,7 @@
+import { createLogger } from "../core/logger.js";
+
+const log = createLogger("offline_sync");
+
 /**
  * OfflineSync Hook - Syncs data between LiveView and IndexedDB
  *
@@ -70,7 +74,7 @@ const OfflineSync = {
       }
     } catch (err) {
       this.lastSyncedData = null;
-      console.warn("[OfflineSync] Failed to sync:", err);
+      log.warn("[OfflineSync] Failed to sync:", err);
     }
   },
 
@@ -91,7 +95,7 @@ const OfflineSync = {
       await addFavorite(data);
       // stored
     } catch (err) {
-      console.warn("[OfflineSync] Failed to add favorite:", err);
+      log.warn("[OfflineSync] Failed to add favorite:", err);
     }
   },
 
@@ -100,7 +104,7 @@ const OfflineSync = {
       await removeFavorite(content_type, content_id);
       // removed
     } catch (err) {
-      console.warn("[OfflineSync] Failed to remove favorite:", err);
+      log.warn("[OfflineSync] Failed to remove favorite:", err);
     }
   },
 
@@ -109,7 +113,7 @@ const OfflineSync = {
       await upsertHistory(data);
       // updated
     } catch (err) {
-      console.warn("[OfflineSync] Failed to update history:", err);
+      log.warn("[OfflineSync] Failed to update history:", err);
     }
   },
 

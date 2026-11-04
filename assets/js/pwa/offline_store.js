@@ -1,3 +1,7 @@
+import { createLogger } from "../core/logger.js";
+
+const log = createLogger("offline_store");
+
 /**
  * Offline Store - IndexedDB wrapper for offline metadata caching
  * Stores favorites and watch history for offline access
@@ -312,5 +316,5 @@ export async function getStats() {
 
 // Auto-initialize only in browser contexts that expose IndexedDB.
 if (typeof indexedDB !== "undefined") {
-  initDB().catch((err) => console.warn("[OfflineStore] Init failed:", err));
+  initDB().catch((err) => log.warn("[OfflineStore] Init failed:", err));
 }

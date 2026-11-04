@@ -1,3 +1,4 @@
+// Worker-global console is intentional: this classic worker cannot import the browser logger.
 /**
  * Streamix Service Worker v11
  * - On-demand WASM caching for AVPlayer

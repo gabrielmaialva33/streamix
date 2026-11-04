@@ -1,3 +1,7 @@
+import { createLogger } from "../core/logger.js";
+
+const log = createLogger("progress_bar");
+
 /**
  * ProgressBar Hook for Video Timeline
  *
@@ -21,7 +25,7 @@ const ProgressBar = {
     this.video = this.playerContainer?.querySelector("video");
 
     if (!this.playerContainer) {
-      console.warn("ProgressBar: player container not found");
+      log.warn("ProgressBar: player container not found");
       return;
     }
 

@@ -194,7 +194,7 @@ function getAllPrefs() {
     const stored = localStorage.getItem(STORAGE_KEY);
     return stored ? JSON.parse(stored) : {};
   } catch (e) {
-    console.warn("[PlayerPreferences] Failed to read preferences:", e);
+    log.warn("[PlayerPreferences] Failed to read preferences:", e);
     return {};
   }
 }
@@ -206,7 +206,7 @@ function saveAllPrefs(prefs) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
   } catch (e) {
-    console.warn("[PlayerPreferences] Failed to save preferences:", e);
+    log.warn("[PlayerPreferences] Failed to save preferences:", e);
   }
 }
 
@@ -306,7 +306,7 @@ export function clearAllPreferences() {
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch (e) {
-    console.warn("[PlayerPreferences] Failed to clear preferences:", e);
+    log.warn("[PlayerPreferences] Failed to clear preferences:", e);
   }
 }
 
@@ -322,7 +322,7 @@ function getAllPositions() {
     const stored = localStorage.getItem(POSITION_KEY);
     return stored ? JSON.parse(stored) : {};
   } catch (e) {
-    console.warn("[PlayerPreferences] Failed to read positions:", e);
+    log.warn("[PlayerPreferences] Failed to read positions:", e);
     return {};
   }
 }
@@ -334,7 +334,7 @@ function saveAllPositions(positions) {
   try {
     localStorage.setItem(POSITION_KEY, JSON.stringify(positions));
   } catch (e) {
-    console.warn("[PlayerPreferences] Failed to save positions:", e);
+    log.warn("[PlayerPreferences] Failed to save positions:", e);
   }
 }
 
@@ -415,6 +415,6 @@ export function clearAllPlaybackPositions() {
   try {
     localStorage.removeItem(POSITION_KEY);
   } catch (e) {
-    console.warn("[PlayerPreferences] Failed to clear positions:", e);
+    log.warn("[PlayerPreferences] Failed to clear positions:", e);
   }
 }

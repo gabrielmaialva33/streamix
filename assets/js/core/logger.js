@@ -109,18 +109,18 @@ function createLogger(prefix) {
         try {
           errorReporter("player_error", {
             module: prefix,
-            message: typeof message === "string" ? message : String(message),
-            context: {
+            message: sanitizeDiagnosticPayload([String(message)])[0],
+            context: sanitizeDiagnosticPayload({
               ...context,
               error: context.error?.message || context.error,
               stack: context.error?.stack,
-            },
+            }),
             timestamp: Date.now(),
             userAgent: globalThis.navigator?.userAgent || "unknown",
-            url: locationRef?.href || "unknown",
+            url: locationRef?.pathname || "unknown",
           });
         } catch (e) {
-          console.warn("[Logger] Failed to report error:", e);
+          console.warn(...formatMessage("Logger", ["Failed to report error:", e]));
         }
       }
     },
