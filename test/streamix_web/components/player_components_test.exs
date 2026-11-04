@@ -395,7 +395,8 @@ defmodule StreamixWeb.PlayerComponentsTest do
 
       {output, 0} =
         System.cmd("node", ["--input-type=module", "-e", script, Jason.encode!(dataset)],
-          cd: Path.expand("../../..", __DIR__)
+          cd: Path.expand("../../..", __DIR__),
+          env: Enum.map(System.get_env(), fn {key, _value} -> {key, nil} end)
         )
 
       configuration = Jason.decode!(output)
