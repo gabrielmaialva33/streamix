@@ -24,11 +24,13 @@ defmodule StreamixWeb.PlayerLive do
   import StreamixWeb.PlayerComponents
   import StreamixWeb.PlayerHelpers
 
+  alias Streamix.SafeLog
   alias Streamix.Torrent
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.PlayerComponents.Metadata
   alias StreamixWeb.PlayerLifecycleTelemetry
   alias StreamixWeb.PlayerSourceFailover
+  alias StreamixWeb.ReturnPath
 
   @torrent_peer_target 30
   @token_refresh_min_interval_ms 5_000
@@ -36,7 +38,7 @@ defmodule StreamixWeb.PlayerLive do
   @impl true
   def mount(%{"type" => type, "id" => id} = params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    return_to = safe_return_path(params["return_to"])
+    return_to = ReturnPath.safe(params["return_to"])
 
     case load_content_preflight(type, id, user_id) do
       {:ok, content, provider} ->
@@ -408,7 +410,9 @@ defmodule StreamixWeb.PlayerLive do
   # The probe has its own deadline, so this is a crash, not a slow source.
   # The token proxy reports whatever is wrong to the player.
   def handle_async(:resolve_source, {:exit, reason}, socket) do
-    Logger.warning("[PlayerLive] source resolution failed: #{inspect(reason)}")
+    Logger.warning("[PlayerLive] source resolution failed",
+      reason: SafeLog.redact_inspect(reason)
+    )
 
     {:ok, stream_url} =
       resolve_stream_url(
@@ -1000,14 +1004,6 @@ defmodule StreamixWeb.PlayerLive do
         ~p"/"
     end
   end
-
-  defp safe_return_path(path) when is_binary(path) do
-    if String.starts_with?(path, "/") and not String.starts_with?(path, "//") do
-      path
-    end
-  end
-
-  defp safe_return_path(_), do: nil
 
   defp find_quality_label(qualities, level) when is_list(qualities) do
     case Enum.find(qualities, fn q -> q["index"] == level end) do

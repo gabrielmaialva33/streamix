@@ -3,8 +3,10 @@ defmodule StreamixWeb.HomeLive do
 
   require Logger
 
+  alias Streamix.SafeLog
   alias StreamixWeb.HomeData, as: Data
   alias StreamixWeb.LiveSessionNavigation
+  alias StreamixWeb.ReturnPath
 
   import StreamixWeb.Home.Authenticated
   import StreamixWeb.Home.Landing
@@ -42,7 +44,7 @@ defmodule StreamixWeb.HomeLive do
   def handle_async(task, {:exit, reason}, socket)
       when task in [:home_catalog, :home_personalization, :home_library, :home_annotations] do
     group = task_group(task)
-    Logger.warning("[HomeLive] #{group} load failed: #{inspect(reason)}")
+    Logger.warning("[HomeLive] #{group} load failed", reason: SafeLog.redact_inspect(reason))
     emit_home_group(group, :error)
 
     {:noreply,
@@ -157,13 +159,9 @@ defmodule StreamixWeb.HomeLive do
     {:noreply, Data.filter_channels_category(socket, category)}
   end
 
-  defp with_return_to(path, return_to) do
-    path <> "?return_to=" <> URI.encode_www_form(return_to)
-  end
-
   defp navigate_from_home(socket, path) do
     current_path = socket.assigns.current_path
-    LiveSessionNavigation.navigate(socket, current_path, with_return_to(path, current_path))
+    LiveSessionNavigation.navigate(socket, current_path, ReturnPath.append(path, current_path))
   end
 
   defp home_path(%{host_uri: %URI{path: "/home"}}), do: "/home"

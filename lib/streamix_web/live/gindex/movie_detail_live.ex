@@ -7,6 +7,7 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
   alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.Content.SourceBadges
   alias StreamixWeb.Gindex.DetailHelpers, as: DH
+  alias StreamixWeb.ReturnPath
 
   import StreamixWeb.CoreComponents, only: [badge: 1, icon: 1]
 
@@ -20,7 +21,7 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
 
   def mount(%{"id" => movie_id} = params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    return_to = safe_return_path(params["return_to"])
+    return_to = ReturnPath.safe(params["return_to"])
 
     case Streamix.Catalog.get_movie(movie_id) do
       nil ->
@@ -44,7 +45,7 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
             socket
             |> assign(page_title: display_title)
             |> assign(
-              current_path: with_return_to(~p"/gindex/movies/#{movie.id}", return_to),
+              current_path: ReturnPath.append(~p"/gindex/movies/#{movie.id}", return_to),
               return_to: return_to
             )
             |> assign(movie: movie)
@@ -63,7 +64,7 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
     {:noreply,
      redirect(socket,
        to:
-         with_return_to(
+         ReturnPath.append(
            ~p"/watch/gindex/#{socket.assigns.movie.id}",
            socket.assigns.current_path
          )
@@ -151,17 +152,4 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
     </div>
     """
   end
-
-  defp with_return_to(path, return_to) when is_binary(return_to) do
-    separator = if String.contains?(path, "?"), do: "&", else: "?"
-    path <> separator <> "return_to=" <> URI.encode_www_form(return_to)
-  end
-
-  defp with_return_to(path, _return_to), do: path
-
-  defp safe_return_path(path) when is_binary(path) do
-    if String.starts_with?(path, "/") and not String.starts_with?(path, "//"), do: path
-  end
-
-  defp safe_return_path(_path), do: nil
 end

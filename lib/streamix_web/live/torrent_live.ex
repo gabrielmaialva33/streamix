@@ -20,6 +20,7 @@ defmodule StreamixWeb.TorrentLive do
   alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.Content.HelperComponents
   alias StreamixWeb.Helpers.ImageProxy
+  alias StreamixWeb.ReturnPath
 
   @per_page 48
 
@@ -259,14 +260,10 @@ defmodule StreamixWeb.TorrentLive do
   # Torrent movies live behind the system torrent provider; the detail
   # page resolves it via the provider route.
   defp detail_path(nil, movie_id),
-    do: with_return_to(~p"/browse/movies/#{movie_id}", ~p"/torrent")
+    do: ReturnPath.append(~p"/browse/movies/#{movie_id}", ~p"/torrent")
 
   defp detail_path(provider_id, movie_id),
-    do: with_return_to(~p"/providers/#{provider_id}/movies/#{movie_id}", ~p"/torrent")
-
-  defp with_return_to(path, return_to) do
-    path <> "?return_to=" <> URI.encode_www_form(return_to)
-  end
+    do: ReturnPath.append(~p"/providers/#{provider_id}/movies/#{movie_id}", ~p"/torrent")
 
   defp load_movies(socket) do
     if socket.assigns.provider do

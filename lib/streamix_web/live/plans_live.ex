@@ -5,6 +5,7 @@ defmodule StreamixWeb.PlansLive do
 
   alias Streamix.Billing
   alias StreamixWeb.Helpers.Money
+  alias StreamixWeb.ReturnPath
 
   def mount(params, _session, socket) do
     plans = Billing.list_active_plans()
@@ -16,7 +17,7 @@ defmodule StreamixWeb.PlansLive do
       end
 
     current_plan_id = active_subscription && active_subscription.plan_id
-    return_to = safe_return_path(params["return_to"])
+    return_to = ReturnPath.safe(params["return_to"])
 
     socket =
       socket
@@ -323,12 +324,4 @@ defmodule StreamixWeb.PlansLive do
 
   # Only a local path: browsers drop tabs and newlines from URLs, so
   # "/\t/evil.test" would become "//evil.test".
-  defp safe_return_path("/" <> _ = path) do
-    if String.starts_with?(path, "//") or String.contains?(path, "\\") or
-         path =~ ~r/[\s\x00-\x1f\x7f]/u,
-       do: nil,
-       else: path
-  end
-
-  defp safe_return_path(_), do: nil
 end

@@ -9,6 +9,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   alias StreamixWeb.Content.SourceBadges
   alias StreamixWeb.LiveSessionNavigation
   alias StreamixWeb.PlayerHelpers
+  alias StreamixWeb.ReturnPath
 
   import StreamixWeb.SourcePickerComponents
   import StreamixWeb.App.Premium
@@ -43,7 +44,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   # come first: the browse clause's pattern also matches these params.
   def mount(%{"provider_id" => _, "id" => movie_id} = params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    return_to = safe_return_path(params["return_to"])
+    return_to = ReturnPath.safe(params["return_to"])
     provider_filter = provider_query_param(params["provider"])
 
     Detail.with_provider(socket, :provider, params, fn provider ->
@@ -62,7 +63,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   # Mount for /browse/movies/:id (global provider)
   def mount(%{"id" => movie_id} = params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    return_to = safe_return_path(params["return_to"])
+    return_to = ReturnPath.safe(params["return_to"])
     provider_filter = provider_query_param(params["provider"])
 
     Detail.with_provider(socket, :browse, %{}, fn provider ->
@@ -108,7 +109,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           mode
           |> detail_base_path(provider, movie)
           |> with_provider_filter(provider_filter)
-          |> with_return_to(return_to)
+          |> ReturnPath.append(return_to)
 
         preferred_provider_id = preferred_provider_id(provider_filter, mode, provider)
 
@@ -388,23 +389,8 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   defp detail_base_path(:provider, provider, movie),
     do: ~p"/providers/#{provider.id}/movies/#{movie.id}"
 
-  defp with_return_to(path, return_to) when is_binary(return_to) do
-    separator = if String.contains?(path, "?"), do: "&", else: "?"
-    path <> separator <> "return_to=" <> URI.encode_www_form(return_to)
-  end
-
-  defp with_return_to(path, _return_to), do: path
-
   defp with_provider_filter(path, nil), do: path
   defp with_provider_filter(path, provider_filter), do: path <> "?provider=" <> provider_filter
-
-  defp safe_return_path(path) when is_binary(path) do
-    if String.starts_with?(path, "/") and not String.starts_with?(path, "//") do
-      path
-    end
-  end
-
-  defp safe_return_path(_), do: nil
 
   defp provider_query_param(value) when value in ["all", "global"], do: value
 
@@ -444,13 +430,13 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
   defp watch_path(%{provider_type: :torrent}, movie, return_to) do
     case Detail.best_torrent_stream(movie.id) do
-      %{id: stream_id} -> with_return_to(~p"/watch/torrent/#{stream_id}", return_to)
-      _ -> with_return_to(~p"/watch/movie/#{movie.id}", return_to)
+      %{id: stream_id} -> ReturnPath.append(~p"/watch/torrent/#{stream_id}", return_to)
+      _ -> ReturnPath.append(~p"/watch/movie/#{movie.id}", return_to)
     end
   end
 
   defp watch_path(_provider, movie, return_to),
-    do: with_return_to(~p"/watch/movie/#{movie.id}", return_to)
+    do: ReturnPath.append(~p"/watch/movie/#{movie.id}", return_to)
 
   defp build_watch_paths(variants, return_to) do
     Map.new(variants, fn variant ->

@@ -14,6 +14,7 @@ defmodule StreamixWeb.Content.Browse do
   alias Streamix.Library
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.Content.FavoriteState
+  alias StreamixWeb.ReturnPath
 
   use StreamixWeb, :verified_routes
 
@@ -222,7 +223,7 @@ defmodule StreamixWeb.Content.Browse do
   def detail_path(%{assigns: assigns}, kind, id) do
     assigns
     |> detail_destination(kind, id)
-    |> with_return_to(browse_return_path(assigns, kind))
+    |> ReturnPath.append(browse_return_path(assigns, kind))
   end
 
   defp parse_sort(kind, sort) do
@@ -570,11 +571,6 @@ defmodule StreamixWeb.Content.Browse do
 
   defp detail_destination(%{mode: :provider, provider: provider}, :series, id),
     do: ~p"/providers/#{provider.id}/series/#{id}"
-
-  defp with_return_to(path, return_to) do
-    separator = if String.contains?(path, "?"), do: "&", else: "?"
-    path <> separator <> "return_to=" <> URI.encode_www_form(return_to)
-  end
 
   defp maybe_put_provider_query(params, provider_filter) when provider_filter in [nil, "all"],
     do: params

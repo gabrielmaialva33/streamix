@@ -8,6 +8,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Content.SeriesSources
   alias StreamixWeb.LiveSessionNavigation
+  alias StreamixWeb.ReturnPath
 
   import StreamixWeb.SourcePickerComponents
   import StreamixWeb.App.Premium
@@ -42,7 +43,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   # come first: the browse clause's pattern also matches these params.
   def mount(%{"provider_id" => _, "id" => series_id} = params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    return_to = safe_return_path(params["return_to"])
+    return_to = ReturnPath.safe(params["return_to"])
     provider_filter = provider_query_param(params["provider"])
 
     Detail.with_provider(socket, :provider, params, fn provider ->
@@ -61,7 +62,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   # Mount for /browse/series/:id (global provider)
   def mount(%{"id" => series_id} = params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    return_to = safe_return_path(params["return_to"])
+    return_to = ReturnPath.safe(params["return_to"])
     provider_filter = provider_query_param(params["provider"])
 
     Detail.with_provider(socket, :browse, %{}, fn provider ->
@@ -541,23 +542,10 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   defp selected_episode_path(%{provider_id: provider_id, id: series_id}, episode, return_to),
     do:
       ~p"/providers/#{provider_id}/series/#{series_id}/episode/#{episode.id}"
-      |> with_return_to(return_to)
-
-  defp with_return_to(path, return_to) when is_binary(return_to) do
-    separator = if String.contains?(path, "?"), do: "&", else: "?"
-    path <> separator <> "return_to=" <> URI.encode_www_form(return_to)
-  end
+      |> ReturnPath.append(return_to)
 
   defp with_provider_filter(path, nil), do: path
   defp with_provider_filter(path, provider_filter), do: path <> "?provider=" <> provider_filter
-
-  defp safe_return_path(path) when is_binary(path) do
-    if String.starts_with?(path, "/") and not String.starts_with?(path, "//") do
-      path
-    end
-  end
-
-  defp safe_return_path(_), do: nil
 
   defp provider_query_param(value) when value in ["all", "global"], do: value
 
