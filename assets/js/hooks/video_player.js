@@ -150,6 +150,7 @@ const VideoPlayer = {
         this.retryCount = 0;
         this.fallbackAttempts = 0;
       },
+      onStartupDeadline: () => this.recoverStartupDeadline(),
       onExhausted: (reason) => {
         this.cleanup();
         this.presentTerminalPlaybackError(
@@ -905,6 +906,7 @@ const VideoPlayer = {
 
   reportPlayerLifecycle(stage, extra = {}) {
     if (stage === "player_engine_selected") {
+      this._selectedEngine = extra.engine;
       this._memorySeekTokens?.clear();
       this.providerEngineMemory?.select({
         providerId: this.providerId,
@@ -969,6 +971,7 @@ const VideoPlayer = {
 
   retryPlaybackFromError() {
     log.info("[VideoPlayer] Retrying playback from error screen");
+    this.initPlaybackEngineTransitionController();
     this.recoveryGuard?.begin();
     this.sourceFailoverController?.reset();
     this.pushEventSafe("reset_source_failover", {});

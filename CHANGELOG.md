@@ -143,6 +143,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Give AVPlayer bootstrap its own bounded startup budget and try native MP4 once on a first-frame timeout, discarding failed engine memory.
+
 - A terminal playback error is recorded as an error, not as a cancelled or restarted session.
 - Playback sessions report the device class (mobile/desktop); it was always `unknown`.
 - A playback session that ends because the viewer closed the tab, reloaded or navigated away is still recorded: the

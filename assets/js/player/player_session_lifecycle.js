@@ -181,7 +181,22 @@ export const playerSessionLifecycle = {
   isCurrentPlaybackSession(sessionId) {
     return !this._destroyed && sessionId === this.playbackSessionId;
   },
-  initPlayer({ sessionId: providedSessionId = null } = {}) {
+  recoverStartupDeadline() {
+    if (this._selectedEngine !== "avplayer") return false;
+    this.providerEngineMemory?.clear();
+    // ProviderEngineMemory persists in Device Codec Memory; invalidate both active and stored evidence.
+    this.avPlayerEngineActivation?.forgetFailedRecommendation();
+    if (this.contentType !== "vod" || this.currentStreamType !== "mp4") return false;
+    this.avPlayerAttempted = true; // no native -> AVPlayer loop in this attempt
+    this.fallbackAttempts++;
+    this.lastFallbackTime = Date.now();
+    // Do not queue native recovery (or a later manual retry) behind a hung WASM promise.
+    this.cleanup();
+    this.initPlaybackEngineTransitionController();
+    this.initPlayer({ forcedEngine: "native", fallback: true });
+    return true;
+  },
+  initPlayer({ sessionId: providedSessionId = null, forcedEngine = null, fallback = false } = {}) {
     if (this.recoveryGuard?.terminal) return;
     if (this.playbackMetrics?.active && this.recoveryGuard && !this.recoveryGuard.attempt()) return;
     this._terminalPlaybackError = false;
@@ -269,10 +284,11 @@ export const playerSessionLifecycle = {
     const recommendedPlayer = getRecommendedPlayer(contentKey);
     const engineContext = this.buildEngineContext(recommendedPlayer);
     const decision = selectEngineDecision(engineContext);
-    const engine = assertEngineSelection(decision.engine);
-    const reason = this._pendingEngineReason || decision.reason;
+    const engine = assertEngineSelection(forcedEngine || decision.engine);
+    const reason = fallback ? "failover" : this._pendingEngineReason || decision.reason;
     this._pendingEngineReason = null;
-    this.playbackMetrics.selectEngine(engine, reason);
+    this._selectedEngine = engine;
+    if (!fallback) this.playbackMetrics.selectEngine(engine, reason);
 
     log.debug("[VideoPlayer] Engine decision context", {
       currentStreamType: this.currentStreamType,
@@ -294,7 +310,7 @@ export const playerSessionLifecycle = {
     });
 
     log.debug("[VideoPlayer] Activating engine (engine_selector decision):", engine);
-    void this.playbackEngineActivation.activate(engine, { sessionId });
+    void this.playbackEngineActivation.activate(engine, { sessionId, reason, fallback });
   },
   destroyed() {
     this.providerEngineMemory?.clear();

@@ -5,6 +5,9 @@ export class PlaybackRecoveryGuard {
     timerApi = globalThis,
     onExhausted = () => {},
     onStable = () => {},
+    onStartupDeadline = () => false,
+    bootstrapMs = 60_000,
+    totalStartupMs = 90_000,
     startupMs = 30_000,
     recoveryMs = 20_000,
     stableMs = 20_000,
@@ -16,6 +19,9 @@ export class PlaybackRecoveryGuard {
       timerApi,
       onExhausted,
       onStable,
+      onStartupDeadline,
+      bootstrapMs,
+      totalStartupMs,
       startupMs,
       recoveryMs,
       stableMs,
@@ -37,13 +43,52 @@ export class PlaybackRecoveryGuard {
     this.terminal = false;
     this.started = true;
     this.hasPlayed = false;
+    this.bootstrapUsed = false;
+    this.bootstrapping = false;
+    this.deadlineRecovered = false;
+    this.startupEndsAt = this.now() + this.totalStartupMs;
     this.suspended = false;
     this.armDeadline(this.startupMs, "startup_deadline");
   }
 
   armDeadline(ms, reason) {
     if (this.deadline !== null || this.terminal || this.destroyed) return;
-    this.deadline = this.timerApi.setTimeout(() => this.exhaust(reason), ms);
+    this.deadline = this.timerApi.setTimeout(() => this.deadlineExpired(reason), ms);
+  }
+
+  // Import/WASM/init is separate from loading media and presenting its first frame.
+  bootstrap() {
+    if (this.bootstrapUsed || this.hasPlayed || this.deadlineRecovered || this.terminal) return;
+    this.bootstrapUsed = true;
+    this.bootstrapping = true;
+    this.replaceStartupDeadline(this.bootstrapMs);
+  }
+
+  awaitFrame() {
+    if (!this.bootstrapping || this.hasPlayed || this.deadlineRecovered || this.terminal) return;
+    this.bootstrapping = false;
+    this.replaceStartupDeadline(this.startupMs);
+  }
+
+  replaceStartupDeadline(ms) {
+    this.timerApi.clearTimeout(this.deadline);
+    this.deadline = null;
+    this.armDeadline(
+      Math.max(0, Math.min(ms, this.startupEndsAt - this.now())),
+      "startup_deadline",
+    );
+  }
+
+  deadlineExpired(reason) {
+    this.deadline = null;
+    if (this.terminal || this.destroyed) return;
+    if (!this.hasPlayed && !this.deadlineRecovered) {
+      this.deadlineRecovered = true;
+      // Arm before invoking product policy: synchronous activation/retry must share this budget.
+      this.armDeadline(this.recoveryMs, "recovery_deadline");
+      if (this.onStartupDeadline(reason) === true) return;
+    }
+    this.exhaust(reason);
   }
 
   recover() {
@@ -81,17 +126,20 @@ export class PlaybackRecoveryGuard {
   }
 
   suspend() {
+    if (!this.suspended) this.suspendedAt = this.now();
     this.suspended = true;
     this.clearTimers();
   }
 
   resume() {
     if (!this.suspended || this.terminal || this.destroyed) return;
+    this.startupEndsAt += this.now() - this.suspendedAt;
     this.suspended = false;
-    this.armDeadline(
-      this.hasPlayed ? this.recoveryMs : this.startupMs,
-      this.hasPlayed ? "recovery_deadline" : "startup_deadline",
-    );
+    if (this.hasPlayed || this.deadlineRecovered) {
+      this.armDeadline(this.recoveryMs, "recovery_deadline");
+    } else {
+      this.replaceStartupDeadline(this.bootstrapping ? this.bootstrapMs : this.startupMs);
+    }
   }
 
   pause() {

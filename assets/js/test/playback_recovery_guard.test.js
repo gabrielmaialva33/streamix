@@ -99,3 +99,54 @@ test("autoplay/user pause suspends the deadline without forgiving retries", () =
   timerApi.advance(30000);
   assert.deepEqual(reasons, ["startup_deadline"]);
 });
+
+test("AV bootstrap has its own budget, then first frame; neither phase renews the total ceiling", () => {
+  const timerApi = clock();
+  const reasons = [];
+  const guard = new PlaybackRecoveryGuard({
+    timerApi,
+    now: timerApi.now,
+    onExhausted: (r) => reasons.push(r),
+  });
+  guard.begin();
+  guard.bootstrap();
+  timerApi.advance(55000);
+  assert.deepEqual(reasons, []);
+  guard.awaitFrame();
+  timerApi.advance(29999);
+  assert.deepEqual(reasons, []);
+  timerApi.advance(1);
+  assert.deepEqual(reasons, ["startup_deadline"]);
+  guard.begin();
+  guard.bootstrap();
+  timerApi.advance(59000);
+  guard.bootstrap();
+  timerApi.advance(1000);
+  assert.equal(reasons.length, 2, "repeat bootstrap must not buy another minute");
+});
+
+test("a deadline offers exactly one bounded recovery before terminal, including hung bootstrap", () => {
+  const timerApi = clock();
+  const reasons = [];
+  let recoveries = 0;
+  const guard = new PlaybackRecoveryGuard({
+    timerApi,
+    now: timerApi.now,
+    onStartupDeadline: () => {
+      recoveries++;
+      return true;
+    },
+    onExhausted: (r) => reasons.push(r),
+  });
+  guard.begin();
+  guard.bootstrap();
+  timerApi.advance(60000);
+  assert.equal(recoveries, 1);
+  assert.equal(guard.terminal, false);
+  guard.awaitFrame(); // late bootstrap completion must not reset the fallback budget
+  timerApi.advance(20000);
+  assert.deepEqual(reasons, ["recovery_deadline"]);
+  assert.equal(recoveries, 1);
+  timerApi.advance(100000);
+  assert.equal(reasons.length, 1);
+});

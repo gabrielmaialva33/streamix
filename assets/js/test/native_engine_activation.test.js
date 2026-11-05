@@ -237,7 +237,7 @@ test("activation creates and registers an owned native engine, attaches the sour
   assert.deepEqual(calls.loaded, ["https://example.test/movie.mp4"]);
   assert.deepEqual(calls.lifecycle[0], [
     "player_engine_selected",
-    { engine: ENGINE_ID.NATIVE, session_id: 9 },
+    { engine: ENGINE_ID.NATIVE, reason: undefined, fallback: undefined, session_id: 9 },
   ]);
   assert.ok(calls.lifecycle.some(([stage]) => stage === "native_source_attached"));
 

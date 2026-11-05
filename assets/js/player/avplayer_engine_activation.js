@@ -151,7 +151,6 @@ export class AvPlayerEngineActivation {
     return this.transition({
       key: "startup-avplayer",
       sessionId,
-      initializeEngine: true,
       capture: () => this.captureNativePlayback(),
     });
   }
@@ -213,7 +212,6 @@ export class AvPlayerEngineActivation {
         resumeTime: Number(seekTime) || 0,
         shouldPlay: shouldPlay === true,
       }),
-      initializeEngine: true,
       showLoading: true,
       trackIndex,
       trackType,
@@ -224,7 +222,7 @@ export class AvPlayerEngineActivation {
     capture,
     fallback = false,
     reason,
-    initializeEngine = false,
+
     key,
     sessionId = null,
     showLoading = false,
@@ -239,6 +237,7 @@ export class AvPlayerEngineActivation {
       capture,
       sessionId,
       prepare: ({ capture: playback, sessionId }) => {
+        this.host.beginEngineBootstrap?.();
         const presentation = this.host.getPresentation();
         if (showLoading) presentation?.showLoading();
         else presentation?.hideError();
@@ -275,8 +274,9 @@ export class AvPlayerEngineActivation {
           resumeTime: context.capture?.resumeTime ?? 0,
           trackSwitch: Boolean(trackType),
         }),
-      initializeEngine: initializeEngine ? ({ engine }) => engine.init() : null,
+      initializeEngine: ({ engine }) => engine.init(),
       loadEngine: async ({ engine }) => {
+        this.host.awaitEngineFrame?.();
         const streamUrl = this.host.getStreamUrl();
         const proxyUrl = this.host.getProxyUrl();
         const sourceType = this.host.getSourceType();
@@ -370,6 +370,8 @@ export class AvPlayerEngineActivation {
 
   async createEngine(context, { resumeTime = 0, trackSwitch = false } = {}) {
     const { AVPlayerWrapper } = await this.deps.loadAVPlayer();
+    // A timed-out import must never construct a wrapper or touch the replacement player.
+    if (!this.host.isSessionCurrent(context.sessionId)) return null;
     const mount = this.host.getAVPlayerMount();
     if (!mount) throw new Error("AVPlayer mount element (#avplayer-mount) not found in template");
 
@@ -622,6 +624,11 @@ export class AvPlayerEngineActivation {
       shouldPlay: true,
       wasPlaying: !video?.paused || resumeTime > 0,
     };
+  }
+
+  forgetFailedRecommendation() {
+    const key = this.contentKey();
+    if (key) this.deps.forgetRecommendedPlayer(key);
   }
 
   contentKey() {

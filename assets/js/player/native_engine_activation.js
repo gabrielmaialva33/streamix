@@ -134,6 +134,8 @@ export class NativeEngineActivation {
       });
     this.host.reportLifecycle("player_engine_selected", {
       engine: ENGINE_ID.NATIVE,
+      reason: request.reason,
+      fallback: request.fallback,
       session_id: sessionId,
     });
     nativeEngine.load(url);

@@ -62,6 +62,7 @@ function createWrapperClass(behaviour = {}) {
     }
     init() {
       this.calls.push(["init"]);
+      return behaviour.init?.();
     }
     async load(url, options) {
       this.calls.push(["load", url, options]);
@@ -427,16 +428,16 @@ test("fallback applies circuit breaker, attempt bookkeeping and pauses the nativ
   });
 
   const wrapper = instances[0];
-  assert.deepEqual(wrapper.calls[0], [
+  assert.deepEqual(wrapper.calls[1], [
     "load",
     "https://example.test/movie.mkv",
     { ext: "mp4", isLive: false },
   ]);
-  assert.deepEqual(wrapper.calls[1], ["seek", 12], "fallback seeks before restoring volume");
-  assert.deepEqual(wrapper.calls[2], ["setVolume", 0.8]);
+  assert.deepEqual(wrapper.calls[2], ["seek", 12], "fallback seeks before restoring volume");
+  assert.deepEqual(wrapper.calls[3], ["setVolume", 0.8]);
   assert.equal(
     wrapper.calls.some(([name]) => name === "init"),
-    false,
+    true,
   );
 
   wrapper.options.onPlay();
@@ -576,4 +577,65 @@ test("AVPlayer handles autoplay NotAllowedError by showing autoplay blocked over
   await harness.activation.activate(harness.request());
   assert.ok(harness.calls.presentation.includes("showAutoplayBlocked"));
   assert.ok(harness.calls.playback.includes("paused"));
+});
+
+test("late AVPlayer import after a deadline cannot construct a wrapper or mutate the mount", async () => {
+  const h = createHarness();
+  let resolveImport, importStarted;
+  const started = new Promise((resolve) => {
+    importStarted = resolve;
+  });
+  h.activation.deps.loadAVPlayer = () => {
+    importStarted();
+    return new Promise((resolve) => {
+      resolveImport = resolve;
+    });
+  };
+  const pending = h.activation.activate(h.request());
+  await started;
+  h.state.sessionId++;
+  h.controller.destroy();
+  const cleared = h.mount.cleared;
+  resolveImport({
+    AVPlayerWrapper: class {
+      constructor() {
+        assert.fail("late constructor");
+      }
+    },
+  });
+  assert.equal(await pending, false);
+  assert.equal(h.mount.cleared, cleared);
+});
+
+test("late WASM initialization after cancellation is disposed without loading or playing", async () => {
+  let finishInit, initStarted;
+  const started = new Promise((resolve) => {
+    initStarted = resolve;
+  });
+  const h = createHarness({
+    wrapper: {
+      init: () => {
+        initStarted();
+        return new Promise((resolve) => {
+          finishInit = resolve;
+        });
+      },
+    },
+  });
+  const phases = [];
+  h.host.beginEngineBootstrap = () => phases.push("bootstrap");
+  h.host.awaitEngineFrame = () => phases.push("frame");
+  const pending = h.activation.activate(h.request());
+  await started;
+  assert.deepEqual(phases, ["bootstrap"]);
+  h.state.sessionId++;
+  h.controller.destroy();
+  finishInit();
+  assert.equal(await pending, false);
+  assert.equal(h.instances[0].destroyed, true);
+  assert.equal(
+    h.instances[0].calls.some(([name]) => name === "load" || name === "play"),
+    false,
+  );
+  assert.deepEqual(phases, ["bootstrap"]);
 });
