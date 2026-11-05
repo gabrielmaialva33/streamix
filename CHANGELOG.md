@@ -144,6 +144,11 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 ### Fixed
 
 - A terminal playback error is recorded as an error, not as a cancelled or restarted session.
+- The admin users page lists every user ("Carregar mais"), not only the first twenty.
+- Favorites and history keep their type filter in the URL, so back, reload and shared links keep it.
+- The PWA install prompt recognizes an iPhone home-screen app as installed (`navigator.standalone`).
+- Player toasts and overlays cancel their timers when replaced or when the player closes.
+- Prices on the plans and billing pages are formatted in the plan's currency instead of always "R$".
 - The first tap on a phone shows the player controls at once.
 
 ### Security
