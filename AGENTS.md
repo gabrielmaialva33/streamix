@@ -205,6 +205,7 @@ API surfaces under `/api/v1`:
 | `SyncGlobalProviderWorker`  | every 4h                       | `sync`           |
 | `SyncGindexProviderWorker`  | daily at 03:00                 | `sync`           |
 | `SyncEpgWorker`             | on demand                      | `sync`           |
+| `SyncDueEpgWorker`          | hourly at :40                  | `sync`           |
 | `SyncSeriesDetailsWorker`   | on demand                      | `series_details` |
 | `TmdbDetailsWorker`         | daily at 04:45                 | `tmdb_details`   |
 | `EpisodeDetailsWorker`      | daily at 05:15                 | `tmdb_details`   |

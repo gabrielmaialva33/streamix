@@ -475,19 +475,11 @@ defmodule StreamixWeb.Content.LiveChannels do
   end
 
   defp maybe_sync_epg(provider) do
-    if epg_needs_sync?(provider) do
+    if Streamix.Guide.epg_due?(provider) do
       Streamix.Guide.async_sync_epg(provider)
       true
     else
       false
     end
-  end
-
-  defp epg_needs_sync?(%{epg_synced_at: nil}), do: true
-
-  defp epg_needs_sync?(provider) do
-    interval = provider.epg_sync_interval_hours || 6
-    hours_since_sync = DateTime.diff(DateTime.utc_now(), provider.epg_synced_at, :hour)
-    hours_since_sync >= interval
   end
 end

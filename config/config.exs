@@ -291,6 +291,8 @@ config :streamix, Oban,
        {"0 */6 * * *", Streamix.Workers.SyncAllProvidersWorker},
        # Sync global provider every 4 hours, offset from the all-providers burst
        {"10 */4 * * *", Streamix.Workers.SyncGlobalProviderWorker},
+       # Guides of every active Xtream provider, not only the one a page shows.
+       {"40 * * * *", Streamix.Workers.SyncDueEpgWorker},
        # Sync GIndex providers daily at 3 AM
        {"0 3 * * *", Streamix.Workers.SyncGindexProviderWorker},
        # Reconcile durable GIndex cursors after a release/container replacement.

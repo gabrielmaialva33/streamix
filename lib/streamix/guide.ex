@@ -28,4 +28,18 @@ defmodule Streamix.Guide do
   Enqueues a persistent background job to synchronize EPG for a provider.
   """
   def async_sync_epg(provider), do: SyncEpgWorker.enqueue(provider)
+
+  @doc """
+  Whether `provider`'s guide is older than its `epg_sync_interval_hours`
+  (6 by default), or was never synchronized.
+  """
+  @spec epg_due?(map(), DateTime.t()) :: boolean()
+  def epg_due?(provider, now \\ DateTime.utc_now())
+
+  def epg_due?(%{epg_synced_at: nil}, _now), do: true
+
+  def epg_due?(%{epg_synced_at: %DateTime{} = synced_at} = provider, now) do
+    interval = Map.get(provider, :epg_sync_interval_hours) || 6
+    DateTime.diff(now, synced_at, :hour) >= interval
+  end
 end
