@@ -3,6 +3,7 @@ import { getCapabilitySummary } from "../media/codec_detector.js";
 import { resolveStreamType } from "../media/stream_loader.js";
 import { isWebCodecsSupported } from "../media/webcodecs_decoder.js";
 import { isMSEInWorkersSupported } from "../media/worker_mse.js";
+import { currentDeviceClass } from "../telemetry/client_telemetry.js";
 import { assertEngineSelection, engineIdFromRuntime, PLAYBACK_STATE } from "./engine_contract.js";
 import { selectEngineDecision } from "./engine_selector.js";
 import { isStandalonePwa } from "./playback_environment.js";
@@ -239,6 +240,7 @@ export const playerSessionLifecycle = {
         contentType: this.contentType,
         streamType: this.currentStreamType,
         displayMode: isStandalonePwa() ? "standalone" : "browser",
+        deviceClass: currentDeviceClass(),
         clientRevision: this.clientRevision,
       });
     this.playbackMetrics.markStage("url");
@@ -298,7 +300,7 @@ export const playerSessionLifecycle = {
     this.providerEngineMemory?.clear();
     this.recoveryGuard?.destroy();
     this.startupPresentation?.destroy();
-    this.flushPlaybackMetrics("cancelled");
+    this.flushPlaybackMetrics("cancelled", undefined, { beacon: true });
     this._destroyed = true;
     this.playbackCommandController?.destroy();
     this.playbackCommandController = null;

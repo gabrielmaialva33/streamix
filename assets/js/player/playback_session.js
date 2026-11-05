@@ -18,6 +18,7 @@ export class PlaybackSession {
     contentType = "unknown",
     streamType = "unknown",
     displayMode = "browser",
+    deviceClass = "unknown",
     startedAt = this.now(),
     clientRevision: revision,
   } = {}) {
@@ -38,6 +39,7 @@ export class PlaybackSession {
       contentType,
       streamType,
       displayMode,
+      deviceClass: ["mobile", "desktop"].includes(deviceClass) ? deviceClass : "unknown",
     };
 
     return this.active.batchId;
@@ -127,6 +129,7 @@ export class PlaybackSession {
       content_type: session.contentType,
       stream_type: session.streamType,
       display_mode: session.displayMode,
+      device_class: session.deviceClass,
       ttff_ms:
         session.playingAt === null
           ? undefined

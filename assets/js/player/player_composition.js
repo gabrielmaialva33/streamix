@@ -541,7 +541,7 @@ export const playerComposition = {
       disablePiPForCanvasPlayback: () => this.disablePiPForCanvasPlayback(),
       emitPlaybackEvent: (event) => emitPlaybackEvent(this.el, event),
       ensureStreamLoader: () => this.ensureStreamLoader(),
-      flushPlaybackMetrics: (outcome) => this.flushPlaybackMetrics(outcome),
+      flushPlaybackMetrics: (...args) => this.flushPlaybackMetrics(...args),
       getAVPlayer: () => this.avPlayer,
       getAVPlayerMount: () => this.el?.querySelector("#avplayer-mount") ?? null,
       getAvbridge: () => this.avbridge,
@@ -699,7 +699,7 @@ export const playerComposition = {
     return {
       emergencyStopPlayback: () => this.emergencyStopPlayback(),
       emitPlaybackEvent: (name) => emitPlaybackEvent(this.el, name),
-      flushPlaybackMetrics: (outcome) => this.flushPlaybackMetrics(outcome),
+      flushPlaybackMetrics: (...args) => this.flushPlaybackMetrics(...args),
       getBufferingController: () => this.nativeBufferingController,
       getIosPwaController: () => this.iosPwaPlaybackController,
       getUiController: () => this.playerUIController,

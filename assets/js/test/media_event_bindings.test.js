@@ -326,15 +326,22 @@ test("page lifecycle listeners drive the iOS PWA controller and the emergency st
   const persisted = { persisted: true };
   lifecycle.dispatch(windowRef, "pagehide", persisted);
   assert.deepEqual(calls.ios.at(-1), ["handlePageHide", persisted]);
-  assert.deepEqual(hostCalls(calls, "flushPlaybackMetrics"), [["cancelled"]]);
+  assert.deepEqual(hostCalls(calls, "flushPlaybackMetrics"), [
+    ["cancelled", undefined, { beacon: true }],
+  ]);
   assert.deepEqual(hostCalls(calls, "emergencyStopPlayback"), [[]]);
 
   state.iosPwa = true;
   lifecycle.dispatch(windowRef, "pagehide", persisted);
-  assert.deepEqual(hostCalls(calls, "flushPlaybackMetrics"), [["cancelled"]]);
+  assert.deepEqual(hostCalls(calls, "flushPlaybackMetrics"), [
+    ["cancelled", undefined, { beacon: true }],
+  ]);
 
   lifecycle.dispatch(windowRef, "beforeunload", { persisted: false });
-  assert.deepEqual(hostCalls(calls, "flushPlaybackMetrics"), [["cancelled"], ["cancelled"]]);
+  assert.deepEqual(hostCalls(calls, "flushPlaybackMetrics"), [
+    ["cancelled", undefined, { beacon: true }],
+    ["cancelled", undefined, { beacon: true }],
+  ]);
   assert.deepEqual(hostCalls(calls, "emergencyStopPlayback"), [[], []]);
 
   const teardownListeners = lifecycle.listeners.filter((listener) =>

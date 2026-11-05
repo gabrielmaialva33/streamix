@@ -76,6 +76,18 @@ defmodule StreamixWeb.Router do
     plug StreamixWeb.Plugs.RateLimit, limit: 6, period: 60_000
   end
 
+  # The player reports a finished playback session with sendBeacon() when the
+  # page goes away, because a LiveView push at that moment is lost with the
+  # socket. A beacon carries the session cookie but no custom header, so the
+  # CSRF token travels in the JSON body.
+  pipeline :session_beacon do
+    plug :accepts, ["json"]
+    plug :fetch_session
+    plug :protect_from_forgery
+    plug :fetch_current_scope_for_user
+    plug StreamixWeb.Plugs.RateLimit, limit: 30, period: 60_000
+  end
+
   # WebVTT is not part of Plug's default MIME registry, so the generic
   # JSON API pipeline rejects the player's `Accept: text/vtt` with 406.
   pipeline :subtitle_rate_limited do
@@ -160,6 +172,12 @@ defmodule StreamixWeb.Router do
     pipe_through :internal_diag_rate_limited
 
     post "/internal/home-stuck", InternalDiagController, :home_stuck
+  end
+
+  scope "/api", StreamixWeb do
+    pipe_through :session_beacon
+
+    post "/qoe/beacon", QoeBeaconController, :create
   end
 
   # Authenticated stream proxy for torrent-backed content. The

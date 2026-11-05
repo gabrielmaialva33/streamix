@@ -1,4 +1,4 @@
-import { classifyDeviceClass, webVitalPayload } from "../telemetry/client_telemetry.js";
+import { currentDeviceClass, webVitalPayload } from "../telemetry/client_telemetry.js";
 
 const newBatchId = () =>
   globalThis.crypto?.randomUUID?.() || `web-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -82,12 +82,7 @@ const ClientTelemetry = {
           batchId: newBatchId(),
           path: window.location.pathname,
           displayMode: document.documentElement.dataset.displayMode,
-          deviceClass: classifyDeviceClass({
-            mobileHint: navigator.userAgentData?.mobile,
-            coarsePointer: window.matchMedia?.("(pointer: coarse)")?.matches === true,
-            maxTouchPoints: navigator.maxTouchPoints,
-            viewportWidth: window.innerWidth,
-          }),
+          deviceClass: currentDeviceClass(window),
           ...this.vitals,
         }),
       );

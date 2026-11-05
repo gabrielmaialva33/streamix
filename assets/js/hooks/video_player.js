@@ -43,6 +43,7 @@ import {
 } from "../player/player_preferences.js";
 import { playerSessionLifecycle } from "../player/player_session_lifecycle.js";
 import { ProviderEngineMemory } from "../player/provider_engine_memory.js";
+import { sendQoeBeacon } from "../telemetry/qoe_beacon.js";
 
 /**
  * Enhanced VideoPlayer Hook for Streamix
@@ -957,9 +958,13 @@ const VideoPlayer = {
     }
   },
 
-  flushPlaybackMetrics(outcome, reason) {
+  flushPlaybackMetrics(outcome, reason, { beacon = false } = {}) {
     const metric = this.playbackMetrics?.finish(outcome, reason);
-    if (metric) this.pushEventSafe("client_telemetry", metric);
+    if (!metric) return;
+    // On the way out the socket may already be gone; the beacon gets there
+    // anyway and the server keeps one copy of the sample.
+    if (beacon) sendQoeBeacon(metric);
+    this.pushEventSafe("client_telemetry", metric);
   },
 
   retryPlaybackFromError() {

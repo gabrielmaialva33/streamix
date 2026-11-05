@@ -34,6 +34,7 @@ function harness({ intent = null, streamType = "hls" } = {}) {
     resolveStreamType: () => streamType,
     getCapabilitySummary: () => ({}),
     isStandalonePwa: () => false,
+    currentDeviceClass: () => "desktop",
     getRecommendedPlayer: (key) => {
       calls.push(["recommendation", key]);
       return null;

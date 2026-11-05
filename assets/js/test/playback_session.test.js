@@ -40,6 +40,7 @@ test("summarizes one playback session without retaining stream URLs", () => {
     content_type: "vod",
     stream_type: "mkv",
     display_mode: "standalone",
+    device_class: "unknown",
     ttff_ms: 1_200,
     buffer_count: 1,
     buffer_duration_ms: 450,
@@ -123,4 +124,16 @@ test("session records bounded engine/end reasons and the served build rather tha
   const left = session.finish("cancelled");
   assert.equal(left.end_reason, "first_frame_then_user_left");
   assert.equal(left.client_revision, undefined);
+});
+
+test("a playback session reports the device class it began on", () => {
+  let clock = 0;
+  const session = new PlaybackSession({ now: () => clock, batchId: () => "batch" });
+
+  session.begin({ deviceClass: "mobile" });
+  clock = 10;
+  assert.equal(session.finish("completed").device_class, "mobile");
+
+  session.begin({ deviceClass: "tablet-ish" });
+  assert.equal(session.finish("cancelled").device_class, "unknown");
 });

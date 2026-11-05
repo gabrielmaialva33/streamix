@@ -144,6 +144,10 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 ### Fixed
 
 - A terminal playback error is recorded as an error, not as a cancelled or restarted session.
+- Playback sessions report the device class (mobile/desktop); it was always `unknown`.
+- A playback session that ends because the viewer closed the tab, reloaded or navigated away is still recorded: the
+  player sends its summary with `sendBeacon` to `POST /api/qoe/beacon` (session cookie, CSRF token in the body), since
+  the LiveView socket is already gone at that point.
 - The VOD block cache survives a deploy: on boot it reindexes the blocks already on disk and trims them to
   `VOD_CACHE_MAX_BYTES`. Before, each restart left the previous blocks unreachable and uncounted, so the cache never
   served a block across a deploy and grew past its budget without limit.
