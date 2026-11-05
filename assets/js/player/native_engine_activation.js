@@ -93,6 +93,7 @@ export class NativeEngineActivation {
     this.logger = logger;
 
     this.audioCheckTimer = null;
+    this.audioCheckAbort = null;
     this.errorHandler = null;
     this.metadataProbeCancel = null;
   }
@@ -309,19 +310,24 @@ export class NativeEngineActivation {
 
   checkAudioAndFallback(sessionId) {
     this.cancelAudioCheck();
+    const abort = new AbortController();
+    this.audioCheckAbort = abort;
+    const isCurrent = () => !abort.signal.aborted && this.host.isSessionCurrent(sessionId);
 
     this.audioCheckTimer = this.deps.timerApi.setTimeout(async () => {
       this.audioCheckTimer = null;
 
       try {
-        if (!this.host.isSessionCurrent(sessionId)) return;
+        if (!isCurrent()) return;
 
         this.trace("native_audio_check_start", sessionId);
         const { detectAudioIssue } = await this.deps.loadAVPlayer();
-        if (!this.host.isSessionCurrent(sessionId)) return;
+        if (!isCurrent()) return;
 
-        const hasAudioIssue = await detectAudioIssue(this.host.getVideo());
-        if (!this.host.isSessionCurrent(sessionId)) return;
+        const hasAudioIssue = await detectAudioIssue(this.host.getVideo(), {
+          signal: abort.signal,
+        });
+        if (!isCurrent()) return;
 
         this.trace("native_audio_check_result", sessionId, { has_audio_issue: hasAudioIssue });
 
@@ -333,15 +339,19 @@ export class NativeEngineActivation {
         }
       } catch (error) {
         this.logger.warn("[VideoPlayer] Could not check audio:", error);
+      } finally {
+        if (this.audioCheckAbort === abort) this.audioCheckAbort = null;
       }
     }, NATIVE_AUDIO_CHECK_DELAY_MS);
   }
 
   cancelAudioCheck() {
-    if (this.audioCheckTimer == null) return false;
+    const active = this.audioCheckTimer != null || this.audioCheckAbort != null;
     this.deps.timerApi.clearTimeout(this.audioCheckTimer);
     this.audioCheckTimer = null;
-    return true;
+    this.audioCheckAbort?.abort();
+    this.audioCheckAbort = null;
+    return active;
   }
 
   cancelBackgroundWork() {

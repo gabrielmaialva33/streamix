@@ -143,6 +143,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Audio diagnostics no longer reroute or silence native playback; cancelled and timed-out probes release their listeners, captures and audio contexts.
+
 - Reevaluate learned AVPlayer choices after three days, stop learning slow startups, and clear AVPlayer evidence after stable native playback.
 
 - Give AVPlayer bootstrap its own bounded startup budget and try native MP4 once on a first-frame timeout, discarding failed engine memory.

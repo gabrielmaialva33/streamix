@@ -1,222 +1,131 @@
 import { avplayerLogger as log } from "../core/logger.js";
 
-// Track active audio detection to prevent AudioContext leaks during rapid zapping
+// One advisory probe at a time; native activation owns cancellation via AbortSignal.
 let activeAudioDetection = null;
 
-/**
- * Detect if a video element has audio issues
- * Returns true if audio is not working properly
- */
-export function detectAudioIssue(videoElement) {
+/** Returns true only for observed missing audio; abort/timeout/unsupported are inconclusive. */
+export function detectAudioIssue(
+  videoElement,
+  {
+    signal,
+    timerApi = globalThis,
+    AudioContextClass = globalThis.window?.AudioContext || globalThis.window?.webkitAudioContext,
+  } = {},
+) {
+  activeAudioDetection?.cancel();
+
   return new Promise((resolve) => {
-    // Quick timeout - don't wait too long
-    const timeout = setTimeout(() => {
-      log.debug("[detectAudioIssue] Timeout - assuming no issue");
-      resolve(false);
-    }, 5000);
+    let settled = false;
+    let audioContext = null;
+    let stream = null;
+    let source = null;
+    let analyser = null;
+    const timers = new Set();
+    const listeners = [];
+    const detection = { cancel: () => finish(false) };
+    activeAudioDetection = detection;
 
-    // Method 1: Check webkitAudioDecodedByteCount (Chrome/Safari)
-    if ("webkitAudioDecodedByteCount" in videoElement) {
-      const checkAudio = () => {
-        // Wait for video to play for a bit
-        if (videoElement.currentTime > 0.5) {
-          clearTimeout(timeout);
-          const hasAudio = videoElement.webkitAudioDecodedByteCount > 0;
-          log.debug(
-            `[detectAudioIssue] webkitAudioDecodedByteCount: ${videoElement.webkitAudioDecodedByteCount}, hasAudio: ${hasAudio}`,
-          );
-          resolve(!hasAudio);
-        } else if (!videoElement.paused) {
-          requestAnimationFrame(checkAudio);
-        }
-      };
-
-      if (videoElement.readyState >= 3 && !videoElement.paused) {
-        setTimeout(checkAudio, 300);
-      } else {
-        const onPlaying = () => {
-          videoElement.removeEventListener("playing", onPlaying);
-          setTimeout(checkAudio, 300);
-        };
-        videoElement.addEventListener("playing", onPlaying);
+    const dispose = (operation) => {
+      try {
+        Promise.resolve(operation()).catch(() => {});
+      } catch {
+        // Cleanup must settle the probe even when a browser resource is already gone.
       }
-      return;
-    }
-
-    // Method 2: Check audioTracks (Firefox)
-    if (videoElement.audioTracks) {
-      const checkTracks = () => {
-        clearTimeout(timeout);
-        const hasAudioTracks = videoElement.audioTracks.length > 0;
-        log.debug(`[detectAudioIssue] audioTracks count: ${videoElement.audioTracks.length}`);
-        resolve(!hasAudioTracks);
-      };
-
-      if (videoElement.readyState >= 1) {
-        checkTracks();
-      } else {
-        videoElement.addEventListener("loadedmetadata", checkTracks, { once: true });
-      }
-      return;
-    }
-
-    // Method 3: Web Audio API fallback (works on all browsers)
-    // Creates an AudioContext and analyzes the audio stream from the video
-    detectAudioWithWebAudioAPI(videoElement)
-      .then((hasAudio) => {
-        clearTimeout(timeout);
-        log.debug(`[detectAudioIssue] Web Audio API detection: hasAudio=${hasAudio}`);
-        resolve(!hasAudio);
-      })
-      .catch((error) => {
-        log.warn("[detectAudioIssue] Web Audio API detection failed:", error);
-        clearTimeout(timeout);
-        resolve(false); // Assume no issue on error
+    };
+    function finish(issue) {
+      if (settled) return;
+      settled = true;
+      for (const timer of timers) timerApi.clearTimeout(timer);
+      timers.clear();
+      for (const [event, handler] of listeners) videoElement.removeEventListener(event, handler);
+      signal?.removeEventListener("abort", detection.cancel);
+      dispose(() => source?.disconnect());
+      dispose(() => analyser?.disconnect());
+      dispose(() => {
+        for (const track of stream?.getTracks() ?? []) dispose(() => track.stop());
       });
-  });
-}
-
-/**
- * Detect audio using Web Audio API
- * Creates an AnalyserNode to check for actual audio data in the stream
- * Supports cancellation to prevent AudioContext leaks during rapid channel switching
- */
-function detectAudioWithWebAudioAPI(videoElement) {
-  // Cancel any active detection to prevent AudioContext accumulation
-  if (activeAudioDetection) {
-    activeAudioDetection.cancel();
-  }
-
-  let cancelled = false;
-  let audioContext = null;
-  let source = null;
-  let timeoutId = null;
-  let playingHandler = null;
-
-  const cleanup = () => {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-      timeoutId = null;
+      // This context only analyzes captured tracks; it never owns the video's speaker route.
+      dispose(() => audioContext?.close());
+      if (activeAudioDetection === detection) activeAudioDetection = null;
+      resolve(issue);
     }
-    if (playingHandler && videoElement) {
-      videoElement.removeEventListener("playing", playingHandler);
-      playingHandler = null;
-    }
-    if (source && audioContext) {
-      try {
-        source.disconnect();
-      } catch (_e) {
-        /* ignore */
-      }
-    }
-    if (audioContext) {
-      audioContext.close().catch(() => {});
-      audioContext = null;
-    }
-  };
-
-  const detection = {
-    cancel: () => {
-      cancelled = true;
-      cleanup();
-      log.debug("[detectAudioWithWebAudioAPI] Detection cancelled");
-    },
-  };
-
-  activeAudioDetection = detection;
-
-  return new Promise((resolve, reject) => {
-    try {
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContextClass) {
-        activeAudioDetection = null;
-        reject(new Error("Web Audio API not supported"));
-        return;
-      }
-
-      audioContext = new AudioContextClass();
-
-      try {
-        source = audioContext.createMediaElementSource(videoElement);
-      } catch (e) {
-        // MediaElementSource may already exist for this element
-        log.warn("[detectAudioWithWebAudioAPI] Could not create MediaElementSource:", e);
-        cleanup();
-        activeAudioDetection = null;
-        reject(e);
-        return;
-      }
-
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 256;
-      const bufferLength = analyser.frequencyBinCount;
-      const dataArray = new Uint8Array(bufferLength);
-
-      // Connect: video -> analyser -> destination (speakers)
-      source.connect(analyser);
-      analyser.connect(audioContext.destination);
-
-      let checkCount = 0;
-      const maxChecks = 10; // Check for ~1 second
-
-      const finishDetection = (hasAudio) => {
-        if (cancelled) return;
-        // Cleanup: disconnect analyser but keep audio flowing
+    const schedule = (callback, delay) => {
+      if (settled) return;
+      const timer = timerApi.setTimeout(() => {
+        timers.delete(timer);
+        if (settled) return;
         try {
-          source.disconnect(analyser);
-          source.connect(audioContext.destination);
-        } catch (_e) {
-          /* ignore */
+          callback();
+        } catch (error) {
+          log.debug("Audio probe unavailable:", error);
+          finish(false);
         }
-        audioContext.close().catch(() => {});
-        audioContext = null;
-        activeAudioDetection = null;
-        resolve(hasAudio);
+      }, delay);
+      timers.add(timer);
+    };
+    const once = (event, callback) => {
+      const handler = () => {
+        videoElement.removeEventListener(event, handler);
+        if (!settled) schedule(callback, 0);
       };
+      listeners.push([event, handler]);
+      videoElement.addEventListener(event, handler);
+    };
+    signal?.addEventListener("abort", detection.cancel, { once: true });
+    if (signal?.aborted) return finish(false);
+    schedule(() => finish(false), 5000);
 
-      const checkForAudio = () => {
-        if (cancelled) return;
-
-        checkCount++;
-        analyser.getByteFrequencyData(dataArray);
-
-        // Check if there's any significant audio data
-        let sum = 0;
-        for (let i = 0; i < bufferLength; i++) {
-          sum += dataArray[i];
-        }
-        const average = sum / bufferLength;
-
-        // If average frequency data is above threshold, audio is present
-        if (average > 5) {
-          finishDetection(true);
-          return;
-        }
-
-        if (checkCount < maxChecks && !videoElement.paused && !cancelled) {
-          timeoutId = setTimeout(checkForAudio, 100);
-        } else if (!cancelled) {
-          // No audio detected after all checks
-          finishDetection(false);
-        }
+    if ("webkitAudioDecodedByteCount" in videoElement) {
+      const check = () => {
+        if (videoElement.currentTime > 0.5) finish(videoElement.webkitAudioDecodedByteCount === 0);
+        else if (!videoElement.paused) schedule(check, 100);
       };
-
-      // Start checking after a short delay to let audio buffer
-      if (videoElement.readyState >= 3 && !videoElement.paused) {
-        timeoutId = setTimeout(checkForAudio, 200);
-      } else {
-        playingHandler = () => {
-          if (cancelled) return;
-          videoElement.removeEventListener("playing", playingHandler);
-          playingHandler = null;
-          timeoutId = setTimeout(checkForAudio, 200);
-        };
-        videoElement.addEventListener("playing", playingHandler);
-      }
-    } catch (error) {
-      cleanup();
-      activeAudioDetection = null;
-      reject(error);
+      if (videoElement.readyState >= 3 && !videoElement.paused) schedule(check, 300);
+      else once("playing", () => schedule(check, 300));
+      return;
     }
+    if (videoElement.audioTracks) {
+      const check = () => finish(videoElement.audioTracks.length === 0);
+      if (videoElement.readyState >= 1) check();
+      else once("loadedmetadata", check);
+      return;
+    }
+
+    // createMediaElementSource permanently reroutes the element (even after disconnect/close).
+    // Analyze an independent capture instead, with no connection to the audio destination.
+    const capture = videoElement.captureStream || videoElement.mozCaptureStream;
+    if (!capture || !AudioContextClass) return finish(false);
+    const start = () => {
+      stream = capture.call(videoElement);
+      if (!stream.getAudioTracks().length) return finish(false);
+      audioContext = new AudioContextClass();
+      source = audioContext.createMediaStreamSource(stream);
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      let checks = 0;
+      const check = () => {
+        if (audioContext.state !== "running" || videoElement.paused) return finish(false);
+        analyser.getByteFrequencyData(data);
+        if (data.reduce((sum, value) => sum + value, 0) / data.length > 5) return finish(false);
+        if (++checks >= 10) return finish(true);
+        schedule(check, 100);
+      };
+      if (audioContext.state === "suspended") {
+        Promise.resolve(audioContext.resume()).then(
+          () => schedule(check, 200),
+          () => finish(false),
+        );
+      } else schedule(check, 200);
+    };
+    if (videoElement.readyState >= 3 && !videoElement.paused) {
+      try {
+        start();
+      } catch (error) {
+        log.debug("Audio capture unavailable:", error);
+        finish(false);
+      }
+    } else once("playing", start);
   });
 }
