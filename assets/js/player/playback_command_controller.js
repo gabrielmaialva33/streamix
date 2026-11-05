@@ -110,6 +110,15 @@ export class PlaybackCommandController {
     return this._destroyed;
   }
 
+  // Starts playback and never pauses: for buttons that only mean "play"
+  // (autoplay blocked, replay at the end), where a toggle would stop a video
+  // that has meanwhile started on its own.
+  async play({ remote = false } = {}) {
+    if (this._destroyed) return false;
+    if (!this.isPaused()) return true;
+    return this.togglePlayPause({ remote });
+  }
+
   async togglePlayPause({ remote = false } = {}) {
     if (this._destroyed) return false;
 

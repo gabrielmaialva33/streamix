@@ -176,3 +176,20 @@ test("managed seeks suspend memory evidence until the seek operation settles", a
   await settleCommands();
   assert.deepEqual(events, ["start", "seek", "end"]);
 });
+
+test("play starts a paused video and leaves a playing one alone", async () => {
+  const harness = createPlaybackCommandHarness();
+
+  assert.equal(await harness.controller.play(), true);
+  assert.equal(harness.video.paused, false);
+
+  assert.equal(await harness.controller.play(), true);
+  assert.equal(harness.video.paused, false);
+});
+
+test("play keeps the viewer policy of the toggle", async () => {
+  const harness = createPlaybackCommandHarness({ state: { denied: true } });
+
+  assert.equal(await harness.controller.play(), false);
+  assert.equal(harness.video.paused, true);
+});

@@ -157,6 +157,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Player toasts and overlays cancel their timers when replaced or when the player closes.
 - Prices on the plans and billing pages are formatted in the plan's currency instead of always "R$".
 - The first tap on a phone shows the player controls at once.
+- The "play" button shown when the browser blocks autoplay, and the replay button at the end of a title, start the
+  video again; both threw `this.play is not a function` after a player refactor.
 
 ### Security
 

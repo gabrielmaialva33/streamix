@@ -1253,6 +1253,10 @@ const VideoPlayer = {
     return this.getNativePlaybackEngine();
   },
 
+  async play(options = {}) {
+    return this.playbackCommandController?.play(options);
+  },
+
   async togglePlayPause(options = {}) {
     return this.playbackCommandController?.togglePlayPause(options);
   },
