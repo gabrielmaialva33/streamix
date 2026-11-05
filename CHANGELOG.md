@@ -144,6 +144,9 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 ### Fixed
 
 - A terminal playback error is recorded as an error, not as a cancelled or restarted session.
+- The VOD block cache survives a deploy: on boot it reindexes the blocks already on disk and trims them to
+  `VOD_CACHE_MAX_BYTES`. Before, each restart left the previous blocks unreachable and uncounted, so the cache never
+  served a block across a deploy and grew past its budget without limit.
 - The admin users page lists every user ("Carregar mais"), not only the first twenty.
 - Favorites and history keep their type filter in the URL, so back, reload and shared links keep it.
 - The PWA install prompt recognizes an iPhone home-screen app as installed (`navigator.standalone`).
