@@ -9,6 +9,7 @@ function harness() {
   const playback = { playing: true, currentTime: 0 };
   const memory = new ProviderEngineMemory({
     timerApi,
+    now: timerApi.now,
     getPlayback: () => playback,
     record: (...args) => recorded.push(args),
   });
@@ -116,4 +117,41 @@ test("a forward clock jump cannot manufacture a stable playback window", () => {
   h.playback.currentTime = 30;
   h.timerApi.advance(100);
   assert.deepEqual(h.recorded, []);
+});
+
+test("AV first frame after 15 seconds never reinforces memory even after stable playback", () => {
+  const timerApi = clock();
+  const recorded = [];
+  const playback = { playing: true, currentTime: 0 };
+  const memory = new ProviderEngineMemory({
+    timerApi,
+    now: timerApi.now,
+    getPlayback: () => playback,
+    record: (...args) => recorded.push(args),
+  });
+  memory.select({
+    providerId: "3",
+    streamType: "mp4",
+    engine: "avplayer",
+    batchId: "slow",
+    startedAt: 0,
+    selectionReason: "provider_memory",
+  });
+  timerApi.advance(15001);
+  memory.frame();
+  playback.currentTime = 5;
+  timerApi.advance(5000);
+  assert.deepEqual(recorded, []);
+  memory.select({
+    providerId: "3",
+    streamType: "mp4",
+    engine: "native",
+    batchId: "slow",
+    startedAt: 0,
+  });
+  memory.frame();
+  playback.currentTime = 10;
+  timerApi.advance(5000);
+  assert.equal(recorded.length, 1, "slow native success still replaces AV memory");
+  assert.equal(recorded[0][1], "native");
 });

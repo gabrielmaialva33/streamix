@@ -143,6 +143,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Reevaluate learned AVPlayer choices after three days, stop learning slow startups, and clear AVPlayer evidence after stable native playback.
+
 - Give AVPlayer bootstrap its own bounded startup budget and try native MP4 once on a first-frame timeout, discarding failed engine memory.
 
 - A terminal playback error is recorded as an error, not as a cancelled or restarted session.

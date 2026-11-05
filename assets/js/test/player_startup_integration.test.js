@@ -45,7 +45,7 @@ function harness({ intent = null, streamType = "hls" } = {}) {
     recordPlayerSuccess: (...args) => calls.push(["memory_success", ...args]),
     ProviderEngineMemory: class extends ProviderEngineMemory {
       constructor(options) {
-        super({ ...options, timerApi });
+        super({ ...options, timerApi, now: timerApi.now });
       }
     },
     consumePlaybackIntent: () => intent,

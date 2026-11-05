@@ -913,6 +913,8 @@ const VideoPlayer = {
         streamType: this.currentStreamType,
         engine: extra.engine,
         batchId: this.playbackMetrics?.active?.batchId,
+        startedAt: this.playbackMetrics?.active?.startedAt,
+        selectionReason: extra.reason ?? this.playbackMetrics?.active?.engineReason,
       });
       this.startupPresentation?.attach({
         native: !["avplayer", "h265web"].includes(extra.engine),
