@@ -47,16 +47,19 @@ export class PlaybackRecoveryGuard {
     this.bootstrapping = false;
     this.deadlineRecovered = false;
     this.startupEndsAt = this.now() + this.totalStartupMs;
+    this.suspendedDeadline = null;
     this.suspended = false;
     this.armDeadline(this.startupMs, "startup_deadline");
   }
 
   armDeadline(ms, reason) {
     if (this.deadline !== null || this.terminal || this.destroyed) return;
+    this.deadlineAt = this.now() + ms;
+    this.deadlineReason = reason;
     this.deadline = this.timerApi.setTimeout(() => this.deadlineExpired(reason), ms);
   }
 
-  // Import/WASM/init is separate from loading media and presenting its first frame.
+  // Import/init and libmedia pipeline preparation (including lazy WASM) precede the frame wait.
   bootstrap() {
     if (this.bootstrapUsed || this.hasPlayed || this.deadlineRecovered || this.terminal) return;
     this.bootstrapUsed = true;
@@ -71,6 +74,10 @@ export class PlaybackRecoveryGuard {
   }
 
   replaceStartupDeadline(ms) {
+    if (this.suspended) {
+      this.suspendedDeadline = { ms, reason: "startup_deadline" };
+      return;
+    }
     this.timerApi.clearTimeout(this.deadline);
     this.deadline = null;
     this.armDeadline(
@@ -126,7 +133,16 @@ export class PlaybackRecoveryGuard {
   }
 
   suspend() {
-    if (!this.suspended) this.suspendedAt = this.now();
+    if (!this.suspended) {
+      this.suspendedAt = this.now();
+      this.suspendedDeadline =
+        this.deadline === null
+          ? null
+          : {
+              ms: Math.max(0, this.deadlineAt - this.now()),
+              reason: this.deadlineReason,
+            };
+    }
     this.suspended = true;
     this.clearTimers();
   }
@@ -135,10 +151,14 @@ export class PlaybackRecoveryGuard {
     if (!this.suspended || this.terminal || this.destroyed) return;
     this.startupEndsAt += this.now() - this.suspendedAt;
     this.suspended = false;
+    const remaining = this.suspendedDeadline;
+    this.suspendedDeadline = null;
     if (this.hasPlayed || this.deadlineRecovered) {
-      this.armDeadline(this.recoveryMs, "recovery_deadline");
+      this.armDeadline(remaining?.ms ?? this.recoveryMs, "recovery_deadline");
     } else {
-      this.replaceStartupDeadline(this.bootstrapping ? this.bootstrapMs : this.startupMs);
+      this.replaceStartupDeadline(
+        remaining?.ms ?? (this.bootstrapping ? this.bootstrapMs : this.startupMs),
+      );
     }
   }
 

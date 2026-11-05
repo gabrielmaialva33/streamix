@@ -468,6 +468,7 @@ export class AVPlayerWrapper {
       if (playResult && typeof playResult.then === "function") {
         await playResult;
       }
+      this._throwIfDestroyed();
       if (options.subtitle && !this._subtitleChosen) {
         this.player?.setSubtitleEnable?.(false);
       }
@@ -477,6 +478,7 @@ export class AVPlayerWrapper {
       // Manually call onPlay since event might not fire on resume
       this.onPlay();
     } catch (error) {
+      if (isAVPlayerDestroyedError(error) || this._destroyed) throw error;
       log.error("Play error:", error);
       this._notifyError(error);
       throw error;

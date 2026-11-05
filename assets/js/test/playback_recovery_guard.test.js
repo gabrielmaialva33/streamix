@@ -150,3 +150,67 @@ test("a deadline offers exactly one bounded recovery before terminal, including 
   timerApi.advance(100000);
   assert.equal(reasons.length, 1);
 });
+
+test("bootstrap completion during user pause does not arm a running frame deadline", () => {
+  const timerApi = clock();
+  const reasons = [];
+  const guard = new PlaybackRecoveryGuard({
+    timerApi,
+    now: timerApi.now,
+    onExhausted: (reason) => reasons.push(reason),
+  });
+  guard.begin();
+  guard.bootstrap();
+  timerApi.advance(1000);
+  guard.suspend();
+  timerApi.advance(1000);
+  guard.awaitFrame();
+  timerApi.advance(120000);
+  assert.deepEqual(reasons, [], "paused async init must not terminate the session");
+  guard.resume();
+  timerApi.advance(29999);
+  assert.deepEqual(reasons, []);
+  timerApi.advance(1);
+  assert.deepEqual(reasons, ["startup_deadline"]);
+});
+
+test("pause/resume cannot replenish native recovery time or evade the finite budget", () => {
+  const timerApi = clock();
+  const reasons = [];
+  const guard = new PlaybackRecoveryGuard({
+    timerApi,
+    now: timerApi.now,
+    onStartupDeadline: () => true,
+    onExhausted: (reason) => reasons.push(reason),
+  });
+  guard.begin();
+  guard.bootstrap();
+  timerApi.advance(60000);
+  timerApi.advance(19000);
+  guard.suspend();
+  timerApi.advance(100000);
+  guard.resume();
+  timerApi.advance(999);
+  assert.deepEqual(reasons, []);
+  timerApi.advance(1);
+  assert.deepEqual(reasons, ["recovery_deadline"], "only 1 second of active recovery remained");
+});
+
+test("late bootstrap selection cannot extend total startup beyond ninety active seconds", () => {
+  const timerApi = clock();
+  const reasons = [];
+  const guard = new PlaybackRecoveryGuard({
+    timerApi,
+    now: timerApi.now,
+    onExhausted: (reason) => reasons.push(reason),
+  });
+  guard.begin();
+  timerApi.advance(29000);
+  guard.bootstrap();
+  timerApi.advance(59000);
+  guard.awaitFrame();
+  timerApi.advance(1999);
+  assert.deepEqual(reasons, []);
+  timerApi.advance(1);
+  assert.deepEqual(reasons, ["startup_deadline"]);
+});

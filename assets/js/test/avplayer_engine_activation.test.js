@@ -431,7 +431,7 @@ test("fallback applies circuit breaker, attempt bookkeeping and pauses the nativ
   assert.deepEqual(wrapper.calls[1], [
     "load",
     "https://example.test/movie.mkv",
-    { ext: "mp4", isLive: false },
+    { ext: "mp4", isLive: false, loadTimeoutMs: 60_000 },
   ]);
   assert.deepEqual(wrapper.calls[2], ["seek", 12], "fallback seeks before restoring volume");
   assert.deepEqual(wrapper.calls[3], ["setVolume", 0.8]);
@@ -559,11 +559,23 @@ test("the rAF loop throttles UI ticks and VOD progress reports and stops cleanly
 test("buildLoadOptions only uses the heavy profile for GIndex MKV VOD", () => {
   const gindex = createHarness();
   assert.equal(gindex.activation.buildLoadOptions("mkv", false).loadTimeoutMs, 120000);
-  assert.deepEqual(gindex.activation.buildLoadOptions("mkv", true), { ext: "mkv", isLive: true });
-  assert.deepEqual(gindex.activation.buildLoadOptions("mp4", false), { ext: "mp4", isLive: false });
+  assert.deepEqual(gindex.activation.buildLoadOptions("mkv", true), {
+    ext: "mkv",
+    isLive: true,
+    loadTimeoutMs: 60_000,
+  });
+  assert.deepEqual(gindex.activation.buildLoadOptions("mp4", false), {
+    ext: "mp4",
+    isLive: false,
+    loadTimeoutMs: 60_000,
+  });
 
   const xtream = createHarness({ state: { sourceType: "xtream" } });
-  assert.deepEqual(xtream.activation.buildLoadOptions("mkv", false), { ext: "mkv", isLive: false });
+  assert.deepEqual(xtream.activation.buildLoadOptions("mkv", false), {
+    ext: "mkv",
+    isLive: false,
+    loadTimeoutMs: 60_000,
+  });
 });
 
 test("AVPlayer handles autoplay NotAllowedError by showing autoplay blocked overlay (CL2-01)", async () => {
@@ -638,4 +650,72 @@ test("late WASM initialization after cancellation is disposed without loading or
     false,
   );
   assert.deepEqual(phases, ["bootstrap"]);
+});
+
+test("real wrapper lazy decoder setup in play retains bootstrap budget until pipeline is ready", async (t) => {
+  const { AVPlayerWrapper } = await import("../media/avplayer_wrapper.js");
+  const { PlaybackRecoveryGuard } = await import("../player/playback_recovery_guard.js");
+  const { clock } = await import("./support/playback_clock.js");
+  const timerApi = clock();
+  const reasons = [];
+  const guard = new PlaybackRecoveryGuard({
+    timerApi,
+    now: timerApi.now,
+    onExhausted: (r) => reasons.push(r),
+  });
+  const h = createHarness({ state: { streamType: "mp4" } });
+  let ready, decoding;
+  const entered = new Promise((resolve) => {
+    decoding = resolve;
+  });
+  const pipeline = new Promise((resolve) => {
+    ready = resolve;
+  });
+  const runtime = { AVPlayer: { audioContext: { state: "closed" } }, _avplayerInstanceCount: 0 };
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", { configurable: true, value: runtime });
+  t.after(() =>
+    previous ? Object.defineProperty(globalThis, "window", previous) : delete globalThis.window,
+  );
+  class Wrapper extends AVPlayerWrapper {
+    constructor(options) {
+      super({
+        ...options,
+        windowRef: runtime,
+        configureRuntime() {},
+        getAccelerationConfig: () => ({}),
+        getScriptUrls: () => ({ polyfill: "polyfill", player: "player" }),
+        loadScript: async () => {},
+        createPlayer: () => ({
+          on() {},
+          load() {},
+          seek() {},
+          setVolume() {},
+          getStreams: () => [],
+          play() {
+            decoding();
+            return pipeline;
+          },
+          stop() {},
+          destroy() {},
+        }),
+      });
+    }
+  }
+  h.activation.deps.loadAVPlayer = async () => ({ AVPlayerWrapper: Wrapper });
+  h.host.beginEngineBootstrap = () => guard.bootstrap();
+  h.host.awaitEngineFrame = () => guard.awaitFrame();
+  guard.begin();
+  const pending = h.activation.activate(h.request());
+  await entered;
+  timerApi.advance(45000);
+  assert.deepEqual(reasons, [], "decoder WASM in play is still bootstrap, not a 30s frame wait");
+  ready();
+  await pending;
+  timerApi.advance(29999);
+  assert.deepEqual(reasons, []);
+  timerApi.advance(1);
+  assert.deepEqual(reasons, ["startup_deadline"]);
+  h.activation.destroy();
+  await h.state.avPlayer?.destroy();
 });

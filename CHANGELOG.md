@@ -143,6 +143,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Include lazy decoder preparation in the AVPlayer startup budget and preserve remaining recovery time across pauses and watch-party holds.
+
 - Remove native playing and metadata listeners on activation replacement, session changes and player teardown.
 
 - Audio diagnostics no longer reroute or silence native playback; cancelled and timed-out probes release their listeners, captures and audio contexts.
