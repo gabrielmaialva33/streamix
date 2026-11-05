@@ -23,9 +23,9 @@ defmodule Streamix.Workers.SyncDueEpgWorkerTest do
 
     assert :ok = perform_job(SyncDueEpgWorker, %{})
 
-    assert_enqueued worker: SyncEpgWorker, args: %{"provider_id" => stale.id}
-    assert_enqueued worker: SyncEpgWorker, args: %{"provider_id" => never.id}
-    refute_enqueued worker: SyncEpgWorker, args: %{"provider_id" => global.id}
-    refute_enqueued worker: SyncEpgWorker, args: %{"provider_id" => inactive.id}
+    assert_enqueued(worker: SyncEpgWorker, args: %{"provider_id" => stale.id})
+    assert_enqueued(worker: SyncEpgWorker, args: %{"provider_id" => never.id})
+    refute_enqueued(worker: SyncEpgWorker, args: %{"provider_id" => global.id})
+    refute_enqueued(worker: SyncEpgWorker, args: %{"provider_id" => inactive.id})
   end
 end
