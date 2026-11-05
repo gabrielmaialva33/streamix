@@ -95,6 +95,8 @@ export class NativeEngineActivation {
     this.audioCheckTimer = null;
     this.audioCheckAbort = null;
     this.errorHandler = null;
+    this.errorVideo = null;
+    this.activationListeners = new Set();
     this.metadataProbeCancel = null;
   }
 
@@ -117,6 +119,8 @@ export class NativeEngineActivation {
 
   activate(request) {
     const { sessionId, url } = request;
+    if (!this.host.isSessionCurrent(sessionId)) return false;
+    this.cancelBackgroundWork();
     const video = this.host.getVideo();
 
     this.host.setNativePlaybackEventsSuppressed(false);
@@ -150,7 +154,6 @@ export class NativeEngineActivation {
       const presentation = this.host.getPresentation();
       presentation?.hideLoading();
       presentation?.hideError();
-      video.removeEventListener("playing", playHandler);
 
       this.ensureBufferManager(video);
 
@@ -186,22 +189,16 @@ export class NativeEngineActivation {
 
     this.detachErrorHandler();
     this.errorHandler = errorHandler;
+    this.errorVideo = video;
 
-    video.addEventListener("playing", playHandler);
+    this.listenOnce(video, "playing", playHandler);
     video.addEventListener("error", errorHandler);
-    video.addEventListener(
-      "loadedmetadata",
-      () => {
-        if (!this.host.isSessionCurrent(sessionId)) return;
-        this.trace("native_metadata_loaded", sessionId);
-        this.host.getPresentation()?.hideLoading();
-
-        if (this.host.getSourceType() === "torrent") {
-          this.host.loadNativeExternalSubtitle(sessionId);
-        }
-      },
-      { once: true },
-    );
+    this.listenOnce(video, "loadedmetadata", () => {
+      if (!this.host.isSessionCurrent(sessionId)) return;
+      this.trace("native_metadata_loaded", sessionId);
+      this.host.getPresentation()?.hideLoading();
+      if (this.host.getSourceType() === "torrent") this.host.loadNativeExternalSubtitle(sessionId);
+    });
 
     this.playAfterResume(sessionId, resumeTime).catch((error) => {
       if (error?.name === "AbortError") return;
@@ -354,7 +351,22 @@ export class NativeEngineActivation {
     return active;
   }
 
+  listenOnce(video, event, callback) {
+    const dispose = () => {
+      video.removeEventListener(event, handler);
+      this.activationListeners.delete(dispose);
+    };
+    const handler = () => {
+      dispose();
+      callback();
+    };
+    this.activationListeners.add(dispose);
+    video.addEventListener(event, handler);
+  }
+
   cancelBackgroundWork() {
+    for (const dispose of this.activationListeners) dispose();
+    this.detachErrorHandler();
     this.cancelAudioCheck();
     this.metadataProbeCancel?.();
     this.metadataProbeCancel = null;
@@ -362,8 +374,9 @@ export class NativeEngineActivation {
 
   detachErrorHandler() {
     if (!this.errorHandler) return false;
-    this.host.getVideo()?.removeEventListener("error", this.errorHandler);
+    this.errorVideo?.removeEventListener("error", this.errorHandler);
     this.errorHandler = null;
+    this.errorVideo = null;
     return true;
   }
 

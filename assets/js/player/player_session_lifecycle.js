@@ -167,6 +167,7 @@ export const playerSessionLifecycle = {
     }
   },
   beginPlaybackSession() {
+    this.nativeEngineActivation?.cancelBackgroundWork();
     if (!this.playbackOrchestrator || this.playbackOrchestrator.destroyed) {
       this.playbackOrchestrator = createPlaybackOrchestrator({
         reportLifecycle: (event, metadata) => this.reportPlayerLifecycle(event, metadata),

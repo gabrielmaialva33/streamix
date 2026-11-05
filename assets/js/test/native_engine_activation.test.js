@@ -541,3 +541,30 @@ test("cancel during lazy audio import cannot start a probe even in the same sess
   assert.equal(probes, 0);
   assert.equal(h.calls.tryAVPlayer, 0);
 });
+
+test("repeated native activations retain one playing/metadata listener and destroy removes all", () => {
+  const h = createHarness();
+  for (let i = 0; i < 3; i++) {
+    h.state.sessionId++;
+    h.activation.activate(h.request());
+    assert.equal(getEventListeners(h.video, "playing").length, 1);
+    assert.equal(getEventListeners(h.video, "loadedmetadata").length, 1);
+  }
+  h.video.dispatchEvent(new Event("playing"));
+  assert.equal(getEventListeners(h.video, "playing").length, 0);
+  h.activation.destroy();
+  assert.equal(getEventListeners(h.video, "loadedmetadata").length, 0);
+  assert.equal(getEventListeners(h.video, "error").length, 0);
+  h.activation.destroy();
+});
+
+test("cancellation removes listeners from their original element even if host video changed", () => {
+  const h = createHarness();
+  const original = h.video;
+  h.activation.activate(h.request());
+  h.host.getVideo = () => new FakeVideo();
+  h.activation.cancelBackgroundWork();
+  for (const event of ["playing", "loadedmetadata", "error"]) {
+    assert.equal(getEventListeners(original, event).length, 0, event);
+  }
+});
