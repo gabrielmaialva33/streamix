@@ -123,6 +123,133 @@ defmodule Streamix.AI.Gemini do
     end
   end
 
+  @doc """
+  Asks a Gemini text model for JSON matching `schema` (an OpenAPI-subset
+  `responseSchema`, where string enums constrain the answer).
+
+  The key travels in the `x-goog-api-key` header, never in the URL. Returns
+  the decoded JSON and the token usage, or `{:error, :quota_exhausted}` (the
+  daily quota is spent), `{:error, :rate_limited}`, `{:error, :unauthorized}`,
+  `{:error, :not_configured}` or another error.
+
+  ## Options
+
+    * `:model` (required) — e.g. `"gemini-3.8-flash"`
+    * `:temperature` — default 0.2
+    * `:thinking` — a `thinkingConfig` map passed through as is
+    * `:timeout` — receive timeout in ms, default 120_000
+    * `:max_retries` — retries of a 408/429/5xx answer, default 4
+  """
+  @spec generate_json(String.t(), String.t(), map(), keyword()) ::
+          {:ok, term(), map()} | {:error, term()}
+  def generate_json(system, prompt, schema, opts)
+      when is_binary(system) and is_binary(prompt) and is_map(schema) do
+    model = Keyword.fetch!(opts, :model)
+
+    generation_config =
+      %{
+        responseMimeType: "application/json",
+        responseSchema: schema,
+        temperature: Keyword.get(opts, :temperature, 0.2)
+      }
+      |> maybe_put(:thinkingConfig, Keyword.get(opts, :thinking))
+
+    body = %{
+      systemInstruction: %{parts: [%{text: system}]},
+      contents: [%{role: "user", parts: [%{text: prompt}]}],
+      generationConfig: generation_config
+    }
+
+    if enabled?() do
+      "#{@base_url}/models/#{model}:generateContent"
+      |> Req.post(
+        json: body,
+        headers: [{"x-goog-api-key", api_key()}],
+        receive_timeout: Keyword.get(opts, :timeout, 120_000),
+        # 503 ("high demand") and per-minute 429s are routine on shared
+        # Gemini capacity and worth a short wait. A spent daily quota is not:
+        # its Retry-After can be hours, so it is never retried here.
+        # The retry decision runs before Req decodes the body, so ask for an
+        # uncompressed answer the quota check can read.
+        compressed: false,
+        retry: &retry_generate?/2,
+        retry_delay: &generate_backoff/1,
+        max_retries: Keyword.get(opts, :max_retries, 4)
+      )
+      |> handle_generate()
+    else
+      {:error, :not_configured}
+    end
+  end
+
+  defp handle_generate({:ok, %Req.Response{status: 200, body: body}}) do
+    with %{"candidates" => [%{"content" => %{"parts" => parts}} | _]} <- body,
+         text when is_binary(text) <- Enum.map_join(parts, &(&1["text"] || "")),
+         {:ok, json} <- Jason.decode(text) do
+      {:ok, json, Map.get(body, "usageMetadata", %{})}
+    else
+      %{"candidates" => [%{"finishReason" => reason} | _]} -> {:error, {:no_content, reason}}
+      %{"promptFeedback" => %{"blockReason" => reason}} -> {:error, {:blocked, reason}}
+      {:error, %Jason.DecodeError{}} -> {:error, :invalid_json}
+      _other -> {:error, :unexpected_response}
+    end
+  end
+
+  defp handle_generate({:ok, %Req.Response{status: 429} = response}) do
+    if daily_quota?(response), do: {:error, :quota_exhausted}, else: {:error, :rate_limited}
+  end
+
+  defp handle_generate({:ok, %Req.Response{status: status}}) when status in [401, 403],
+    do: {:error, :unauthorized}
+
+  defp handle_generate({:ok, %Req.Response{status: status, body: body}}) do
+    Logger.warning("[Gemini] generateContent failed",
+      reason: SafeLog.redact_inspect({status, body})
+    )
+
+    {:error, {:api_error, status}}
+  end
+
+  defp handle_generate({:error, reason}), do: {:error, {:request_failed, reason}}
+
+  @doc false
+  def retry_generate?(_request, %Req.Response{status: 429} = response),
+    do: not daily_quota?(response)
+
+  def retry_generate?(_request, %Req.Response{status: status}),
+    do: status in [408, 500, 502, 503, 504]
+
+  def retry_generate?(_request, %Req.TransportError{reason: reason}),
+    do: reason in [:timeout, :econnrefused, :closed]
+
+  def retry_generate?(_request, _other), do: false
+
+  # 1, 2, 4, 8 s, capped at 16 s.
+  defp generate_backoff(attempt), do: min(1_000 * Integer.pow(2, attempt), 16_000)
+
+  defp daily_quota?(%Req.Response{body: %{"error" => %{} = error}}) do
+    error
+    |> Map.get("details")
+    |> List.wrap()
+    |> Enum.flat_map(fn
+      %{"violations" => violations} -> List.wrap(violations)
+      _detail -> []
+    end)
+    |> Enum.any?(&(is_map(&1) and String.contains?(to_string(&1["quotaId"]), "PerDay")))
+  end
+
+  defp daily_quota?(%Req.Response{body: body} = response) when is_binary(body) do
+    case Jason.decode(body) do
+      {:ok, %{} = decoded} -> daily_quota?(%{response | body: decoded})
+      _other -> false
+    end
+  end
+
+  defp daily_quota?(_response), do: false
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
   # Private functions
 
   defp do_embed(text, task_type) do

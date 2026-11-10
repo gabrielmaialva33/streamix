@@ -665,6 +665,11 @@ if gemini_api_key = get_env.("GEMINI_API_KEY") do
   config :streamix, :gemini, api_key: gemini_api_key
 end
 
+# Title tag classification (Streamix.AI.TagClassifier). Uses GEMINI_API_KEY.
+config :streamix, :tag_classifier,
+  model: get_env.("TAG_CLASSIFIER_MODEL"),
+  thinking_level: get_env.("TAG_CLASSIFIER_THINKING_LEVEL")
+
 # NVIDIA NIM configuration for embeddings.
 # 2026-06: NVIDIA moved the embedding API to the OpenAI-compatible
 # `integrate.api.nvidia.com/v1` surface, which requires the namespaced model

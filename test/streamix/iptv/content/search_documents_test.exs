@@ -4,6 +4,8 @@ defmodule Streamix.Iptv.SearchDocumentsTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
+  alias Streamix.Iptv.SearchDocuments
+
   test "returns ordered movie projections scoped by provider and cursor" do
     user = user_fixture()
     provider = provider_fixture(user)
@@ -44,6 +46,24 @@ defmodule Streamix.Iptv.SearchDocumentsTest do
     assert document.writers == ["Jonathan Nolan"]
     assert document.cast == ["Matthew Mcconaughey"]
     assert document.variant_key == "tmdb:" <> tmdb_id
+    assert document.tags == nil
+
+    {:ok, _} =
+      Streamix.Catalog.put_title_tags(
+        "movies",
+        "tmdb:" <> tmdb_id,
+        %{subgenres: ["space-opera"]},
+        "m"
+      )
+
+    assert [%{tags: tags, tag_labels: labels}] =
+             Streamix.Search.list_search_documents(:movies, provider.id)
+
+    assert tags.subgenres == ["space-opera"]
+    assert labels.subgenres == ["Space opera"]
+
+    assert [%{tags: %{subgenres: ["space-opera"]}}] =
+             SearchDocuments.for_ids(:movies, [movie.id])
   end
 
   test "pages through the whole catalog in short queries" do

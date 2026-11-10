@@ -217,7 +217,9 @@ API surfaces under `/api/v1`:
 | `SyncSeriesDetailsWorker`   | on demand                      | `series_details` |
 | `TmdbDetailsWorker`         | daily at 04:45                 | `tmdb_details`   |
 | `EpisodeDetailsWorker`      | daily at 05:15                 | `tmdb_details`   |
+| `BackfillTmdbMetadataWorker`| daily at 05:45                 | `tmdb_details`   |
 | `IndexEmbeddingsWorker`     | daily at 05:00                 | `ai`             |
+| `ClassifyTitleTagsWorker`   | hourly at :25                  | `tags`           |
 | `UpdateUserProfileWorker`   | triggered from analytics flows | `ai` / async     |
 
 ## Repo-Specific Conventions

@@ -47,6 +47,14 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   provider is selected.
 - Response-contract tests covering success, validation, not-found, and authentication responses against the published
   schemas.
+- Fine-grained title tags from a closed vocabulary (`Streamix.Iptv.Tags.Vocabulary`): about 150 subgenres
+  (slasher, possession, heist, space opera, isekai, dorama...), mood, pace, the era the story is set in, setting,
+  audience, themes and source material. Gemini (`TAG_CLASSIFIER_MODEL`, default `gemini-3.5-flash-lite`) classifies
+  each title once for all its provider copies, from its synopsis, TMDB keywords and credits, with the vocabulary as a
+  response-schema enum; the catalog validates again and corrects an era of "today" on an older title. The hourly
+  `ClassifyTitleTagsWorker` (own `tags` queue) works through pending titles and stops quietly when the daily quota is
+  spent, so a free-tier key finishes over several days. Tags are written into the embedding text and carried as
+  Qdrant payload slugs.
 - Every title now keeps its TMDB keywords ("time travel", "heist", "based on novel or book") and the credits people
   search by: billed cast, directors and writers (a series' creators count as writers). Movies had no credits at all:
   TMDB sent them with every detail request and they were dropped. The nightly 05:45 job became

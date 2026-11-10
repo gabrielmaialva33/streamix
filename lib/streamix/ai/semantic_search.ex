@@ -49,7 +49,9 @@ defmodule Streamix.AI.SemanticSearch do
     :cast,
     :rating,
     :provider_id,
-    :variant_key
+    :variant_key,
+    :tags,
+    :tag_labels
   ]
 
   # Public API
@@ -385,7 +387,15 @@ defmodule Streamix.AI.SemanticSearch do
       provider_id: content[:provider_id],
       variant_key: content[:variant_key]
     }
+    |> Map.merge(tag_payload(content[:tags]))
   end
+
+  # Tag slugs travel in the payload so searches can filter on them.
+  defp tag_payload(tags) when is_map(tags) do
+    Map.new(tags, fn {facet, value} -> {facet, value} end)
+  end
+
+  defp tag_payload(_tags), do: %{}
 
   defp build_filter(opts) do
     must = []

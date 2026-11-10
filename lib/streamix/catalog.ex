@@ -225,6 +225,26 @@ defmodule Streamix.Catalog do
   @doc "TMDB keyword names by id."
   defdelegate tmdb_keyword_names(ids), to: Streamix.Iptv.TmdbMetadata, as: :keyword_names
 
+  @doc "The closed title-tag vocabulary as data; see `Streamix.Iptv.Tags.Vocabulary.describe/0`."
+  defdelegate tag_vocabulary(), to: Streamix.Iptv.Tags.Vocabulary, as: :describe
+
+  @doc "The current tag vocabulary version."
+  defdelegate tag_vocabulary_version(), to: Streamix.Iptv.Tags.Vocabulary, as: :version
+
+  @doc "Search documents for up to `limit` titles of a kind that still need tags."
+  defdelegate pending_tag_documents(kind, limit), to: Streamix.Iptv.Tags, as: :pending_documents
+
+  @doc "How many titles of a kind still need tags."
+  defdelegate pending_tag_count(kind), to: Streamix.Iptv.Tags, as: :pending_count
+
+  @doc "Stores a title's tags, replacing any earlier classification."
+  defdelegate put_title_tags(kind, variant_key, facets, model, opts \\ []),
+    to: Streamix.Iptv.Tags,
+    as: :put
+
+  @doc "Titles classified so far, per stored kind."
+  defdelegate title_tag_counts(), to: Streamix.Iptv.Tags, as: :counts
+
   @doc "Replaces incremental source genres while preserving TMDB ownership."
   defdelegate put_string_genres(kind, items), to: Streamix.Iptv.Genres
 end

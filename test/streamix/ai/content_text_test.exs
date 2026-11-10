@@ -29,6 +29,39 @@ defmodule Streamix.AI.ContentTextTest do
              """
   end
 
+  test "writes classified tags as labelled lines after the genres" do
+    text =
+      ContentText.build(%{
+        title: "Pânico",
+        year: 1996,
+        genres: "Terror",
+        tag_labels: %{
+          subgenres: ["Slasher", "Quem matou? (whodunit)"],
+          moods: ["Tenso"],
+          pace: ["Acelerado"],
+          eras: ["Anos 90"],
+          settings: [],
+          audience: ["Adulto"],
+          themes: ["Assassinato"],
+          origins: []
+        },
+        plot: "Um assassino mascarado."
+      })
+
+    assert text ==
+             """
+             Pânico (1996)
+             Gêneros: Terror
+             Subgêneros: Slasher, Quem matou? (whodunit)
+             Clima: Tenso
+             Ritmo: Acelerado
+             Época: Anos 90
+             Público: Adulto
+             Temas: Assassinato
+             Um assassino mascarado.\
+             """
+  end
+
   test "a bare title is just the title" do
     assert ContentText.build(%{title: "Sem Dados", genres: nil, cast: []}) == "Sem Dados"
   end

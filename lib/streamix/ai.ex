@@ -18,6 +18,12 @@ defmodule Streamix.AI do
     as: :similar
 
   defdelegate semantic_search_stats(), to: SemanticSearch, as: :stats
+
+  @doc "Classifies search documents into the catalog's tag vocabulary; see `Streamix.AI.TagClassifier`."
+  defdelegate classify_titles(documents, opts \\ []), to: Streamix.AI.TagClassifier, as: :classify
+
+  @doc "The model titles are classified with."
+  defdelegate tag_classifier_model(), to: Streamix.AI.TagClassifier, as: :model
   defdelegate semantic_search_info(), to: SemanticSearch, as: :info
   defdelegate ensure_vector_collections(), to: SemanticSearch, as: :bootstrap_collections
 

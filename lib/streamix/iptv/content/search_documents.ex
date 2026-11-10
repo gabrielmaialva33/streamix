@@ -12,7 +12,7 @@ defmodule Streamix.Iptv.SearchDocuments do
 
   alias Streamix.Helpers
   alias Streamix.Iptv.Content.GindexSeries
-  alias Streamix.Iptv.{Movie, Provider, Series, TmdbMetadata}
+  alias Streamix.Iptv.{Movie, Provider, Series, Tags, TmdbMetadata}
   alias Streamix.Repo
 
   @type kind :: :movies | :series | :animes
@@ -51,10 +51,29 @@ defmodule Streamix.Iptv.SearchDocuments do
           |> Repo.all()
 
         next = if length(page) == page_size, do: List.last(page).id, else: nil
-        if page == [], do: nil, else: {with_keyword_names(page), next}
+        if page == [], do: nil, else: {with_facets(page, kind), next}
     end)
     |> Stream.flat_map(& &1)
-    |> Enum.map(fn {content, keywords} -> to_document(content, keywords) end)
+    |> Enum.map(&to_document/1)
+  end
+
+  @doc """
+  Documents for the given content ids of one kind, in no particular order.
+  Unlike `list/3` it applies no provider, liveness or kind scoping: the
+  caller already chose the rows.
+  """
+  @spec for_ids(kind(), [integer()]) :: [map()]
+  def for_ids(_kind, []), do: []
+
+  def for_ids(kind, ids) when kind in [:movies, :series, :animes] and is_list(ids) do
+    from(content in schema_for(kind),
+      where: content.id in ^ids,
+      select_merge: %{variant_key: content.variant_key},
+      preload: [:genres, credits: :person]
+    )
+    |> Repo.all()
+    |> with_facets(kind)
+    |> Enum.map(&to_document/1)
   end
 
   defp schema_for(:movies), do: Movie
@@ -88,20 +107,23 @@ defmodule Streamix.Iptv.SearchDocuments do
     from([content: content] in query, where: content.provider_id == ^provider_id)
   end
 
-  # One lookup per page for every keyword the page's titles carry.
-  defp with_keyword_names(page) do
+  # One lookup per page for every keyword and title tag the page carries.
+  defp with_facets(page, kind) do
     names =
       page
       |> Enum.flat_map(&(&1.tmdb_keyword_ids || []))
       |> Enum.uniq()
       |> TmdbMetadata.keyword_names()
 
+    tags = Tags.for_variants(Tags.kind_of(kind), Enum.map(page, & &1.variant_key))
+
     Enum.map(page, fn content ->
-      {content, Enum.flat_map(content.tmdb_keyword_ids || [], &List.wrap(names[&1]))}
+      keywords = Enum.flat_map(content.tmdb_keyword_ids || [], &List.wrap(names[&1]))
+      {content, keywords, Map.get(tags, content.variant_key)}
     end)
   end
 
-  defp to_document(content, keywords) do
+  defp to_document({content, keywords, tags}) do
     %{
       id: content.id,
       title: content.title,
@@ -115,7 +137,9 @@ defmodule Streamix.Iptv.SearchDocuments do
       cast: people(content.credits, "cast"),
       rating: content.rating,
       provider_id: content.provider_id,
-      variant_key: content.variant_key
+      variant_key: content.variant_key,
+      tags: Tags.to_map(tags),
+      tag_labels: Tags.labels(tags)
     }
   end
 

@@ -228,6 +228,13 @@ config :gettext, :default_locale, "pt_BR"
 config :streamix, StreamixWeb.Gettext, default_locale: "pt_BR"
 
 # Oban - Background jobs
+# Titles per run, titles per Gemini request, requests in flight. Hourly runs
+# let a free-tier key work through the catalog a daily quota at a time.
+config :streamix, Streamix.Workers.ClassifyTitleTagsWorker,
+  limit: 2_000,
+  batch_size: 20,
+  concurrency: 2
+
 config :streamix, Streamix.Workers.BackfillTmdbMetadataWorker,
   limit: 10_000,
   concurrency: 4,
@@ -248,6 +255,9 @@ config :streamix, Oban,
     billing: 1,
     series_details: 2,
     ai: 1,
+    # Title tag classification: its own lane, so an hours-long embedding
+    # reindex on :ai never holds it back (and vice versa).
+    tags: 1,
     # GIndex ingestion: a small dispatcher queue that just enqueues work.
     # EndpointManager keeps an ordered two-Worker pool for whole-listing
     # failover; it does not split one paginated walk across both hosts.
@@ -336,6 +346,9 @@ config :streamix, Oban,
        # works again; while healthy it only resolves after an idle hour. Off the
        # minutes every other entry uses.
        {"17,47 * * * *", Streamix.Workers.EmbedplayCanaryWorker},
+       # Classify titles into the tag vocabulary. Hourly and bounded: a run
+       # stops quietly when the Gemini quota is spent and the next continues.
+       {"25 * * * *", Streamix.Workers.ClassifyTitleTagsWorker},
        # Index embeddings for semantic search daily at 5 AM
        {"0 5 * * *", Streamix.Workers.IndexEmbeddingsWorker},
        # Repair missing Qdrant collections after each application boot without
