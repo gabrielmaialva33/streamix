@@ -5,6 +5,9 @@ export class PlaybackRecoveryGuard {
     timerApi = globalThis,
     onExhausted = () => {},
     onStable = () => {},
+    onStartupDeadline = () => false,
+    bootstrapMs = 60_000,
+    totalStartupMs = 90_000,
     startupMs = 30_000,
     recoveryMs = 20_000,
     stableMs = 20_000,
@@ -16,6 +19,9 @@ export class PlaybackRecoveryGuard {
       timerApi,
       onExhausted,
       onStable,
+      onStartupDeadline,
+      bootstrapMs,
+      totalStartupMs,
       startupMs,
       recoveryMs,
       stableMs,
@@ -37,13 +43,59 @@ export class PlaybackRecoveryGuard {
     this.terminal = false;
     this.started = true;
     this.hasPlayed = false;
+    this.bootstrapUsed = false;
+    this.bootstrapping = false;
+    this.deadlineRecovered = false;
+    this.startupEndsAt = this.now() + this.totalStartupMs;
+    this.suspendedDeadline = null;
     this.suspended = false;
     this.armDeadline(this.startupMs, "startup_deadline");
   }
 
   armDeadline(ms, reason) {
     if (this.deadline !== null || this.terminal || this.destroyed) return;
-    this.deadline = this.timerApi.setTimeout(() => this.exhaust(reason), ms);
+    this.deadlineAt = this.now() + ms;
+    this.deadlineReason = reason;
+    this.deadline = this.timerApi.setTimeout(() => this.deadlineExpired(reason), ms);
+  }
+
+  // Import/init and libmedia pipeline preparation (including lazy WASM) precede the frame wait.
+  bootstrap() {
+    if (this.bootstrapUsed || this.hasPlayed || this.deadlineRecovered || this.terminal) return;
+    this.bootstrapUsed = true;
+    this.bootstrapping = true;
+    this.replaceStartupDeadline(this.bootstrapMs);
+  }
+
+  awaitFrame() {
+    if (!this.bootstrapping || this.hasPlayed || this.deadlineRecovered || this.terminal) return;
+    this.bootstrapping = false;
+    this.replaceStartupDeadline(this.startupMs);
+  }
+
+  replaceStartupDeadline(ms) {
+    if (this.suspended) {
+      this.suspendedDeadline = { ms, reason: "startup_deadline" };
+      return;
+    }
+    this.timerApi.clearTimeout(this.deadline);
+    this.deadline = null;
+    this.armDeadline(
+      Math.max(0, Math.min(ms, this.startupEndsAt - this.now())),
+      "startup_deadline",
+    );
+  }
+
+  deadlineExpired(reason) {
+    this.deadline = null;
+    if (this.terminal || this.destroyed) return;
+    if (!this.hasPlayed && !this.deadlineRecovered) {
+      this.deadlineRecovered = true;
+      // Arm before invoking product policy: synchronous activation/retry must share this budget.
+      this.armDeadline(this.recoveryMs, "recovery_deadline");
+      if (this.onStartupDeadline(reason) === true) return;
+    }
+    this.exhaust(reason);
   }
 
   recover() {
@@ -81,17 +133,33 @@ export class PlaybackRecoveryGuard {
   }
 
   suspend() {
+    if (!this.suspended) {
+      this.suspendedAt = this.now();
+      this.suspendedDeadline =
+        this.deadline === null
+          ? null
+          : {
+              ms: Math.max(0, this.deadlineAt - this.now()),
+              reason: this.deadlineReason,
+            };
+    }
     this.suspended = true;
     this.clearTimers();
   }
 
   resume() {
     if (!this.suspended || this.terminal || this.destroyed) return;
+    this.startupEndsAt += this.now() - this.suspendedAt;
     this.suspended = false;
-    this.armDeadline(
-      this.hasPlayed ? this.recoveryMs : this.startupMs,
-      this.hasPlayed ? "recovery_deadline" : "startup_deadline",
-    );
+    const remaining = this.suspendedDeadline;
+    this.suspendedDeadline = null;
+    if (this.hasPlayed || this.deadlineRecovered) {
+      this.armDeadline(remaining?.ms ?? this.recoveryMs, "recovery_deadline");
+    } else {
+      this.replaceStartupDeadline(
+        remaining?.ms ?? (this.bootstrapping ? this.bootstrapMs : this.startupMs),
+      );
+    }
   }
 
   pause() {

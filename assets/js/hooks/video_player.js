@@ -150,6 +150,7 @@ const VideoPlayer = {
         this.retryCount = 0;
         this.fallbackAttempts = 0;
       },
+      onStartupDeadline: () => this.recoverStartupDeadline(),
       onExhausted: (reason) => {
         this.cleanup();
         this.presentTerminalPlaybackError(
@@ -905,12 +906,15 @@ const VideoPlayer = {
 
   reportPlayerLifecycle(stage, extra = {}) {
     if (stage === "player_engine_selected") {
+      this._selectedEngine = extra.engine;
       this._memorySeekTokens?.clear();
       this.providerEngineMemory?.select({
         providerId: this.providerId,
         streamType: this.currentStreamType,
         engine: extra.engine,
         batchId: this.playbackMetrics?.active?.batchId,
+        startedAt: this.playbackMetrics?.active?.startedAt,
+        selectionReason: extra.reason ?? this.playbackMetrics?.active?.engineReason,
       });
       this.startupPresentation?.attach({
         native: !["avplayer", "h265web"].includes(extra.engine),
@@ -969,6 +973,7 @@ const VideoPlayer = {
 
   retryPlaybackFromError() {
     log.info("[VideoPlayer] Retrying playback from error screen");
+    this.initPlaybackEngineTransitionController();
     this.recoveryGuard?.begin();
     this.sourceFailoverController?.reset();
     this.pushEventSafe("reset_source_failover", {});

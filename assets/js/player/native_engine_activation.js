@@ -93,7 +93,10 @@ export class NativeEngineActivation {
     this.logger = logger;
 
     this.audioCheckTimer = null;
+    this.audioCheckAbort = null;
     this.errorHandler = null;
+    this.errorVideo = null;
+    this.activationListeners = new Set();
     this.metadataProbeCancel = null;
   }
 
@@ -116,6 +119,8 @@ export class NativeEngineActivation {
 
   activate(request) {
     const { sessionId, url } = request;
+    if (!this.host.isSessionCurrent(sessionId)) return false;
+    this.cancelBackgroundWork();
     const video = this.host.getVideo();
 
     this.host.setNativePlaybackEventsSuppressed(false);
@@ -134,6 +139,8 @@ export class NativeEngineActivation {
       });
     this.host.reportLifecycle("player_engine_selected", {
       engine: ENGINE_ID.NATIVE,
+      reason: request.reason,
+      fallback: request.fallback,
       session_id: sessionId,
     });
     nativeEngine.load(url);
@@ -147,7 +154,6 @@ export class NativeEngineActivation {
       const presentation = this.host.getPresentation();
       presentation?.hideLoading();
       presentation?.hideError();
-      video.removeEventListener("playing", playHandler);
 
       this.ensureBufferManager(video);
 
@@ -183,22 +189,16 @@ export class NativeEngineActivation {
 
     this.detachErrorHandler();
     this.errorHandler = errorHandler;
+    this.errorVideo = video;
 
-    video.addEventListener("playing", playHandler);
+    this.listenOnce(video, "playing", playHandler);
     video.addEventListener("error", errorHandler);
-    video.addEventListener(
-      "loadedmetadata",
-      () => {
-        if (!this.host.isSessionCurrent(sessionId)) return;
-        this.trace("native_metadata_loaded", sessionId);
-        this.host.getPresentation()?.hideLoading();
-
-        if (this.host.getSourceType() === "torrent") {
-          this.host.loadNativeExternalSubtitle(sessionId);
-        }
-      },
-      { once: true },
-    );
+    this.listenOnce(video, "loadedmetadata", () => {
+      if (!this.host.isSessionCurrent(sessionId)) return;
+      this.trace("native_metadata_loaded", sessionId);
+      this.host.getPresentation()?.hideLoading();
+      if (this.host.getSourceType() === "torrent") this.host.loadNativeExternalSubtitle(sessionId);
+    });
 
     this.playAfterResume(sessionId, resumeTime).catch((error) => {
       if (error?.name === "AbortError") return;
@@ -307,19 +307,24 @@ export class NativeEngineActivation {
 
   checkAudioAndFallback(sessionId) {
     this.cancelAudioCheck();
+    const abort = new AbortController();
+    this.audioCheckAbort = abort;
+    const isCurrent = () => !abort.signal.aborted && this.host.isSessionCurrent(sessionId);
 
     this.audioCheckTimer = this.deps.timerApi.setTimeout(async () => {
       this.audioCheckTimer = null;
 
       try {
-        if (!this.host.isSessionCurrent(sessionId)) return;
+        if (!isCurrent()) return;
 
         this.trace("native_audio_check_start", sessionId);
         const { detectAudioIssue } = await this.deps.loadAVPlayer();
-        if (!this.host.isSessionCurrent(sessionId)) return;
+        if (!isCurrent()) return;
 
-        const hasAudioIssue = await detectAudioIssue(this.host.getVideo());
-        if (!this.host.isSessionCurrent(sessionId)) return;
+        const hasAudioIssue = await detectAudioIssue(this.host.getVideo(), {
+          signal: abort.signal,
+        });
+        if (!isCurrent()) return;
 
         this.trace("native_audio_check_result", sessionId, { has_audio_issue: hasAudioIssue });
 
@@ -331,18 +336,37 @@ export class NativeEngineActivation {
         }
       } catch (error) {
         this.logger.warn("[VideoPlayer] Could not check audio:", error);
+      } finally {
+        if (this.audioCheckAbort === abort) this.audioCheckAbort = null;
       }
     }, NATIVE_AUDIO_CHECK_DELAY_MS);
   }
 
   cancelAudioCheck() {
-    if (this.audioCheckTimer == null) return false;
+    const active = this.audioCheckTimer != null || this.audioCheckAbort != null;
     this.deps.timerApi.clearTimeout(this.audioCheckTimer);
     this.audioCheckTimer = null;
-    return true;
+    this.audioCheckAbort?.abort();
+    this.audioCheckAbort = null;
+    return active;
+  }
+
+  listenOnce(video, event, callback) {
+    const dispose = () => {
+      video.removeEventListener(event, handler);
+      this.activationListeners.delete(dispose);
+    };
+    const handler = () => {
+      dispose();
+      callback();
+    };
+    this.activationListeners.add(dispose);
+    video.addEventListener(event, handler);
   }
 
   cancelBackgroundWork() {
+    for (const dispose of this.activationListeners) dispose();
+    this.detachErrorHandler();
     this.cancelAudioCheck();
     this.metadataProbeCancel?.();
     this.metadataProbeCancel = null;
@@ -350,8 +374,9 @@ export class NativeEngineActivation {
 
   detachErrorHandler() {
     if (!this.errorHandler) return false;
-    this.host.getVideo()?.removeEventListener("error", this.errorHandler);
+    this.errorVideo?.removeEventListener("error", this.errorHandler);
     this.errorHandler = null;
+    this.errorVideo = null;
     return true;
   }
 

@@ -137,21 +137,7 @@ export const playerComposition = {
     this.avPlayerTeardownQueue = new PlaybackEngineTeardownQueue({
       onError: (error) => log.debug("[VideoPlayer] AVPlayer teardown failed:", error),
     });
-    this.playbackEngineTransitionController = createPlaybackEngineTransitionController({
-      beginSession: () => this.beginPlaybackSession(),
-      isSessionCurrent: (sessionId) => this.isCurrentPlaybackSession(sessionId),
-      drainTeardown: () => this.avPlayerTeardownQueue.drain(),
-      destroyEngine: (engine) => this.teardownAVPlayer(engine),
-      onError: (operation, error, context) =>
-        log.debug(`[VideoPlayer] Engine transition ${operation} failed:`, {
-          error,
-          key: context?.key,
-          sessionId: context?.sessionId,
-        }),
-      onStateChange: (snapshot) => {
-        this._switchingToAVPlayer = snapshot.active;
-      },
-    });
+    this.initPlaybackEngineTransitionController();
 
     // One canonical audio state feeds every playback engine and the UI. It
     // remains independent from temporary native <video> resets during engine
@@ -402,6 +388,28 @@ export const playerComposition = {
     });
     this.playbackBrowserIntegration.start();
   },
+  initPlaybackEngineTransitionController() {
+    this.playbackEngineTransitionController?.destroy();
+    const controller = createPlaybackEngineTransitionController({
+      beginSession: () => this.beginPlaybackSession(),
+      isSessionCurrent: (sessionId) => this.isCurrentPlaybackSession(sessionId),
+      drainTeardown: () => this.avPlayerTeardownQueue.drain(),
+      destroyEngine: (engine) => this.teardownAVPlayer(engine),
+      onError: (operation, error, context) =>
+        log.debug(`[VideoPlayer] Engine transition ${operation} failed:`, {
+          error,
+          key: context?.key,
+          sessionId: context?.sessionId,
+        }),
+      onStateChange: (snapshot) => {
+        if (this.playbackEngineTransitionController === controller) {
+          this._switchingToAVPlayer = snapshot.active && snapshot.phase !== "cancelled";
+        }
+      },
+    });
+    this.playbackEngineTransitionController = controller;
+    this._switchingToAVPlayer = false;
+  },
   initPlaybackEngineActivation() {
     this.playbackEngineActivation?.destroy();
     const host = this.buildPlaybackEngineActivationHost();
@@ -566,6 +574,8 @@ export const playerComposition = {
       getStreamUrl: () => this.streamUrl,
       getSubtitleOffsetMs: () => this.subtitleOffsetMs,
       getTransitionController: () => this.playbackEngineTransitionController,
+      beginEngineBootstrap: () => this.recoveryGuard?.bootstrap(),
+      awaitEngineFrame: () => this.recoveryGuard?.awaitFrame(),
       getVideo: () => this.video,
       handlePlaybackEnded: () => this.handlePlaybackEnded(),
       handlePlaybackPaused: () => this.handlePlaybackPaused(),

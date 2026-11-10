@@ -125,7 +125,7 @@ test("initPlayer dispatches every engine decision through the coordinator", asyn
 
   assert.match(
     initPlayer,
-    /void this\.playbackEngineActivation\.activate\(engine, \{ sessionId \}\);/,
+    /void this\.playbackEngineActivation\.activate\(engine, \{ sessionId, reason, fallback \}\);/,
   );
   assert.doesNotMatch(initPlayer, /switch \(engine\)|case "/);
   assert.doesNotMatch(

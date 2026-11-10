@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
+import { getEventListeners } from "node:events";
 import test from "node:test";
-
+import { detectAudioIssue } from "../media/audio_diagnostics.js";
 import { ENGINE_ID, ENGINE_SELECTION } from "../player/engine_contract.js";
 import {
   createNativeEngineActivation,
   NATIVE_ENGINE_ACTIVATION_HOST_METHODS,
   NATIVE_PLAYBACK_MESSAGES,
 } from "../player/native_engine_activation.js";
+import { clock } from "./support/playback_clock.js";
 
 const silentLogger = { debug() {}, error() {}, info() {}, warn() {} };
 
@@ -237,7 +239,7 @@ test("activation creates and registers an owned native engine, attaches the sour
   assert.deepEqual(calls.loaded, ["https://example.test/movie.mp4"]);
   assert.deepEqual(calls.lifecycle[0], [
     "player_engine_selected",
-    { engine: ENGINE_ID.NATIVE, session_id: 9 },
+    { engine: ENGINE_ID.NATIVE, reason: undefined, fallback: undefined, session_id: 9 },
   ]);
   assert.ok(calls.lifecycle.some(([stage]) => stage === "native_source_attached"));
 
@@ -481,4 +483,88 @@ test("resume metadata and seek share one 2500ms deadline", async () => {
   assert.deepEqual(waits, [2500, 100]);
   assert.equal(video.currentTime, 80);
   assert.equal(video.playCalls, 1);
+});
+
+test("cancelling native background work aborts a running real audio probe", async () => {
+  const probeClock = clock();
+  let started;
+  const running = new Promise((resolve) => {
+    started = resolve;
+  });
+  const h = createHarness({
+    deps: {
+      loadAVPlayer: async () => ({
+        detectAudioIssue: (video, options) => {
+          // Exercise the decoded-byte path while waiting for playing.
+          video.webkitAudioDecodedByteCount = 0;
+          const result = detectAudioIssue(video, { ...options, timerApi: probeClock });
+          started();
+          return result;
+        },
+      }),
+    },
+  });
+  h.activation.checkAudioAndFallback(h.state.sessionId);
+  const work = h.timerApi.fire(2000);
+  await running;
+  assert.equal(getEventListeners(h.video, "playing").length, 1);
+  h.activation.cancelBackgroundWork();
+  await work;
+  assert.equal(getEventListeners(h.video, "playing").length, 0);
+  assert.equal(h.calls.tryAVPlayer, 0);
+  assert.equal(h.activation.audioCheckAbort, null);
+  probeClock.advance(10000);
+  assert.equal(h.calls.tryAVPlayer, 0);
+});
+
+test("cancel during lazy audio import cannot start a probe even in the same session", async () => {
+  let resolveImport;
+  let probes = 0;
+  const h = createHarness({
+    deps: {
+      loadAVPlayer: () =>
+        new Promise((resolve) => {
+          resolveImport = resolve;
+        }),
+    },
+  });
+  h.activation.checkAudioAndFallback(h.state.sessionId);
+  const work = h.timerApi.fire(2000);
+  h.activation.cancelAudioCheck();
+  resolveImport({
+    detectAudioIssue: () => {
+      probes++;
+      return true;
+    },
+  });
+  await work;
+  assert.equal(probes, 0);
+  assert.equal(h.calls.tryAVPlayer, 0);
+});
+
+test("repeated native activations retain one playing/metadata listener and destroy removes all", () => {
+  const h = createHarness();
+  for (let i = 0; i < 3; i++) {
+    h.state.sessionId++;
+    h.activation.activate(h.request());
+    assert.equal(getEventListeners(h.video, "playing").length, 1);
+    assert.equal(getEventListeners(h.video, "loadedmetadata").length, 1);
+  }
+  h.video.dispatchEvent(new Event("playing"));
+  assert.equal(getEventListeners(h.video, "playing").length, 0);
+  h.activation.destroy();
+  assert.equal(getEventListeners(h.video, "loadedmetadata").length, 0);
+  assert.equal(getEventListeners(h.video, "error").length, 0);
+  h.activation.destroy();
+});
+
+test("cancellation removes listeners from their original element even if host video changed", () => {
+  const h = createHarness();
+  const original = h.video;
+  h.activation.activate(h.request());
+  h.host.getVideo = () => new FakeVideo();
+  h.activation.cancelBackgroundWork();
+  for (const event of ["playing", "loadedmetadata", "error"]) {
+    assert.equal(getEventListeners(original, event).length, 0, event);
+  }
 });

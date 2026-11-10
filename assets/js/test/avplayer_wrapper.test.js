@@ -446,3 +446,26 @@ test("picking the subtitle libmedia already holds only enables it", async () => 
 test("preserves the default AVPlayer wrapper export for existing module consumers", () => {
   assert.equal(avplayerModule.default, AVPlayerWrapper);
 });
+
+test("late play completion after destroy cannot report playback or revive wrapper state", async (t) => {
+  const pending = deferred();
+  const runtime = createRuntime();
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", { configurable: true, value: runtime });
+  t.after(() =>
+    previous ? Object.defineProperty(globalThis, "window", previous) : delete globalThis.window,
+  );
+  let plays = 0;
+  const wrapper = createWrapper({
+    windowRef: runtime,
+    onPlay: () => plays++,
+    createPlayer: () => createPlayer({ play: () => pending.promise }),
+  });
+  await wrapper.init();
+  const play = wrapper.play();
+  await wrapper.destroy();
+  pending.resolve();
+  await assert.rejects(play, isAVPlayerDestroyedError);
+  assert.equal(plays, 0);
+  assert.equal(wrapper.isPlaying(), false);
+});

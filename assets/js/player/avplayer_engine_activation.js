@@ -151,7 +151,6 @@ export class AvPlayerEngineActivation {
     return this.transition({
       key: "startup-avplayer",
       sessionId,
-      initializeEngine: true,
       capture: () => this.captureNativePlayback(),
     });
   }
@@ -213,7 +212,6 @@ export class AvPlayerEngineActivation {
         resumeTime: Number(seekTime) || 0,
         shouldPlay: shouldPlay === true,
       }),
-      initializeEngine: true,
       showLoading: true,
       trackIndex,
       trackType,
@@ -224,7 +222,7 @@ export class AvPlayerEngineActivation {
     capture,
     fallback = false,
     reason,
-    initializeEngine = false,
+
     key,
     sessionId = null,
     showLoading = false,
@@ -239,6 +237,7 @@ export class AvPlayerEngineActivation {
       capture,
       sessionId,
       prepare: ({ capture: playback, sessionId }) => {
+        this.host.beginEngineBootstrap?.();
         const presentation = this.host.getPresentation();
         if (showLoading) presentation?.showLoading();
         else presentation?.hideError();
@@ -275,7 +274,7 @@ export class AvPlayerEngineActivation {
           resumeTime: context.capture?.resumeTime ?? 0,
           trackSwitch: Boolean(trackType),
         }),
-      initializeEngine: initializeEngine ? ({ engine }) => engine.init() : null,
+      initializeEngine: ({ engine }) => engine.init(),
       loadEngine: async ({ engine }) => {
         const streamUrl = this.host.getStreamUrl();
         const proxyUrl = this.host.getProxyUrl();
@@ -310,7 +309,7 @@ export class AvPlayerEngineActivation {
           }
         }
       },
-      activateEngine: async ({ capture: playback, engine }) => {
+      activateEngine: async ({ capture: playback, engine, sessionId }) => {
         this.host.setUsingAVPlayer(true);
         this.host.getVideo()?.classList.add("hidden");
 
@@ -318,6 +317,7 @@ export class AvPlayerEngineActivation {
           try {
             await engine.play();
           } catch (error) {
+            if (!this.host.isSessionCurrent(sessionId)) return;
             if (error?.name === "NotAllowedError" || error?.message?.includes?.("user gesture")) {
               this.host.getPresentation()?.hideLoading();
               this.host.getPresentation()?.showAutoplayBlocked?.();
@@ -329,6 +329,8 @@ export class AvPlayerEngineActivation {
         } else {
           this.host.handlePlaybackPaused();
         }
+        // libmedia downloads/compiles decoder WASM inside load/play, not wrapper.init().
+        if (this.host.isSessionCurrent(sessionId)) this.host.awaitEngineFrame?.();
       },
       complete: ({ capture: playback, engine, sessionId }) => {
         this.startTimeUpdates();
@@ -370,6 +372,8 @@ export class AvPlayerEngineActivation {
 
   async createEngine(context, { resumeTime = 0, trackSwitch = false } = {}) {
     const { AVPlayerWrapper } = await this.deps.loadAVPlayer();
+    // A timed-out import must never construct a wrapper or touch the replacement player.
+    if (!this.host.isSessionCurrent(context.sessionId)) return null;
     const mount = this.host.getAVPlayerMount();
     if (!mount) throw new Error("AVPlayer mount element (#avplayer-mount) not found in template");
 
@@ -530,10 +534,9 @@ export class AvPlayerEngineActivation {
   buildLoadOptions(ext, isLive) {
     // GIndex 4K MKV is the only path that genuinely needs the heavier
     // load profile: large `moov`, MKV cluster probe, and the BEAM-side
-    // proxy adds latency on top of upstream redirects. 2-min ceiling +
-    // 8 MB preload keeps the player alive on flaky
-    // links. Everything else — including Xtream VOD MP4 — keeps the
-    // libmedia defaults: a single blocking prefetch sits in TCP
+    // proxy adds latency on top of upstream redirects. Its internal load
+    // profile permits 2 minutes and 8 MB preload, but the shared preparation
+    // deadline remains the outer ceiling. Other sources keep small reads: a single blocking prefetch sits in TCP
     // slow-start while the upstream throttles, so playback waits for the
     // whole prefetch before the first frame. libmedia's natural small
     // range walk is faster end-to-end.
@@ -551,7 +554,8 @@ export class AvPlayerEngineActivation {
       };
     }
 
-    return { ext, isLive };
+    // The global guard owns the 60s preparation ceiling; an inner 30s load timer must not preempt it.
+    return { ext, isLive, loadTimeoutMs: 60_000 };
   }
 
   startTimeUpdates() {
@@ -622,6 +626,11 @@ export class AvPlayerEngineActivation {
       shouldPlay: true,
       wasPlaying: !video?.paused || resumeTime > 0,
     };
+  }
+
+  forgetFailedRecommendation() {
+    const key = this.contentKey();
+    if (key) this.deps.forgetRecommendedPlayer(key);
   }
 
   contentKey() {

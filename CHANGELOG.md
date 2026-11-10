@@ -143,6 +143,16 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Include lazy decoder preparation in the AVPlayer startup budget and preserve remaining recovery time across pauses and watch-party holds.
+
+- Remove native playing and metadata listeners on activation replacement, session changes and player teardown.
+
+- Audio diagnostics no longer reroute or silence native playback; cancelled and timed-out probes release their listeners, captures and audio contexts.
+
+- Reevaluate learned AVPlayer choices after three days, stop learning slow startups, and clear AVPlayer evidence after stable native playback.
+
+- Give AVPlayer bootstrap its own bounded startup budget and try native MP4 once on a first-frame timeout, discarding failed engine memory.
+
 - A terminal playback error is recorded as an error, not as a cancelled or restarted session.
 - Playback sessions report the device class (mobile/desktop); it was always `unknown`.
 - A playback session that ends because the viewer closed the tab, reloaded or navigated away is still recorded: the

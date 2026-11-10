@@ -19,10 +19,10 @@ const MAX_POSITIONS = 100; // Max number of positions to store
 // longer applies). Reads with a stale schema are wiped on the next
 // access — much cheaper than asking every user to clear localStorage by
 // hand.
-// Version 5 also discards provider evidence learned from `playing` before a
-// presented frame and stable playback. Settings and resume positions are separate.
-const DEVICE_COMPAT_SCHEMA = 5;
-const RECOMMENDATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+// Version 6 discards recommendations without an absolute expiry. Settings and
+// resume positions are separate from device evidence.
+const DEVICE_COMPAT_SCHEMA = 6;
+const RECOMMENDATION_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 
 export function playerRecommendationKey({ providerId, streamType } = {}) {
   if (!/^[1-9]\d*$/.test(String(providerId)) || !/^[a-z0-9]{2,12}$/.test(streamType || ""))
@@ -35,8 +35,8 @@ function validRecommendationKey(key) {
 }
 
 function freshRecommendation(data) {
-  const age = Date.now() - data?.lastSuccess;
-  return Number.isFinite(age) && age >= 0 && age <= RECOMMENDATION_TTL_MS;
+  const age = Date.now() - data?.decidedAt;
+  return Number.isFinite(age) && age >= 0 && age < RECOMMENDATION_TTL_MS;
 }
 
 // ============================================
@@ -129,16 +129,18 @@ export function forgetRecommendedPlayer(contentType) {
  */
 export function recordPlayerSuccess(contentType, player, context = {}) {
   if (!validRecommendationKey(contentType)) return;
+  if (player === "avplayer" && context.ttffMs > 15_000) return;
   const compat = getDeviceCompatibility();
   const previous = compat.players[contentType];
+  const continuing = previous?.recommendedPlayer === player && freshRecommendation(previous);
+  // An in-flight memory-selected play cannot restart expired or explicitly forgotten evidence.
+  if (player === "avplayer" && context.selectionReason === "provider_memory" && !continuing) return;
 
   compat.players[contentType] = {
     recommendedPlayer: player,
     context,
-    successCount:
-      (previous?.recommendedPlayer === player && freshRecommendation(previous)
-        ? previous.successCount || 0
-        : 0) + 1,
+    decidedAt: continuing ? previous.decidedAt : Date.now(),
+    successCount: (continuing ? previous.successCount || 0 : 0) + 1,
     lastSuccess: Date.now(),
   };
 

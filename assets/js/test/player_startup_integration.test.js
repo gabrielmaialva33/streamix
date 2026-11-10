@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import vm from "node:vm";
 import { ENGINE_ID, PLAYBACK_STATE } from "../player/engine_contract.js";
+import { createPlaybackEngineTransitionController } from "../player/playback_engine_transition_controller.js";
 import { PlaybackRecoveryGuard } from "../player/playback_recovery_guard.js";
 import { PlaybackSession } from "../player/playback_session.js";
 import { playerRecommendationKey } from "../player/player_preferences.js";
@@ -18,6 +19,7 @@ function harness({ intent = null, streamType = "hls" } = {}) {
   const timerApi = clock();
   const calls = [];
   const bindings = {
+    createPlaybackEngineTransitionController,
     PlaybackRecoveryGuard: class extends PlaybackRecoveryGuard {
       constructor(options) {
         super({ ...options, timerApi, now: timerApi.now });
@@ -43,7 +45,7 @@ function harness({ intent = null, streamType = "hls" } = {}) {
     recordPlayerSuccess: (...args) => calls.push(["memory_success", ...args]),
     ProviderEngineMemory: class extends ProviderEngineMemory {
       constructor(options) {
-        super({ ...options, timerApi });
+        super({ ...options, timerApi, now: timerApi.now });
       }
     },
     consumePlaybackIntent: () => intent,

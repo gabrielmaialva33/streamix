@@ -50,7 +50,7 @@ test("AVPlayer experience cannot leak to another provider, container or unidenti
   assert.equal(preferences.getRecommendedPlayer("mp4"), null);
 });
 
-test("recommendations expire after seven days and a different engine starts fresh evidence", (t) => {
+test("recommendations expire after three days and a different engine starts fresh evidence", (t) => {
   storage(t);
   const originalNow = Date.now;
   let now = originalNow();
@@ -65,7 +65,7 @@ test("recommendations expire after seven days and a different engine starts fres
   assert.equal(preferences.getRecommendedPlayer(key), null);
   preferences.recordPlayerSuccess(key, "avplayer");
   assert.equal(preferences.getRecommendedPlayer(key), "avplayer");
-  now += 7 * 24 * 60 * 60 * 1000 + 1;
+  now += 3 * 24 * 60 * 60 * 1000 + 1;
   assert.equal(preferences.getRecommendedPlayer(key), null);
   preferences.recordPlayerSuccess(key, "avplayer");
   assert.equal(
@@ -76,4 +76,37 @@ test("recommendations expire after seven days and a different engine starts fres
   preferences.recordPlayerSuccess(key, "avplayer");
   preferences.forgetRecommendedPlayer(key);
   assert.equal(preferences.getRecommendedPlayer(key), null);
+});
+
+test("daily memory-selected successes cannot keep AVPlayer recommended beyond three days", (t) => {
+  storage(t);
+  let now = 1000000;
+  t.mock.method(Date, "now", () => now);
+  const key = "provider:3:mp4";
+  preferences.recordPlayerSuccess(key, "avplayer");
+  preferences.recordPlayerSuccess(key, "avplayer");
+  assert.equal(preferences.getRecommendedPlayer(key), "avplayer");
+  for (let day = 1; day <= 30; day++) {
+    now += 86400000;
+    preferences.recordPlayerSuccess(key, "avplayer", {
+      selectionReason: "provider_memory",
+      ttffMs: 1000,
+    });
+    assert.equal(preferences.getRecommendedPlayer(key), day < 3 ? "avplayer" : null);
+  }
+});
+
+test("one stable native success removes AV recommendation, while slow AV success adds no evidence", (t) => {
+  storage(t);
+  const key = "provider:3:mp4";
+  preferences.recordPlayerSuccess(key, "avplayer", { ttffMs: 15001 });
+  preferences.recordPlayerSuccess(key, "avplayer", { ttffMs: 15001 });
+  assert.equal(preferences.getRecommendedPlayer(key), null);
+  preferences.recordPlayerSuccess(key, "avplayer", { ttffMs: 15000 });
+  preferences.recordPlayerSuccess(key, "avplayer", { ttffMs: 15000 });
+  assert.equal(preferences.getRecommendedPlayer(key), "avplayer");
+  preferences.recordPlayerSuccess(key, "native");
+  assert.equal(preferences.getRecommendedPlayer(key), null);
+  const entry = JSON.parse(localStorage.getItem("streamix_device_compat")).players[key];
+  assert.equal(entry.recommendedPlayer, "native");
 });
