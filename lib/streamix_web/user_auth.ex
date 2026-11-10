@@ -8,10 +8,12 @@ defmodule StreamixWeb.UserAuth do
   import Phoenix.Controller
 
   alias Streamix.Accounts
+  alias Streamix.Library
 
+  # Encrypted, not just signed: it carries the session's library secret.
   @remember_me_cookie "_streamix_user_remember_me"
   @remember_me_options [
-    sign: true,
+    encrypt: true,
     same_site: "Lax",
     secure: Application.compile_env(:streamix, :session_secure, true),
     http_only: true
@@ -27,11 +29,16 @@ defmodule StreamixWeb.UserAuth do
   It also sets a `:live_socket_id` key in the session,
   so LiveView sessions are identified and automatically
   disconnected on log out.
+
+  `library_key` is the user's library key, unlocked with the password they
+  just typed (`Streamix.Library.unlock/2`). The session stores it wrapped
+  under a fresh secret that only this browser keeps, in the session cookie.
   """
-  def log_in_user(conn, user, params \\ %{}) do
+  def log_in_user(conn, user, library_key, params \\ %{}) do
     # Capture IP and device info for the session
     ip_info = Accounts.request_info(conn)
-    token = Accounts.generate_user_session_token(user, ip_info)
+    {library_secret, sealed_library_key} = Library.seal_session(library_key)
+    token = Accounts.generate_user_session_token(user, ip_info, sealed_library_key)
     user_return_to = get_session(conn, :user_return_to)
 
     # Log the login access asynchronously
@@ -39,17 +46,17 @@ defmodule StreamixWeb.UserAuth do
 
     conn
     |> renew_session()
-    |> put_token_in_session(token)
-    |> maybe_write_remember_me_cookie(token, params)
+    |> put_credentials_in_session(token, library_secret)
+    |> maybe_write_remember_me_cookie({token, library_secret}, params)
     |> redirect(to: user_return_to || signed_in_path(conn))
   end
 
-  defp maybe_write_remember_me_cookie(conn, token, %{"remember_me" => "true"}) do
+  defp maybe_write_remember_me_cookie(conn, credentials, %{"remember_me" => "true"}) do
     options = Keyword.put(@remember_me_options, :max_age, Accounts.session_max_age_seconds())
-    put_resp_cookie(conn, @remember_me_cookie, token, options)
+    put_resp_cookie(conn, @remember_me_cookie, credentials, options)
   end
 
-  defp maybe_write_remember_me_cookie(conn, _token, _params) do
+  defp maybe_write_remember_me_cookie(conn, _credentials, _params) do
     conn
   end
 
@@ -95,40 +102,75 @@ defmodule StreamixWeb.UserAuth do
       _ -> :ok
     end
 
-    {user_token, conn} = ensure_user_token(conn)
-    user_and_ts = user_token && Accounts.get_user_by_session_token(user_token)
+    # Deliberately no `user_id` in Logger metadata: request lines carry paths
+    # such as /watch/movie/123, and tagging them with the user would put in
+    # the logs exactly what the sealed library keeps from the operator.
+    {user_token, library_secret, conn} = ensure_credentials(conn)
 
-    case user_and_ts do
-      {user, token_inserted_at} ->
-        scope = Accounts.scope_for_user(%{user | authenticated_at: token_inserted_at})
-        Logger.metadata(user_id: user.id)
-
+    case scope_for_session(user_token, library_secret) do
+      {:ok, scope} ->
         conn
         |> assign(:current_scope, scope)
         |> put_session(:live_socket_id, "users_sessions:#{Base.url_encode64(user_token)}")
 
-      nil ->
+      :locked ->
+        # A session from before the library was encrypted, or one whose
+        # secret is gone: it can never open the library, so it ends here and
+        # the user logs in again.
+        Accounts.delete_user_session_token(user_token)
+
+        conn
+        |> delete_session(:user_token)
+        |> delete_session(:library_secret)
+        |> delete_resp_cookie(@remember_me_cookie)
+        |> assign(:current_scope, nil)
+
+      :none ->
         assign(conn, :current_scope, nil)
     end
   end
 
-  defp ensure_user_token(conn) do
+  defp ensure_credentials(conn) do
     case get_session(conn, :user_token) do
       nil ->
-        conn = fetch_cookies(conn, signed: [@remember_me_cookie])
+        conn = fetch_cookies(conn, encrypted: [@remember_me_cookie])
 
         case conn.cookies[@remember_me_cookie] do
-          nil -> {nil, conn}
-          token -> {token, put_token_in_session(conn, token)}
+          {token, library_secret} when is_binary(token) and is_binary(library_secret) ->
+            {token, library_secret, put_credentials_in_session(conn, token, library_secret)}
+
+          _ ->
+            {nil, nil, conn}
         end
 
       token ->
-        {token, conn}
+        {token, get_session(conn, :library_secret), conn}
     end
   end
 
-  defp put_token_in_session(conn, token) do
-    put_session(conn, :user_token, token)
+  defp put_credentials_in_session(conn, token, library_secret) do
+    conn
+    |> put_session(:user_token, token)
+    |> put_session(:library_secret, library_secret)
+  end
+
+  defp scope_for_session(nil, _library_secret), do: :none
+
+  defp scope_for_session(user_token, library_secret) do
+    case Accounts.get_session_by_token(user_token) do
+      {user, token_inserted_at, sealed_library_key} ->
+        case Library.open_session(user.id, library_secret, sealed_library_key) do
+          {:ok, library_key} ->
+            {:ok,
+             Accounts.scope_for_user(%{user | authenticated_at: token_inserted_at}, library_key)}
+
+          :error ->
+            :locked
+        end
+
+      nil ->
+        :none
+    end
   end
 
   @doc """
@@ -165,17 +207,9 @@ defmodule StreamixWeb.UserAuth do
       end
   """
   def on_mount(:mount_current_scope, _params, session, socket) do
-    socket = mount_current_scope(socket, session)
-
-    # Pin user_id into Logger.metadata for this LiveView process so
-    # every Logger.* call from handle_event / handle_info / render is
-    # tagged. mount runs twice (static + WS) — Logger.metadata is
-    # per-process so each pass attaches its own copy.
-    if socket.assigns[:current_scope] do
-      Logger.metadata(user_id: socket.assigns.current_scope.user.id)
-    end
-
-    {:cont, socket}
+    # No `user_id` in Logger metadata here either: LiveView events name the
+    # content being played. See fetch_current_scope_for_user/2.
+    {:cont, mount_current_scope(socket, session)}
   end
 
   def on_mount(:require_authenticated, _params, session, socket) do
@@ -222,15 +256,9 @@ defmodule StreamixWeb.UserAuth do
 
   defp mount_current_scope(socket, session) do
     Phoenix.Component.assign_new(socket, :current_scope, fn ->
-      user_token = session["user_token"]
-      user_and_ts = user_token && Accounts.get_user_by_session_token(user_token)
-
-      case user_and_ts do
-        {user, token_inserted_at} ->
-          Accounts.scope_for_user(%{user | authenticated_at: token_inserted_at})
-
-        nil ->
-          nil
+      case scope_for_session(session["user_token"], session["library_secret"]) do
+        {:ok, scope} -> scope
+        _locked_or_none -> nil
       end
     end)
   end

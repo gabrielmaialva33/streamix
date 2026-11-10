@@ -36,6 +36,13 @@ X-API-Key: your-integration-key
 Query-string API keys are not accepted. Provider credentials, upstream URLs, and final upstream playback URLs are never
 part of catalog responses.
 
+Login and registration issue an opaque **88-character** bearer credential: padded URL-safe
+base64 of the 32-byte session token followed by a 32-byte library secret. Clients must store
+and send the entire value unchanged and never log it. Existing web, TV and mobile sessions
+must log in again after the private-library upgrade; old tokens cannot unlock the library.
+Favorites, history and personalized recommendations retain their response shapes, but are
+opened with the authenticated session's library key on the server. See [privacy.md](privacy.md).
+
 Authentication routes do not require an integration key. `auth/me` requires a Bearer session token;
 logout also accepts anonymous requests. Favorites, history, personal providers, recommendations and
 telemetry require both the configured integration key and `Authorization: Bearer <token>`.

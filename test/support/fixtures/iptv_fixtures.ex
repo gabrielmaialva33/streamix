@@ -2,7 +2,11 @@ defmodule Streamix.IptvFixtures do
   @moduledoc """
   Test helpers for creating IPTV entities.
   """
-  alias Streamix.Iptv.{CatalogItem, LiveChannel}
+
+  import Ecto.Query, only: [from: 2]
+  import Streamix.AccountsFixtures, only: [library_key_fixture: 1]
+
+  alias Streamix.Iptv.{CatalogItem, History, LiveChannel, WatchProgress}
   alias Streamix.Repo
 
   @provider_runtime_fields ~w(sync_status live_channels_count movies_count series_count
@@ -112,7 +116,7 @@ defmodule Streamix.IptvFixtures do
 
   def favorite_fixture(user, channel) do
     {:ok, favorite} =
-      Streamix.Library.add_favorite(user.id, %{
+      Streamix.Library.add_favorite(library_key_fixture(user), %{
         content_type: "live_channel",
         content_id: channel.id
       })
@@ -122,7 +126,7 @@ defmodule Streamix.IptvFixtures do
 
   def watch_history_fixture(user, channel, duration \\ 0) do
     {:ok, history} =
-      Streamix.Library.add_watch_history(user.id, "live_channel", channel.id, %{
+      Streamix.Library.add_watch_history(library_key_fixture(user), "live_channel", channel.id, %{
         duration_seconds: duration
       })
 
@@ -288,7 +292,7 @@ defmodule Streamix.IptvFixtures do
   """
   def movie_favorite_fixture(user, movie) do
     {:ok, favorite} =
-      Streamix.Library.add_favorite(user.id, %{
+      Streamix.Library.add_favorite(library_key_fixture(user), %{
         content_type: "movie",
         content_id: movie.id
       })
@@ -304,11 +308,39 @@ defmodule Streamix.IptvFixtures do
     progress = Map.get(attrs, :progress_seconds, 0)
 
     {:ok, history} =
-      Streamix.Library.add_watch_history(user.id, "movie", movie.id, %{
+      Streamix.Library.add_watch_history(library_key_fixture(user), "movie", movie.id, %{
         duration_seconds: duration,
         progress_seconds: progress
       })
 
     history
   end
+
+  @doc """
+  Rewrites when a history entry was last watched. The timestamp lives inside
+  the sealed row, so it is re-sealed with the owner's library key.
+  """
+  def backdate_history!(key, entry, watched_at) do
+    row =
+      History.sealed_row(key, %{
+        catalog_item_id: entry.catalog_item_id,
+        content_type: entry.content_type,
+        series_id: entry_series_id(entry),
+        progress_seconds: entry.progress_seconds,
+        duration_seconds: entry.duration_seconds,
+        completed: entry.completed,
+        last_watched_at: DateTime.truncate(watched_at, :second)
+      })
+
+    {1, _} =
+      from(progress in WatchProgress, where: progress.id == ^entry.id)
+      |> Repo.update_all(set: [sealed: row.sealed])
+
+    entry
+  end
+
+  defp entry_series_id(%{catalog_item: %{episode: %{season: %{series_id: series_id}}}}),
+    do: series_id
+
+  defp entry_series_id(_entry), do: nil
 end

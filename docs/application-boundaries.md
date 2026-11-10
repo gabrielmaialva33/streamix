@@ -35,6 +35,10 @@ module any more: the broad compatibility facade was retired on November 4, 2026.
 6. An operation no boundary owns yet is called on its internal module, and gets
    a boundary owner before delivery code needs it.
 
+Library operations and history-derived AI personalization take the unlocked
+`scope.library_key` (API: `conn.assigns.current_library_key`). They never accept
+a bare user id as authorization to read viewing data. See [privacy.md](privacy.md).
+
 ## Direction of dependencies
 
 ```text
@@ -55,7 +59,7 @@ Use the focused owner:
 alias Streamix.{Catalog, Library, Playback, Providers}
 
 movie = Catalog.get_public_movie(movie_id)
-{:ok, favorite} = Library.add_favorite(user_id, "movie", movie_id)
+{:ok, favorite} = Library.add_favorite(scope.library_key, "movie", movie_id)
 source = Playback.get_playable_movie(user_id, movie_id)
 provider = Providers.get_provider(provider_id)
 ```

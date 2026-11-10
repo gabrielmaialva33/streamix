@@ -2,6 +2,7 @@ defmodule Streamix.AI.UserAnalytics.Channels do
   @moduledoc false
 
   alias Streamix.Library
+  alias Streamix.Library.Key
 
   @doc """
   Gets recommended live channels based on watch history.
@@ -14,12 +15,12 @@ defmodule Streamix.AI.UserAnalytics.Channels do
 
   Returns {:ok, channels} with personalized channel recommendations.
   """
-  def get_channel_recommendations(user_id, opts \\ []) do
+  def get_channel_recommendations(%Key{user_id: user_id} = key, opts \\ []) do
     limit = opts[:limit] || 24
     show_adult = Keyword.get(opts, :show_adult, false)
 
     history =
-      Library.list_watch_history_for_analytics(user_id,
+      Library.list_watch_history_for_analytics(key,
         content_type: "live_channel",
         limit: 100,
         show_adult: show_adult
@@ -44,18 +45,18 @@ defmodule Streamix.AI.UserAnalytics.Channels do
   - `:limit` - Number of results (default: 24)
   - `:category` - Filter by category name ("all" | "sports" | "movies" | "news" | "kids")
   """
-  def get_personalized_channels(user_id, opts \\ []) do
+  def get_personalized_channels(%Key{} = key, opts \\ []) do
     limit = opts[:limit] || 24
     category = opts[:category] || "all"
     show_adult = Keyword.get(opts, :show_adult, false)
 
     if category == "all" do
       {:ok, channels} =
-        get_channel_recommendations(user_id, limit: limit, show_adult: show_adult)
+        get_channel_recommendations(key, limit: limit, show_adult: show_adult)
 
       channels
     else
-      get_channels_by_category(user_id, category, limit, show_adult)
+      get_channels_by_category(key, category, limit, show_adult)
     end
   end
 
@@ -94,9 +95,9 @@ defmodule Streamix.AI.UserAnalytics.Channels do
     base * duration_factor * recency_factor
   end
 
-  defp get_channels_by_category(user_id, category_name, limit, show_adult) do
+  defp get_channels_by_category(%Key{user_id: user_id} = key, category_name, limit, show_adult) do
     history =
-      Library.list_watch_history_for_analytics(user_id,
+      Library.list_watch_history_for_analytics(key,
         content_type: "live_channel",
         limit: 50,
         show_adult: show_adult

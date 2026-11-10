@@ -29,8 +29,6 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
 
   @impl true
   def handle_params(%{"id" => series_id}, _uri, socket) do
-    user_id = socket.assigns.user_id
-
     case Catalog.get_gindex_series_with_seasons(series_id) do
       nil ->
         {:noreply,
@@ -39,7 +37,9 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
          |> push_navigate(to: ~p"/browse/series?source=gindex")}
 
       series ->
-        is_favorite = Library.favorite?(user_id, "series", series.id)
+        is_favorite =
+          Library.favorite?(socket.assigns.current_scope.library_key, "series", series.id)
+
         sorted_seasons = Enum.sort_by(series.seasons || [], & &1.season_number)
         display_title = DH.display_title(series)
 
@@ -102,12 +102,12 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
   end
 
   def handle_event("toggle_favorite", _, socket) do
-    user_id = socket.assigns.user_id
+    library_key = socket.assigns.current_scope.library_key
     series = socket.assigns.series
     is_favorite = socket.assigns.is_favorite
 
     result =
-      FavoriteState.toggle(user_id, "series", series.id, %{
+      FavoriteState.toggle(library_key, "series", series.id, %{
         content_name: series.title || series.name,
         content_icon: series.cover
       })

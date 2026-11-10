@@ -3,6 +3,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
 
   import Plug.Test
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias Streamix.Iptv.ProviderCapabilities
   alias Streamix.Iptv.Streaming.ProviderRuntime
   alias Streamix.Iptv.Streaming.VodMultiplexer
@@ -477,6 +478,38 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
   end
 
   describe "warming a title's start before the play" do
+    setup do
+      owner = Sandbox.start_owner!(Streamix.Repo, shared: true)
+      on_exit(fn -> Sandbox.stop_owner(owner) end)
+      :ok
+    end
+
+    test "a personal provider leaves no disk block or upstream warm-up request" do
+      previous = Application.get_env(:streamix, :vod_multiplexer_enabled)
+      Application.put_env(:streamix, :vod_multiplexer_enabled, true)
+      on_exit(fn -> restore(:vod_multiplexer_enabled, previous) end)
+
+      user = Streamix.AccountsFixtures.user_fixture()
+      provider = Streamix.IptvFixtures.provider_fixture(user, %{visibility: :private})
+      movie = Streamix.IptvFixtures.movie_fixture(provider)
+      counter = :counters.new(1, [:atomics])
+      {:ok, port} = start_stub(counter)
+      url = "http://127.0.0.1:#{port}/private.mp4"
+
+      opts = [
+        provider_id: provider.id,
+        content_id: movie.id,
+        media_type: "movie",
+        domain_policy: nil
+      ]
+
+      assert :ok = Streamix.Playback.warm_vod_start(url, opts)
+      key = VodMultiplexer.content_key(Keyword.put(opts, :url, url))
+      assert Registry.lookup(Streamix.StreamRegistry, {:vod_block, key, 0}) == []
+      assert BlockStore.lookup({key, 0}) == :miss
+      assert :counters.get(counter, 1) == 0
+    end
+
     test "the first block is served from the cache the warm-up filled" do
       for {key, value} <- [vod_multiplexer_enabled: true, vod_readahead_blocks: 0] do
         previous = Application.get_env(:streamix, key)

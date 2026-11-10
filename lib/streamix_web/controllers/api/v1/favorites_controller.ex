@@ -74,7 +74,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
       show_adult: user.show_adult_content
     ]
 
-    favorites = Library.list_favorites(user.id, opts)
+    favorites = Library.list_favorites(conn.assigns.current_library_key, opts)
 
     json(conn, %{
       favorites:
@@ -99,7 +99,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
 
     case playable_favorite_target(user.id, type, content_id) do
       {:ok, content_id} ->
-        case Library.add_favorite(user.id, type, content_id) do
+        case Library.add_favorite(conn.assigns.current_library_key, type, content_id) do
           {:ok, fav} ->
             # Preserve the existing create envelope consumed by TV clients.
             conn
@@ -133,12 +133,10 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   Removes a favorite by type and content_id.
   """
   def delete(conn, %{"type" => type, "content_id" => content_id}) do
-    user = conn.assigns.current_scope.user
-
     with true <- type in @content_types,
          {:ok, content_id} <- parse_positive_integer(content_id) do
-      Library.remove_favorite(user.id, type, content_id)
-      send_resp(conn, :no_content, "")
+      Library.remove_favorite(conn.assigns.current_library_key, type, content_id)
+      send_resp(conn, 204, "")
     else
       false ->
         invalid_content_type(conn)
@@ -153,11 +151,9 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   Toggles a favorite. Returns { "status": "added" | "removed" }
   """
   def toggle(conn, %{"type" => type, "content_id" => content_id}) do
-    user = conn.assigns.current_scope.user
-
     with {:ok, content_id} <- parse_positive_integer(content_id),
-         true <- favorite_or_playable?(user.id, type, content_id) do
-      case Library.toggle_favorite(user.id, type, content_id) do
+         true <- favorite_or_playable?(conn.assigns.current_library_key, type, content_id) do
+      case Library.toggle_favorite(conn.assigns.current_library_key, type, content_id) do
         {:ok, action} ->
           json(conn, %{status: Atom.to_string(action)})
 
@@ -190,9 +186,9 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   """
   def sync(conn, %{"operations" => operations}) when is_list(operations) do
     if length(operations) <= @max_sync_operations do
-      user = conn.assigns.current_scope.user
+      library_key = conn.assigns.current_library_key
       {operations, pre_skipped} = latest_sync_operations(operations)
-      results = Enum.map(operations, &process_sync_operation(user.id, &1))
+      results = Enum.map(operations, &process_sync_operation(library_key, &1))
 
       added = Enum.count(results, &(&1 == :added))
       removed = Enum.count(results, &(&1 == :removed))
@@ -213,24 +209,24 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
     Response.error(conn, :bad_request, "missing_params", "operations array required")
   end
 
-  defp process_sync_operation(user_id, %{type: type, content_id: content_id, action: action}) do
-    process_parsed_sync_operation(user_id, type, content_id, action)
+  defp process_sync_operation(library_key, %{type: type, content_id: content_id, action: action}) do
+    process_parsed_sync_operation(library_key, type, content_id, action)
   end
 
-  defp process_parsed_sync_operation(user_id, type, content_id, action) do
-    exists? = Library.favorite?(user_id, type, content_id)
+  defp process_parsed_sync_operation(library_key, type, content_id, action) do
+    exists? = Library.favorite?(library_key, type, content_id)
 
     case {action, exists?} do
-      {"add", false} -> sync_add_favorite(user_id, type, content_id)
-      {"remove", true} -> sync_remove_favorite(user_id, type, content_id)
+      {"add", false} -> sync_add_favorite(library_key, type, content_id)
+      {"remove", true} -> sync_remove_favorite(library_key, type, content_id)
       _ -> :skipped
     end
   end
 
-  defp sync_add_favorite(user_id, type, content_id) do
-    case playable_favorite_target(user_id, type, content_id) do
+  defp sync_add_favorite(library_key, type, content_id) do
+    case playable_favorite_target(library_key.user_id, type, content_id) do
       {:ok, content_id} ->
-        Library.add_favorite(user_id, type, content_id)
+        Library.add_favorite(library_key, type, content_id)
         :added
 
       {:error, _} ->
@@ -238,8 +234,8 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
     end
   end
 
-  defp sync_remove_favorite(user_id, type, content_id) do
-    Library.remove_favorite(user_id, type, content_id)
+  defp sync_remove_favorite(library_key, type, content_id) do
+    Library.remove_favorite(library_key, type, content_id)
     :removed
   end
 
@@ -285,11 +281,11 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
 
   defp playable_favorite?(_user_id, _type, _content_id), do: :invalid_content_type
 
-  defp favorite_or_playable?(user_id, type, content_id) do
-    if Library.favorite?(user_id, type, content_id) do
+  defp favorite_or_playable?(library_key, type, content_id) do
+    if Library.favorite?(library_key, type, content_id) do
       true
     else
-      playable_favorite?(user_id, type, content_id)
+      playable_favorite?(library_key.user_id, type, content_id)
     end
   end
 

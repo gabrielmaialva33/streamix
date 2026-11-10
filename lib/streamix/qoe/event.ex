@@ -4,7 +4,6 @@ defmodule Streamix.Qoe.Event do
   use Ecto.Schema
 
   schema "qoe_events" do
-    field :user_id, :integer
     field :dedupe_key, :string
     field :batch_id, :string
     field :sample_index, :integer

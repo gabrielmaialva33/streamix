@@ -24,7 +24,7 @@ defmodule StreamixWeb.Api.V1.OpenApi do
         title: "Streamix Catalog API",
         version: "1.0.0",
         description: """
-        Provider-aware TV/mobile API for public catalog discovery and signed playback.
+        Provider-aware TV/mobile API for public catalog discovery and encrypted playback.
 
         Catalog success responses use a `data` envelope, except `/catalog/games`, which returns a bare array.
         Other resources retain their documented endpoint-specific success payloads. Failures use the stable
@@ -47,7 +47,9 @@ defmodule StreamixWeb.Api.V1.OpenApi do
           "BearerAuth" => %SecurityScheme{
             type: "http",
             scheme: "bearer",
-            bearerFormat: "URL-safe base64 session token"
+            bearerFormat: "88-character URL-safe base64 session token and library secret",
+            description:
+              "Opaque credential issued by auth/login or auth/register. Pre-upgrade tokens require a new login."
           },
           "ApiKeyAuth" => %SecurityScheme{
             type: "apiKey",

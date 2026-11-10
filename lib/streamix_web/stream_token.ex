@@ -1,11 +1,13 @@
 defmodule StreamixWeb.StreamToken do
   @moduledoc """
-  Facade for signed stream tokens.
+  Facade for encrypted stream tokens.
 
   Tokens prevent exposing provider credentials in API responses.
   Instead of returning URLs with embedded `username/password`, we return
-  a signed token that can be exchanged for the actual stream URL
-  server-side. Tokens are bound to a specific `user_id`, ensuring a
+  an encrypted token that can be exchanged for the actual stream URL
+  server-side. Encryption (not just a signature) keeps the claims — who is
+  watching what, or a direct upstream URL — unreadable wherever the URL is
+  logged or copied. Tokens are bound to a specific `user_id`, ensuring a
   leaked token cannot be used by a different user — the embedded
   `user_id` is verified against provider ownership at consumption time.
 

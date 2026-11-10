@@ -6,6 +6,10 @@ config :streamix, env: :test
 # Only in tests, remove the complexity from the password hashing algorithm
 config :bcrypt_elixir, :log_rounds, 1
 
+# Same for the PBKDF2 that wraps each user's library key under their password
+# (Streamix.Library.Keyring); production keeps the 600k default.
+config :streamix, :library_kdf_iterations, 1_000
+
 # Test runtime configuration deliberately ignores the repository .env file.
 # Resolution order is TEST_DATABASE_URL, an exported DATABASE_URL converted to a
 # sibling *_test database, then the local Compose streamix_test default. Remote

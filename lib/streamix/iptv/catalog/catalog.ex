@@ -16,15 +16,12 @@ defmodule Streamix.Iptv.Catalog do
     AdultFilter,
     CatalogItem,
     Category,
-    Episode,
     LiveChannel,
     Movie,
     MovieAsset,
     Provider,
-    Season,
     Series,
-    SeriesAsset,
-    WatchProgress
+    SeriesAsset
   }
 
   alias Streamix.Repo
@@ -368,119 +365,48 @@ defmodule Streamix.Iptv.Catalog do
   # Trending & Top 10 (Netflix-style)
   # =============================================================================
 
+  # "Trending" deliberately does not count what users watch. Watch history is
+  # sealed per user (see Streamix.Library), and even an anonymous per-title
+  # counter would tell an operator who watched what on a small instance: the
+  # counter moves while only one person is streaming. The shelves rank by
+  # catalog signals instead.
+
   @doc """
-  Gets trending movies based on recent watch history (last 7 days).
-  More watches = higher trending score.
+  Gets trending movies: recent releases ranked by rating.
+
+  `:days` is accepted for compatibility and ignored; nothing about viewing
+  activity feeds this shelf.
   """
   @spec list_trending_movies(keyword()) :: [Movie.t()]
   def list_trending_movies(opts \\ []) do
     limit = Keyword.get(opts, :limit, 10)
     offset = Keyword.get(opts, :offset, 0)
-    days = Keyword.get(opts, :days, 7)
     show_adult = Keyword.get(opts, :show_adult, false)
 
-    # Get movie IDs with watch counts from watch_progress via catalog_items
-    trending_ids =
-      from(progress in WatchProgress,
-        as: :progress,
-        join: catalog_item in CatalogItem,
-        as: :catalog_item,
-        on: progress.catalog_item_id == catalog_item.id,
-        join: movie in Movie,
-        as: :movie,
-        on: movie.catalog_item_id == catalog_item.id,
-        where: catalog_item.content_type == "movie",
-        group_by: movie.id,
-        select: {movie.id, count(progress.id)},
-        order_by: [desc: count(progress.id)],
-        limit: ^((limit + offset) * 2)
-      )
-      |> maybe_since(days)
-      |> Repo.all()
-      |> Enum.map(fn {id, _count} -> id end)
-
-    if trending_ids == [] do
-      # Fallback to high-rated recent movies
-      list_new_releases(shelf_opts(opts, limit, offset, show_adult))
-    else
-      results =
-        public_movies_query()
-        |> with_provider_filters(opts)
-        |> maybe_exclude_adult(show_adult, :movie)
-        |> where([movie: movie], movie.id in ^trending_ids)
-        |> select_movie_card_fields()
-        |> preload(^@summary_preloads)
-        |> Repo.all()
-        |> Enum.sort_by(fn m -> Enum.find_index(trending_ids, &(&1 == m.id)) end)
-        |> Enum.drop(offset)
-        |> Enum.take(limit)
-
-      if results == [] do
-        list_new_releases(shelf_opts(opts, limit, offset, show_adult))
-      else
-        results
-      end
-    end
+    list_new_releases(shelf_opts(opts, limit, offset, show_adult))
   end
 
   @doc """
-  Gets trending series based on recent watch history.
+  Gets trending series: the highest rated series with a cover.
+
+  Like `list_trending_movies/1`, it never looks at viewing activity.
   """
   @spec list_trending_series(keyword()) :: [Series.t()]
   def list_trending_series(opts \\ []) do
     limit = Keyword.get(opts, :limit, 10)
     offset = Keyword.get(opts, :offset, 0)
-    days = Keyword.get(opts, :days, 7)
     show_adult = Keyword.get(opts, :show_adult, false)
 
-    # Get series IDs from episode watches via catalog_items.
-    trending_series_ids =
-      from(progress in WatchProgress,
-        as: :progress,
-        join: catalog_item in CatalogItem,
-        as: :catalog_item,
-        on: progress.catalog_item_id == catalog_item.id,
-        join: episode in Episode,
-        as: :episode,
-        on: episode.catalog_item_id == catalog_item.id,
-        join: season in Season,
-        as: :season,
-        on: season.id == episode.season_id,
-        where: catalog_item.content_type == "episode",
-        group_by: season.series_id,
-        select: {season.series_id, count(progress.id)},
-        order_by: [desc: count(progress.id)],
-        limit: ^((limit + offset) * 3)
-      )
-      |> maybe_since(days)
-      |> Repo.all()
-
-    if trending_series_ids == [] do
-      # Fallback to high-rated series
-      public_series_query()
-      |> with_provider_filters(opts)
-      |> maybe_exclude_adult(show_adult, :series)
-      |> with_series_cover()
-      |> order_by([series: series], desc: series.rating)
-      |> offset(^offset)
-      |> limit(^limit)
-      |> select_series_card_fields()
-      |> preload(^@summary_preloads)
-      |> Repo.all()
-    else
-      series_ids = Enum.map(trending_series_ids, fn {id, _count} -> id end)
-
-      public_series_query()
-      |> with_provider_filters(opts)
-      |> maybe_exclude_adult(show_adult, :series)
-      |> where([series: series], series.id in ^series_ids)
-      |> select_series_card_fields()
-      |> preload(^@summary_preloads)
-      |> Repo.all()
-      |> Enum.sort_by(fn series -> Enum.find_index(series_ids, &(&1 == series.id)) end)
-      |> Enum.drop(offset)
-      |> Enum.take(limit)
-    end
+    public_series_query()
+    |> with_provider_filters(opts)
+    |> maybe_exclude_adult(show_adult, :series)
+    |> with_series_cover()
+    |> order_by([series: series], desc_nulls_last: series.rating)
+    |> offset(^offset)
+    |> limit(^limit)
+    |> select_series_card_fields()
+    |> preload(^@summary_preloads)
+    |> Repo.all()
   end
 
   @doc """
@@ -613,13 +539,6 @@ defmodule Streamix.Iptv.Catalog do
 
   defp maybe_exclude_adult(query, _show_adult, binding),
     do: AdultFilter.exclude_adult_content(query, binding)
-
-  defp maybe_since(query, nil), do: query
-
-  defp maybe_since(query, days) when is_integer(days) and days > 0 do
-    since = DateTime.utc_now() |> DateTime.add(-days * 24 * 3600, :second)
-    where(query, [progress: progress], progress.last_watched_at >= ^since)
-  end
 
   # =============================================================================
   # Categories

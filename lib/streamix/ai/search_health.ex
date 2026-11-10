@@ -21,7 +21,7 @@ defmodule Streamix.AI.SearchHealth do
 
   @ttl_ms 45_000
   @probe_timeout_ms 2_000
-  @collections ~w(movies series animes user_profiles)a
+  @collections ~w(movies series animes)a
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 

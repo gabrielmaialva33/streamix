@@ -5,6 +5,11 @@ defmodule Streamix.Workers.CleanupWatchPartyRoomsWorker do
   Active room processes persist their heartbeat at least every 15 seconds. A
   thirty-minute cutoff therefore leaves a large safety margin for deploys and
   temporary database outages while still recovering rooms whose process died.
+
+  An ended room still names its content and, through its participants, who
+  watched it together. Watch history is sealed so the operator cannot read
+  it (docs/privacy.md), so ended rooms are kept only long enough for an
+  invite link to say the party is over, then purged.
   """
   use Oban.Worker,
     queue: :default,
@@ -16,7 +21,7 @@ defmodule Streamix.Workers.CleanupWatchPartyRoomsWorker do
   require Logger
 
   @active_timeout_seconds 30 * 60
-  @ended_retention_seconds 90 * 24 * 60 * 60
+  @ended_retention_seconds 24 * 60 * 60
 
   @impl Oban.Worker
   def perform(%Oban.Job{}) do

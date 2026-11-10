@@ -1,17 +1,33 @@
 defmodule Streamix.Iptv.History do
   @moduledoc """
-  Watch history management backed by upserted WatchProgress records.
+  Watch history and playback progress, sealed with the user's library key.
+
+  `watch_progress` rows carry no readable reference to content (see
+  `Streamix.Iptv.WatchProgress`), so the database cannot join them to the
+  catalog. Listings open the user's rows in memory, then resolve the catalog
+  items they point at; the progress bar of a given card goes through the HMAC
+  blind index instead of a scan.
+
+  Every function takes the caller's unlocked `Streamix.Library.Key`, which
+  also identifies the user.
   """
 
   import Ecto.Query, warn: false
 
   alias Ecto.Changeset
-  alias Streamix.Iptv.{CatalogItem, Episode, Season, WatchProgress}
+  alias Streamix.Iptv.{CatalogItem, CatalogItemRedirect, Episode, Season, WatchProgress}
   alias Streamix.Iptv.ContentRef
   alias Streamix.Iptv.Engagement.ContentPolicy
+  alias Streamix.Library.{Cipher, Key}
   alias Streamix.Repo
 
-  @catalog_preloads [catalog_item: [:movie, :series, :episode, :live_channel]]
+  @context "watch_progress"
+  @digest_namespace "watch_progress:catalog_item"
+  # Writes of one user are serialized: an update reads, decrypts and re-seals
+  # the row, and two interleaved ones would drop each other's changes.
+  @write_lock_namespace 0x11B_4A27
+  @catalog_preloads [:movie, :series, :live_channel, episode: :season]
+  @progress_types %{progress_seconds: :integer, duration_seconds: :integer, completed: :boolean}
 
   @doc """
   Lists watch progress for a user with optional filters.
@@ -21,179 +37,89 @@ defmodule Streamix.Iptv.History do
     * `:offset` - Number of results to skip (default: 0)
     * `:content_type` - Filter by content type ("movie", "episode", "live_channel")
   """
-  @spec list(integer(), keyword()) :: [map()]
-  def list(user_id, opts \\ []) do
-    limit = Keyword.get(opts, :limit, 50)
-    offset = Keyword.get(opts, :offset, 0)
-    content_type = Keyword.get(opts, :content_type)
-    show_adult = Keyword.get(opts, :show_adult, false)
-
-    user_progress_query(user_id)
-    |> ContentPolicy.visible_to_user(user_id)
-    |> maybe_filter_by_type(content_type)
-    |> maybe_exclude_adult(show_adult)
-    |> join_home_content()
-    |> order_by([progress: progress], desc: progress.last_watched_at)
-    |> limit(^limit)
-    |> offset(^offset)
-    |> select_home_card()
-    |> Repo.all()
+  @spec list(Key.t(), keyword()) :: [map()]
+  def list(%Key{} = key, opts \\ []) do
+    key
+    |> visible_cards(opts)
     |> Enum.map(&build_history_entry/1)
-    |> Enum.reject(&is_nil(&1.content_id))
   end
 
   @doc """
   Lists lightweight watch history cards for home surfaces without generic content preloads.
   """
-  @spec list_home(integer(), keyword()) :: [map()]
-  def list_home(user_id, opts \\ []) do
-    limit = Keyword.get(opts, :limit, 50)
-    offset = Keyword.get(opts, :offset, 0)
-    content_type = Keyword.get(opts, :content_type)
-    show_adult = Keyword.get(opts, :show_adult, false)
-
-    user_progress_query(user_id)
-    |> ContentPolicy.visible_to_user(user_id)
-    |> maybe_filter_by_type(content_type)
-    |> maybe_exclude_adult(show_adult)
-    |> join_home_content()
-    |> order_by([progress: progress], desc: progress.last_watched_at)
-    |> limit(^limit)
-    |> offset(^offset)
-    |> select_home_card()
-    |> Repo.all()
+  @spec list_home(Key.t(), keyword()) :: [map()]
+  def list_home(%Key{} = key, opts \\ []) do
+    key
+    |> visible_cards(opts)
     |> Enum.map(&build_home_card/1)
-    # Drop entries whose content row was deleted (e.g. after a provider
-    # migration): build_home_card leaves content_id nil and the home card
-    # would otherwise call watch_path(_, nil) and crash the whole LiveView.
-    |> Enum.reject(&is_nil(&1.content_id))
   end
 
   @doc """
   Lists lightweight watch history entries for analytics without catalog preloads.
   """
-  @spec list_for_analytics(integer(), keyword()) :: [map()]
-  def list_for_analytics(user_id, opts \\ []) do
-    limit = Keyword.get(opts, :limit, 50)
-    offset = Keyword.get(opts, :offset, 0)
-    content_type = Keyword.get(opts, :content_type)
-    show_adult = Keyword.get(opts, :show_adult, false)
-
-    # CASE over catalog_item.content_type picks the right subquery for each
-    # row instead of running all four — was a 4× scalar subquery per row,
-    # which on a 100-row history meant 400 index lookups vs 100 with the
-    # CASE form. Same total result, fraction of the planner work.
-    user_progress_query(user_id)
-    |> ContentPolicy.visible_to_user(user_id)
-    |> maybe_filter_by_type(content_type)
-    |> maybe_exclude_adult(show_adult)
-    |> order_by([progress: progress], desc: progress.last_watched_at)
-    |> limit(^limit)
-    |> offset(^offset)
-    |> select([progress: progress, catalog_item: catalog_item], %{
-      content_type: catalog_item.content_type,
-      content_id:
-        selected_as(
-          fragment(
-            """
-            CASE ?
-              WHEN 'movie' THEN (SELECT m0.id FROM movies AS m0 WHERE m0.catalog_item_id = ?)
-              WHEN 'series' THEN (SELECT s0.id FROM series AS s0 WHERE s0.catalog_item_id = ?)
-              WHEN 'episode' THEN (SELECT e0.id FROM episodes AS e0 WHERE e0.catalog_item_id = ?)
-              WHEN 'live_channel' THEN (SELECT l0.id FROM live_channels AS l0 WHERE l0.catalog_item_id = ?)
-            END
-            """,
-            catalog_item.content_type,
-            progress.catalog_item_id,
-            progress.catalog_item_id,
-            progress.catalog_item_id,
-            progress.catalog_item_id
-          ),
-          :content_id
-        ),
-      series_id:
-        fragment(
-          """
-          CASE WHEN ? = 'episode' THEN (
-            SELECT history_season.series_id
-            FROM episodes AS history_episode
-            JOIN seasons AS history_season ON history_season.id = history_episode.season_id
-            WHERE history_episode.catalog_item_id = ?
-          ) END
-          """,
-          catalog_item.content_type,
-          progress.catalog_item_id
-        ),
-      progress_seconds: progress.progress_seconds,
-      duration_seconds: progress.duration_seconds,
-      completed: progress.completed,
-      watched_at: progress.last_watched_at
-    })
-    |> Repo.all()
-    # Provider resyncs can delete a content row while its CatalogItem (and
-    # therefore WatchProgress) survives until orphan cleanup. Analytics
-    # consumers send content_id to Qdrant, where JSON null is not a valid
-    # point ID, so omit those stale rows at the read boundary.
-    |> Enum.reject(&is_nil(&1.content_id))
+  @spec list_for_analytics(Key.t(), keyword()) :: [map()]
+  def list_for_analytics(%Key{} = key, opts \\ []) do
+    key
+    |> visible_cards(opts)
+    |> Enum.map(fn card ->
+      %{
+        content_type: card.content_type,
+        content_id: content_id(card),
+        series_id: if(card.content_type == "episode", do: card.episode_series_id),
+        progress_seconds: card.progress_seconds,
+        duration_seconds: card.duration_seconds,
+        completed: card.completed,
+        watched_at: card.watched_at
+      }
+    end)
   end
 
   @doc """
   Counts watch progress grouped by content type for a user.
   Returns a map like %{"movie" => 10, "episode" => 15, "live_channel" => 3}
   """
-  @spec count_by_type(integer(), keyword()) :: %{String.t() => integer()}
-  def count_by_type(user_id, opts \\ []) do
-    WatchProgress
-    |> user_progress_query(user_id)
-    |> ContentPolicy.visible_to_user(user_id)
-    |> maybe_exclude_adult(Keyword.get(opts, :show_adult, false))
-    |> group_by([catalog_item: catalog_item], catalog_item.content_type)
-    |> select([catalog_item: catalog_item], {catalog_item.content_type, count()})
-    |> Repo.all()
-    |> Enum.into(%{})
+  @spec count_by_type(Key.t(), keyword()) :: %{String.t() => integer()}
+  def count_by_type(%Key{} = key, opts \\ []) do
+    entries = open_all(key)
+
+    visible =
+      visible_catalog_item_ids(
+        key,
+        Enum.map(entries, & &1.catalog_item_id),
+        Keyword.get(opts, :show_adult, false)
+      )
+
+    entries
+    |> Enum.filter(&MapSet.member?(visible, &1.catalog_item_id))
+    |> Enum.frequencies_by(& &1.content_type)
   end
 
   @doc """
   Upserts a watch progress entry. If one exists for this user + catalog_item,
   it updates; otherwise inserts.
   """
-  @spec add(integer(), String.t(), integer() | String.t(), map()) ::
+  @spec add(Key.t(), String.t(), integer() | String.t(), map()) ::
           {:ok, map()} | {:error, Ecto.Changeset.t()}
-  def add(user_id, content_type, content_id, attrs \\ %{}) do
+  def add(%Key{} = key, content_type, content_id, attrs \\ %{}) do
     with {:ok, normalized_id} <- ContentRef.normalize_id(content_id),
          {:ok, catalog_item_id} <- ContentRef.resolve_catalog_item_id(content_type, normalized_id),
-         true <- ContentPolicy.visible_catalog_item?(user_id, catalog_item_id) do
-      upsert_progress(user_id, catalog_item_id, attrs)
+         true <- ContentPolicy.visible_catalog_item?(key.user_id, catalog_item_id) do
+      upsert_progress(key, catalog_item_id, attrs)
     else
-      {:error, :invalid_content_id} ->
-        {:error,
-         Changeset.change(%WatchProgress{})
-         |> Changeset.add_error(:content_id, "is invalid")}
-
-      {:error, :invalid_content_type} ->
-        {:error,
-         Changeset.change(%WatchProgress{})
-         |> Changeset.add_error(:content_type, "is invalid")}
-
-      {:error, :not_found} ->
-        {:error,
-         Changeset.change(%WatchProgress{})
-         |> Changeset.add_error(:content_id, "content not found")}
-
-      false ->
-        {:error,
-         Changeset.change(%WatchProgress{})
-         |> Changeset.add_error(:content_id, "content not found")}
+      {:error, :invalid_content_id} -> {:error, error_changeset(:content_id, "is invalid")}
+      {:error, :invalid_content_type} -> {:error, error_changeset(:content_type, "is invalid")}
+      {:error, :not_found} -> {:error, error_changeset(:content_id, "content not found")}
+      false -> {:error, error_changeset(:content_id, "content not found")}
     end
   end
 
   @doc """
   Adds a watch progress entry from a map of attributes (convenience for PlayerLive).
   """
-  @spec add(integer(), map()) :: {:ok, map()} | {:error, Ecto.Changeset.t()}
-  def add(user_id, attrs) when is_map(attrs) do
+  @spec add(Key.t(), map()) :: {:ok, map()} | {:error, Ecto.Changeset.t()}
+  def add(%Key{} = key, attrs) when is_map(attrs) do
     add(
-      user_id,
+      key,
       attrs[:content_type] || attrs["content_type"],
       attrs[:content_id] || attrs["content_id"],
       attrs
@@ -204,10 +130,10 @@ defmodule Streamix.Iptv.History do
   Updates viewing progress for content.
   Marks as completed if progress reaches 90% of duration.
   """
-  @spec update_progress(integer(), String.t(), integer(), integer(), integer() | nil) ::
+  @spec update_progress(Key.t(), String.t(), integer(), integer(), integer() | nil) ::
           {:ok, map()} | {:error, Ecto.Changeset.t()}
   def update_progress(
-        user_id,
+        %Key{} = key,
         content_type,
         content_id,
         progress_seconds,
@@ -225,34 +151,34 @@ defmodule Streamix.Iptv.History do
         attrs
       end
 
-    add(user_id, content_type, content_id, attrs)
+    add(key, content_type, content_id, attrs)
   end
 
   @doc """
   Updates watch progress from PlayerLive events.
   Handles nil duration for live streams.
   """
-  @spec update_watch_progress(integer(), String.t(), integer(), number() | nil, number() | nil) ::
+  @spec update_watch_progress(Key.t(), String.t(), integer(), number() | nil, number() | nil) ::
           {:ok, map()} | {:error, Ecto.Changeset.t()}
-  def update_watch_progress(user_id, content_type, content_id, current_time, duration) do
+  def update_watch_progress(%Key{} = key, content_type, content_id, current_time, duration) do
     duration_rounded = if duration, do: round(duration), else: nil
-    update_progress(user_id, content_type, content_id, round(current_time || 0), duration_rounded)
+    update_progress(key, content_type, content_id, round(current_time || 0), duration_rounded)
   end
 
   @doc """
   Updates only the duration_seconds field.
   """
-  @spec update_watch_time(integer(), String.t(), integer(), number()) ::
+  @spec update_watch_time(Key.t(), String.t(), integer(), number()) ::
           {:ok, map()} | {:error, Ecto.Changeset.t()}
-  def update_watch_time(user_id, content_type, content_id, duration_seconds) do
-    add(user_id, content_type, content_id, %{duration_seconds: round(duration_seconds)})
+  def update_watch_time(%Key{} = key, content_type, content_id, duration_seconds) do
+    add(key, content_type, content_id, %{duration_seconds: round(duration_seconds)})
   end
 
   @doc """
   Removes a single watch progress entry by its ID.
   """
-  @spec remove(integer(), integer()) :: {integer(), nil}
-  def remove(user_id, entry_id) do
+  @spec remove(Key.t(), integer()) :: {integer(), nil}
+  def remove(%Key{user_id: user_id}, entry_id) do
     WatchProgress
     |> where(user_id: ^user_id, id: ^entry_id)
     |> Repo.delete_all()
@@ -262,8 +188,10 @@ defmodule Streamix.Iptv.History do
   Clears all watch progress for a user.
   Returns {:ok, count} with number of deleted entries.
   """
-  @spec clear(integer()) :: {:ok, integer()}
-  def clear(user_id) do
+  @spec clear(Key.t() | integer()) :: {:ok, integer()}
+  def clear(%Key{user_id: user_id}), do: clear(user_id)
+
+  def clear(user_id) when is_integer(user_id) do
     {count, _} =
       WatchProgress
       |> where(user_id: ^user_id)
@@ -276,150 +204,449 @@ defmodule Streamix.Iptv.History do
   Returns a map of series_id => progress (0.0..1.0) based on the latest watched episode.
   Used for showing progress bars on series cards.
   """
-  @spec get_series_progress_map(integer(), [integer()]) :: %{integer() => float()}
-  def get_series_progress_map(_user_id, []), do: %{}
+  @spec get_series_progress_map(Key.t(), [integer()]) :: %{integer() => float()}
+  def get_series_progress_map(_key, []), do: %{}
 
-  def get_series_progress_map(user_id, series_ids) do
-    WatchProgress
-    |> join(:inner, [wp], episode in Episode, on: episode.catalog_item_id == wp.catalog_item_id)
-    |> join(:inner, [_wp, episode], season in Season, on: season.id == episode.season_id)
-    |> where([wp, _episode, season], wp.user_id == ^user_id and season.series_id in ^series_ids)
-    |> where([wp], wp.duration_seconds > 0 and wp.progress_seconds > 0)
-    |> order_by([wp, _episode, season],
-      asc: season.series_id,
-      desc: wp.last_watched_at,
-      desc: wp.id
-    )
-    |> distinct([_wp, _episode, season], season.series_id)
-    |> select(
-      [wp, _episode, season],
-      {season.series_id, wp.progress_seconds, wp.duration_seconds}
-    )
-    |> Repo.all()
-    |> Map.new(fn {series_id, progress, duration} ->
-      {series_id, Float.round(progress / duration, 2)}
+  def get_series_progress_map(%Key{} = key, series_ids) do
+    key
+    |> open_by_series(series_ids)
+    |> Enum.filter(&(positive?(&1.duration_seconds) and positive?(&1.progress_seconds)))
+    |> latest_per_series()
+    |> Map.new(fn {series_id, entry} ->
+      {series_id, Float.round(entry.progress_seconds / entry.duration_seconds, 2)}
     end)
   end
 
   @doc "Latest watched episode per requested series, preserving each copy's progress."
-  def latest_series_progress(_user_id, []), do: %{}
+  def latest_series_progress(_key, []), do: %{}
   def latest_series_progress(nil, _series_ids), do: %{}
 
-  def latest_series_progress(user_id, series_ids) do
-    from(progress in WatchProgress,
-      join: episode in Episode,
-      on: episode.catalog_item_id == progress.catalog_item_id,
-      join: season in Season,
-      on: season.id == episode.season_id,
-      where: progress.user_id == ^user_id and season.series_id in ^series_ids,
-      where: progress.progress_seconds > 0,
-      where: not is_nil(progress.last_watched_at),
-      distinct: season.series_id,
-      order_by: [asc: season.series_id, desc: progress.last_watched_at, desc: progress.id],
-      select:
-        {season.series_id,
-         %{
-           episode_id: episode.id,
-           watched_at: progress.last_watched_at,
-           progress_id: progress.id,
-           completed: progress.completed
-         }}
-    )
-    |> Repo.all()
-    |> Map.new()
+  def latest_series_progress(%Key{} = key, series_ids) do
+    latest =
+      key
+      |> open_by_series(series_ids)
+      |> Enum.filter(&(positive?(&1.progress_seconds) and not is_nil(&1.last_watched_at)))
+      |> latest_per_series()
+
+    episode_ids =
+      latest
+      |> Enum.map(fn {_series_id, entry} -> entry.catalog_item_id end)
+      |> episode_ids_by_catalog_item()
+
+    Enum.reduce(latest, %{}, fn {series_id, entry}, acc ->
+      case Map.fetch(episode_ids, entry.catalog_item_id) do
+        {:ok, episode_id} ->
+          Map.put(acc, series_id, %{
+            episode_id: episode_id,
+            watched_at: entry.last_watched_at,
+            progress_id: entry.id,
+            completed: entry.completed
+          })
+
+        :error ->
+          acc
+      end
+    end)
   end
 
   @doc """
   Returns a map of content_id => progress (0.0..1.0) for the given content IDs.
   Used for showing progress bars on content cards.
   """
-  @spec get_progress_map(integer(), String.t(), [integer()]) :: %{integer() => float()}
-  def get_progress_map(_user_id, _content_type, []), do: %{}
+  @spec get_progress_map(Key.t(), String.t(), [integer()]) :: %{integer() => float()}
+  def get_progress_map(_key, _content_type, []), do: %{}
 
-  def get_progress_map(user_id, content_type, content_ids) do
+  def get_progress_map(%Key{} = key, content_type, content_ids) do
     case content_schema(content_type) do
       nil -> %{}
-      schema -> do_get_progress_map(user_id, schema, content_ids)
+      schema -> do_get_progress_map(key, schema, content_ids)
     end
   end
 
-  defp do_get_progress_map(user_id, schema, content_ids) do
-    from(content in schema,
-      as: :content,
-      join: progress in WatchProgress,
-      as: :progress,
-      on: progress.catalog_item_id == content.catalog_item_id,
-      where: content.id in ^content_ids,
-      where: progress.user_id == ^user_id,
-      where: progress.duration_seconds > 0 and progress.progress_seconds > 0,
-      select: {content.id, progress.progress_seconds, progress.duration_seconds}
-    )
-    |> Repo.all()
-    |> Map.new(fn {content_id, progress, duration} ->
-      {content_id, Float.round(progress / duration, 2)}
+  defp do_get_progress_map(key, schema, content_ids) do
+    content_by_digest =
+      from(content in schema,
+        where: content.id in ^content_ids,
+        select: {content.id, content.catalog_item_id}
+      )
+      |> Repo.all()
+      |> Map.new(fn {content_id, catalog_item_id} ->
+        {item_digest(key, catalog_item_id), content_id}
+      end)
+
+    key
+    |> open_where(dynamic([progress], progress.item_digest in ^Map.keys(content_by_digest)))
+    |> Enum.filter(&(positive?(&1.duration_seconds) and positive?(&1.progress_seconds)))
+    |> Map.new(fn entry ->
+      {Map.fetch!(content_by_digest, entry.item_digest),
+       Float.round(entry.progress_seconds / entry.duration_seconds, 2)}
     end)
+  end
+
+  @doc false
+  # The sealed row for `facts`, shared with the one-off legacy import.
+  @spec sealed_row(Key.t(), map()) :: map()
+  def sealed_row(%Key{} = key, facts) do
+    %{
+      user_id: key.user_id,
+      item_digest: item_digest(key, facts.catalog_item_id),
+      sealed:
+        Cipher.seal_map(key, @context, %{
+          "catalog_item_id" => facts.catalog_item_id,
+          "content_type" => facts.content_type,
+          "series_id" => facts.series_id,
+          "progress_seconds" => facts.progress_seconds,
+          "duration_seconds" => facts.duration_seconds,
+          "completed" => facts.completed,
+          "last_watched_at" => facts.last_watched_at && DateTime.to_iso8601(facts.last_watched_at)
+        })
+    }
   end
 
   # --- Private ---
 
-  defp upsert_progress(user_id, catalog_item_id, attrs) do
-    now = DateTime.utc_now(:second)
-
-    attrs =
-      attrs
-      |> Map.put(:user_id, user_id)
-      |> Map.put(:catalog_item_id, catalog_item_id)
-      |> Map.put(:last_watched_at, now)
-
-    case Repo.one(
-           from(wp in WatchProgress,
-             where: wp.user_id == ^user_id and wp.catalog_item_id == ^catalog_item_id
-           )
-         ) do
-      nil ->
-        %WatchProgress{}
-        |> WatchProgress.changeset(attrs)
-        |> Repo.insert()
-        |> maybe_decorate()
-
-      %WatchProgress{} = existing ->
-        existing
-        |> WatchProgress.changeset(attrs)
-        |> Repo.update()
-        |> maybe_decorate()
+  defp upsert_progress(key, catalog_item_id, attrs) do
+    with {:ok, catalog_item} <- fetch_catalog_item(catalog_item_id) do
+      Repo.transact(fn ->
+        Repo.query!("SELECT pg_advisory_xact_lock($1)", [write_lock_key(key)])
+        write_progress(key, catalog_item, attrs)
+      end)
     end
   end
 
-  defp user_progress_query(user_id), do: user_progress_query(WatchProgress, user_id)
+  defp write_progress(key, catalog_item, attrs) do
+    digest = item_digest(key, catalog_item.id)
 
-  defp user_progress_query(queryable, user_id) do
-    from(progress in queryable,
-      as: :progress,
-      where: progress.user_id == ^user_id,
-      join: catalog_item in CatalogItem,
+    previous =
+      case open_where(key, dynamic([progress], progress.item_digest == ^digest)) do
+        [entry] -> entry
+        [] -> nil
+      end
+
+    with {:ok, progress} <- cast_progress(previous, attrs) do
+      facts =
+        Map.merge(progress, %{
+          catalog_item_id: catalog_item.id,
+          content_type: catalog_item.content_type,
+          series_id: series_id(catalog_item),
+          last_watched_at: DateTime.utc_now(:second)
+        })
+
+      %WatchProgress{}
+      |> Changeset.change(sealed_row(key, facts))
+      |> Repo.insert(
+        on_conflict: {:replace, [:sealed]},
+        conflict_target: [:user_id, :item_digest],
+        returning: [:id]
+      )
+      |> case do
+        {:ok, stored} -> {:ok, decorate(stored, facts, catalog_item)}
+        {:error, changeset} -> {:error, changeset}
+      end
+    end
+  end
+
+  defp write_lock_key(%Key{user_id: user_id}),
+    do: Bitwise.bor(Bitwise.bsl(@write_lock_namespace, 32), user_id)
+
+  defp cast_progress(previous, attrs) do
+    base = %{
+      progress_seconds: (previous && previous.progress_seconds) || 0,
+      duration_seconds: previous && previous.duration_seconds,
+      completed: (previous && previous.completed) || false
+    }
+
+    {base, @progress_types}
+    |> Changeset.cast(permitted_progress(attrs), Map.keys(@progress_types))
+    |> Changeset.apply_action(:insert)
+  end
+
+  defp permitted_progress(attrs) do
+    Enum.reduce(Map.keys(@progress_types), %{}, fn field, acc ->
+      case fetch_attr(attrs, field) do
+        {:ok, value} -> Map.put(acc, field, value)
+        :error -> acc
+      end
+    end)
+  end
+
+  defp fetch_attr(attrs, field) do
+    case Map.fetch(attrs, field) do
+      {:ok, value} -> {:ok, value}
+      :error -> Map.fetch(attrs, Atom.to_string(field))
+    end
+  end
+
+  defp fetch_catalog_item(catalog_item_id) do
+    case Repo.get(CatalogItem, catalog_item_id) do
+      nil -> {:error, error_changeset(:content_id, "content not found")}
+      catalog_item -> {:ok, Repo.preload(catalog_item, @catalog_preloads)}
+    end
+  end
+
+  defp series_id(%CatalogItem{
+         content_type: "episode",
+         episode: %Episode{season: %Season{} = season}
+       }),
+       do: season.series_id
+
+  defp series_id(_catalog_item), do: nil
+
+  defp decorate(%WatchProgress{} = stored, facts, catalog_item) do
+    %{
+      id: stored.id,
+      user_id: stored.user_id,
+      catalog_item_id: facts.catalog_item_id,
+      catalog_item: catalog_item,
+      progress_seconds: facts.progress_seconds,
+      duration_seconds: facts.duration_seconds,
+      completed: facts.completed,
+      last_watched_at: facts.last_watched_at
+    }
+    |> ContentRef.decorate()
+    |> Map.put(:watched_at, facts.last_watched_at)
+  end
+
+  defp error_changeset(field, message) do
+    {%{}, %{content_id: :integer, content_type: :string}}
+    |> Changeset.change()
+    |> Changeset.add_error(field, message)
+  end
+
+  # Opens every row of the user, newest first. Rows sealed under a key the
+  # user no longer holds simply do not open and are skipped.
+  defp open_all(key), do: open_where(key, dynamic(true))
+
+  # Series are not indexed (a per-series digest would let the database group
+  # a user's episodes by show), so this opens every row of the user.
+  defp open_by_series(key, series_ids) do
+    series_ids = MapSet.new(series_ids)
+    key |> open_all() |> Enum.filter(&MapSet.member?(series_ids, &1.series_id))
+  end
+
+  defp open_where(%Key{user_id: user_id} = key, condition) do
+    WatchProgress
+    |> where(user_id: ^user_id)
+    |> where(^condition)
+    |> Repo.all()
+    |> Enum.flat_map(&open_entry(key, &1))
+    |> Enum.sort_by(&{&1.last_watched_at, &1.id}, &newer_or_equal?/2)
+  end
+
+  defp open_entry(key, %WatchProgress{} = row) do
+    case Cipher.open_map(key, @context, row.sealed) do
+      {:ok, payload} ->
+        [
+          %{
+            id: row.id,
+            user_id: row.user_id,
+            item_digest: row.item_digest,
+            catalog_item_id: payload["catalog_item_id"],
+            content_type: payload["content_type"],
+            series_id: payload["series_id"],
+            progress_seconds: payload["progress_seconds"] || 0,
+            duration_seconds: payload["duration_seconds"],
+            completed: payload["completed"] || false,
+            last_watched_at: parse_datetime(payload["last_watched_at"])
+          }
+        ]
+
+      :error ->
+        []
+    end
+  end
+
+  defp parse_datetime(nil), do: nil
+
+  defp parse_datetime(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, datetime, _offset} -> DateTime.truncate(datetime, :second)
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp newer_or_equal?({left_at, left_id}, {right_at, right_id}) do
+    case compare_datetimes(left_at, right_at) do
+      :gt -> true
+      :lt -> false
+      :eq -> left_id >= right_id
+    end
+  end
+
+  defp compare_datetimes(nil, nil), do: :eq
+  defp compare_datetimes(nil, _right), do: :lt
+  defp compare_datetimes(_left, nil), do: :gt
+  defp compare_datetimes(left, right), do: DateTime.compare(left, right)
+
+  defp latest_per_series(entries) do
+    # `entries` is already newest first, so the first one per series wins.
+    Enum.reduce(entries, %{}, fn entry, acc ->
+      if is_integer(entry.series_id),
+        do: Map.put_new(acc, entry.series_id, entry),
+        else: acc
+    end)
+  end
+
+  defp positive?(value), do: is_integer(value) and value > 0
+
+  # The listing pipeline: open, filter, then resolve catalog cards in
+  # newest-first chunks until the requested page is full.
+  defp visible_cards(key, opts) do
+    limit = Keyword.get(opts, :limit, 50)
+    offset = Keyword.get(opts, :offset, 0)
+    content_type = Keyword.get(opts, :content_type)
+    show_adult = Keyword.get(opts, :show_adult, false)
+    needed = offset + limit
+
+    key
+    |> open_all()
+    |> prune_dangling(key)
+    |> Enum.filter(&(is_nil(content_type) or &1.content_type == content_type))
+    |> Enum.chunk_every(max(needed * 2, 50))
+    |> Enum.reduce_while([], fn chunk, acc ->
+      acc = acc ++ resolve_cards(key, chunk, show_adult)
+      if length(acc) >= needed, do: {:halt, acc}, else: {:cont, acc}
+    end)
+    |> Enum.drop(offset)
+    |> Enum.take(limit)
+  end
+
+  # A provider resync can delete a catalog item a sealed row still points at.
+  # The database cannot see that reference anymore, so the owner's own reads
+  # move such rows to the item's successor when a sync left a redirect, and
+  # drop them otherwise.
+  defp prune_dangling([], _key), do: []
+
+  defp prune_dangling(entries, %Key{user_id: user_id} = key) do
+    ids = entries |> Enum.map(& &1.catalog_item_id) |> Enum.uniq()
+
+    existing =
+      from(catalog_item in CatalogItem, where: catalog_item.id in ^ids, select: catalog_item.id)
+      |> Repo.all()
+      |> MapSet.new()
+
+    case Enum.split_with(entries, &MapSet.member?(existing, &1.catalog_item_id)) do
+      {kept, []} ->
+        kept
+
+      {kept, dangling} ->
+        successors =
+          dangling
+          |> Enum.map(& &1.catalog_item_id)
+          |> Enum.uniq()
+          |> CatalogItemRedirect.successors()
+
+        moved = Enum.flat_map(dangling, &move_to_successor(key, &1, successors))
+        dangling_ids = Enum.map(dangling, & &1.id)
+
+        WatchProgress
+        |> where([progress], progress.user_id == ^user_id and progress.id in ^dangling_ids)
+        |> Repo.delete_all()
+
+        Enum.sort_by(kept ++ moved, &{&1.last_watched_at, &1.id}, &newer_or_equal?/2)
+    end
+  end
+
+  defp move_to_successor(key, entry, successors) do
+    case Map.fetch(successors, entry.catalog_item_id) do
+      {:ok, successor_id} -> move_entry(key, entry, successor_id)
+      :error -> []
+    end
+  end
+
+  # Re-seals an entry under the catalog item that replaced its own. When the
+  # user already has an entry for the successor, that one wins.
+  defp move_entry(key, entry, successor_id) do
+    with {:ok, catalog_item} <- fetch_catalog_item(successor_id),
+         facts = %{
+           entry
+           | catalog_item_id: successor_id,
+             content_type: catalog_item.content_type,
+             series_id: series_id(catalog_item)
+         },
+         row = sealed_row(key, facts),
+         {1, [%{id: id}]} <-
+           Repo.insert_all(WatchProgress, [row], on_conflict: :nothing, returning: [:id]) do
+      [%{facts | id: id, item_digest: row.item_digest}]
+    else
+      _ -> []
+    end
+  end
+
+  defp resolve_cards(_key, [], _show_adult), do: []
+
+  defp resolve_cards(key, entries, show_adult) do
+    content_by_item =
+      entries
+      |> Enum.map(& &1.catalog_item_id)
+      |> Enum.uniq()
+      |> catalog_items_query(key, show_adult)
+      |> join_home_content()
+      |> select_content()
+      |> Repo.all()
+      |> Map.new(&{&1.catalog_item_id, &1})
+
+    entries
+    |> Enum.flat_map(fn entry ->
+      case Map.fetch(content_by_item, entry.catalog_item_id) do
+        {:ok, content} -> [Map.merge(content, progress_fields(entry))]
+        :error -> []
+      end
+    end)
+    # Drop entries whose content row was deleted (e.g. after a provider
+    # migration): the card would carry a nil content_id and crash the
+    # LiveView that links to it.
+    |> Enum.reject(&is_nil(content_id(&1)))
+  end
+
+  defp progress_fields(entry) do
+    %{
+      id: entry.id,
+      user_id: entry.user_id,
+      catalog_item_id: entry.catalog_item_id,
+      completed: entry.completed,
+      progress_seconds: entry.progress_seconds,
+      duration_seconds: entry.duration_seconds,
+      watched_at: entry.last_watched_at
+    }
+  end
+
+  defp visible_catalog_item_ids(_key, [], _show_adult), do: MapSet.new()
+
+  defp visible_catalog_item_ids(key, catalog_item_ids, show_adult) do
+    catalog_item_ids
+    |> Enum.uniq()
+    |> catalog_items_query(key, show_adult)
+    |> select([catalog_item: catalog_item], catalog_item.id)
+    |> Repo.all()
+    |> MapSet.new()
+  end
+
+  defp catalog_items_query(catalog_item_ids, %Key{user_id: user_id}, show_adult) do
+    from(catalog_item in CatalogItem,
       as: :catalog_item,
-      on: progress.catalog_item_id == catalog_item.id
+      where: catalog_item.id in ^catalog_item_ids
     )
+    |> ContentPolicy.visible_to_user(user_id)
+    |> maybe_exclude_adult(show_adult)
   end
 
-  defp maybe_filter_by_type(query, nil), do: query
+  defp episode_ids_by_catalog_item([]), do: %{}
 
-  defp maybe_filter_by_type(query, content_type) do
-    where(query, [catalog_item: catalog_item], catalog_item.content_type == ^content_type)
+  defp episode_ids_by_catalog_item(catalog_item_ids) do
+    from(episode in Episode,
+      where: episode.catalog_item_id in ^catalog_item_ids,
+      select: {episode.catalog_item_id, episode.id}
+    )
+    |> Repo.all()
+    |> Map.new()
   end
+
+  defp item_digest(key, catalog_item_id),
+    do: Cipher.digest(key, @digest_namespace, catalog_item_id)
 
   defp maybe_exclude_adult(query, true), do: query
   defp maybe_exclude_adult(query, false), do: ContentPolicy.exclude_adult(query)
-
-  defp maybe_decorate({:ok, entry}) do
-    entry
-    |> Repo.preload(@catalog_preloads)
-    |> ContentRef.decorate()
-    |> Map.put(:watched_at, entry.last_watched_at)
-    |> then(&{:ok, &1})
-  end
-
-  defp maybe_decorate({:error, changeset}), do: {:error, changeset}
 
   defp join_home_content(query) do
     query
@@ -439,11 +666,10 @@ defmodule Streamix.Iptv.History do
     )
   end
 
-  defp select_home_card(query) do
+  defp select_content(query) do
     select(
       query,
       [
-        progress: progress,
         catalog_item: catalog_item,
         movie: movie,
         series: series,
@@ -453,13 +679,7 @@ defmodule Streamix.Iptv.History do
         channel: channel
       ],
       %{
-        id: progress.id,
-        user_id: progress.user_id,
-        catalog_item_id: progress.catalog_item_id,
-        completed: progress.completed,
-        progress_seconds: progress.progress_seconds,
-        duration_seconds: progress.duration_seconds,
-        watched_at: progress.last_watched_at,
+        catalog_item_id: catalog_item.id,
         content_type: catalog_item.content_type,
         movie_id: movie.id,
         movie_name: movie.name,
@@ -475,6 +695,7 @@ defmodule Streamix.Iptv.History do
         episode_cover: episode.cover,
         episode_num: episode.episode_num,
         episode_season_number: episode_season.season_number,
+        episode_series_id: episode_season.series_id,
         episode_series_name: episode_series.name,
         episode_series_title: episode_series.title,
         episode_series_cover: episode_series.cover,
@@ -485,6 +706,12 @@ defmodule Streamix.Iptv.History do
       }
     )
   end
+
+  defp content_id(%{content_type: "movie"} = row), do: row.movie_id
+  defp content_id(%{content_type: "series"} = row), do: row.series_id
+  defp content_id(%{content_type: "episode"} = row), do: row.episode_id
+  defp content_id(%{content_type: "live_channel"} = row), do: row.live_channel_id
+  defp content_id(_row), do: nil
 
   defp build_history_entry(row) do
     row

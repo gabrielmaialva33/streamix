@@ -49,9 +49,10 @@ defmodule Streamix.Iptv.ContentRef do
   Decorates a struct that has a preloaded `catalog_item` (with its content association)
   by extracting content_type, content_name, and content_icon.
 
-  Works on Favorite, WatchProgress, or any struct with a `catalog_item` field.
+  Works on any struct or map with a `catalog_item` field, such as the opened
+  entries of `Streamix.Iptv.History` and `Streamix.Iptv.Favorites`.
   """
-  @spec decorate(struct()) :: map()
+  @spec decorate(map()) :: map()
   def decorate(%{catalog_item: %CatalogItem{} = item} = entry) do
     base = if is_struct(entry), do: Map.from_struct(entry), else: entry
 

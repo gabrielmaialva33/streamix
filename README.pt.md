@@ -67,8 +67,11 @@ aparece depois que uma fonte autorizada de Xtream, GIndex ou torrent é configur
 - **Catálogo e reprodução opcional por torrent** usando um sidecar rqbit administrado pelo operador
 - **Canais ao vivo, filmes, séries, temporadas, episódios e animes**
 - **EPG com programação atual/próxima**, favoritos, histórico e retomada do progresso
+- **Histórico privado**: favoritos, histórico e progresso são criptografados com uma chave que só a senha do usuário
+  abre, então nem quem administra a instância vê o que cada pessoa assistiu ([como funciona e
+  limites](docs/privacy.md))
 - **Enriquecimento opcional pelo TMDB** e busca externa de legendas
-- **Tokens de stream assinados** e resolução server-side que mantêm credenciais fora dos payloads do navegador
+- **Tokens de stream criptografados** e resolução server-side que mantêm credenciais fora dos payloads do navegador
 - **Caminhos de reprodução HLS, transport stream e VOD**, com suporte real de codecs dependente da fonte e do navegador
 
 ### Contas e Experiência Compartilhada
@@ -128,7 +131,7 @@ graph TD
         BILL[Billing]
         PARTY[Watch Party]
         AI[Descoberta por IA]
-        TOKEN[Tokens de stream assinados]
+        TOKEN[Tokens de stream criptografados]
         DELIVERY[Resolver / proxy de stream]
         JOBS[Workers Oban]
         L1[ConCache L1]

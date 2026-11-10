@@ -1,6 +1,10 @@
 defmodule Streamix.Billing.PlaybackSessions do
   @moduledoc """
   Tracks active playback slots for plan enforcement.
+
+  A slot exists only while a screen is playing. Ending, superseding or
+  expiring one deletes it: kept, ended rows would be a log of when each user
+  watched, which docs/privacy.md keeps out of the database.
   """
 
   import Ecto.Query, warn: false
@@ -85,13 +89,8 @@ defmodule Streamix.Billing.PlaybackSessions do
   def end_playback_session(nil), do: :ok
 
   def end_playback_session(%PlaybackSession{id: playback_session_id}) do
-    now = DateTime.utc_now(:second)
-
-    from(playback_session in PlaybackSession,
-      where: playback_session.id == ^playback_session_id,
-      where: playback_session.status != "ended"
-    )
-    |> Repo.update_all(set: [status: "ended", ended_at: now, last_seen_at: now, updated_at: now])
+    from(playback_session in PlaybackSession, where: playback_session.id == ^playback_session_id)
+    |> Repo.delete_all()
 
     :ok
   end
@@ -130,14 +129,12 @@ defmodule Streamix.Billing.PlaybackSessions do
   defp supersede_client_sessions!(_user_id, nil), do: :ok
 
   defp supersede_client_sessions!(user_id, client_id) do
-    now = DateTime.utc_now(:second)
-
     from(ps in PlaybackSession,
       where: ps.user_id == ^user_id,
       where: ps.status == "active",
       where: ps.client_id == ^client_id
     )
-    |> Repo.update_all(set: [status: "ended", ended_at: now, last_seen_at: now, updated_at: now])
+    |> Repo.delete_all()
 
     :ok
   end
@@ -155,14 +152,12 @@ defmodule Streamix.Billing.PlaybackSessions do
 
   defp cleanup_stale_playback_sessions!(user_id) do
     cutoff = DateTime.add(DateTime.utc_now(:second), -120, :second)
-    now = DateTime.utc_now(:second)
 
     from(ps in PlaybackSession,
       where: ps.user_id == ^user_id,
-      where: ps.status == "active",
       where: ps.last_seen_at < ^cutoff
     )
-    |> Repo.update_all(set: [status: "ended", ended_at: now, updated_at: now])
+    |> Repo.delete_all()
   end
 
   defp playback_session_id do

@@ -3,7 +3,6 @@ defmodule StreamixWeb.HomeLive do
 
   require Logger
 
-  alias Streamix.SafeLog
   alias StreamixWeb.HomeData, as: Data
   alias StreamixWeb.LiveSessionNavigation
   alias StreamixWeb.ReturnPath
@@ -13,9 +12,7 @@ defmodule StreamixWeb.HomeLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    Logger.info(
-      "[HomeLive] mount connected=#{connected?(socket)} user_id=#{user_id_from_socket(socket)}"
-    )
+    Logger.info("[HomeLive] mount connected=#{connected?(socket)}")
 
     socket =
       socket
@@ -46,7 +43,9 @@ defmodule StreamixWeb.HomeLive do
   def handle_async(task, {:exit, reason}, socket)
       when task in [:home_catalog, :home_personalization, :home_library, :home_annotations] do
     group = task_group(task)
-    Logger.warning("[HomeLive] #{group} load failed", reason: SafeLog.redact_inspect(reason))
+    # Only the kind of failure: the reason of a crashed shelf task can carry
+    # the user's taste vector or history entries.
+    Logger.warning("[HomeLive] shelf load failed", group: group, reason: failure_kind(reason))
     emit_home_group(group, :error)
 
     {:noreply,
@@ -55,8 +54,13 @@ defmodule StreamixWeb.HomeLive do
      |> maybe_start_annotations()}
   end
 
-  defp user_id_from_socket(%{assigns: %{current_scope: %{user: %{id: id}}}}), do: id
-  defp user_id_from_socket(_), do: nil
+  defp failure_kind({%{__exception__: true} = exception, _stacktrace}),
+    do: inspect(exception.__struct__)
+
+  defp failure_kind(%{__exception__: true} = exception), do: inspect(exception.__struct__)
+  defp failure_kind(reason) when is_atom(reason), do: inspect(reason)
+  defp failure_kind({reason, _details}) when is_atom(reason), do: inspect(reason)
+  defp failure_kind(_reason), do: "exit"
 
   defp maybe_start_home_tasks(socket) do
     if connected?(socket) do

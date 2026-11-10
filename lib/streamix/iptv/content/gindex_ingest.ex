@@ -5,9 +5,10 @@ defmodule Streamix.Iptv.Content.GindexIngest do
 
   require Logger
 
-  alias Streamix.Iptv.{CatalogItem, Episode, Movie, Season, Series}
-  alias Streamix.Iptv.Sync.{Cleanup, Helpers}
+  alias Streamix.Iptv.{CatalogItem, CatalogItemRedirect, Episode, Movie, Season, Series}
+  alias Streamix.Iptv.Sync.Helpers
   alias Streamix.Repo
+  alias Streamix.WatchParty
 
   @movie_fields ~w(stream_id name title year container_extension gindex_path)a
   @series_fields ~w(series_id name title year gindex_path)a
@@ -153,8 +154,11 @@ defmodule Streamix.Iptv.Content.GindexIngest do
   #     follows the file, and the upsert of that season then finds it by
   #     episode_id and unparks it like any other renumbered file.
   #   * if the listed season already holds a row of it, the rows elsewhere are
-  #     ghosts. A ghost is deleted only when no user data hangs off its catalog
-  #     item; otherwise it is kept and logged for a human to decide.
+  #     ghosts and are deleted. History and favorites are sealed per user, so
+  #     the server cannot tell whether anyone's hang off a ghost; each deleted
+  #     ghost leaves a `CatalogItemRedirect` to the row that stays, and the
+  #     owner's next read moves the entry there. A ghost a watch-party room
+  #     still points at is kept and logged for a human to decide.
   #
   # A file listed in more than one season of the same scrape has no single
   # right season, and neither has a row whose file is gone from the listing.
@@ -173,16 +177,17 @@ defmodule Streamix.Iptv.Content.GindexIngest do
       end)
 
     if misplaced != [] do
-      with_user_data =
+      with_rooms =
         misplaced
         |> Enum.flat_map(fn {_target, _in_target, elsewhere} -> elsewhere end)
         |> Enum.map(& &1.catalog_item_id)
-        |> Cleanup.catalog_item_ids_with_user_data()
+        |> WatchParty.catalog_item_ids_with_rooms()
+        |> MapSet.new()
 
-      {moves, ghosts} = plan_reconciliation(misplaced, with_user_data)
+      {moves, ghosts} = plan_reconciliation(misplaced, with_rooms)
 
       move_rows(series, moves)
-      drop_ghosts(series, ghosts, with_user_data)
+      drop_ghosts(series, ghosts, with_rooms)
     end
 
     :ok
@@ -205,21 +210,21 @@ defmodule Streamix.Iptv.Content.GindexIngest do
 
   # When the listed season holds no row of the file but several other seasons
   # do, one of them moves and the rest are ghosts of it. The row that moves is
-  # one carrying user data when there is one, so that history follows the
-  # file, and the oldest otherwise.
-  defp plan_reconciliation(misplaced, with_user_data) do
+  # one a watch-party room points at when there is one, and the oldest
+  # otherwise. Each ghost is paired with the row that survives it.
+  defp plan_reconciliation(misplaced, with_rooms) do
     Enum.reduce(misplaced, {[], []}, fn
       {target, [], elsewhere}, {moves, ghosts} ->
         [mover | rest] =
           Enum.sort_by(
             elsewhere,
-            &{not MapSet.member?(with_user_data, &1.catalog_item_id), &1.id}
+            &{not MapSet.member?(with_rooms, &1.catalog_item_id), &1.id}
           )
 
-        {[{target, mover} | moves], Enum.map(rest, &{target, &1}) ++ ghosts}
+        {[{target, mover} | moves], Enum.map(rest, &{target, &1, mover}) ++ ghosts}
 
-      {target, _in_target, elsewhere}, {moves, ghosts} ->
-        {moves, Enum.map(elsewhere, &{target, &1}) ++ ghosts}
+      {target, [survivor | _], elsewhere}, {moves, ghosts} ->
+        {moves, Enum.map(elsewhere, &{target, &1, survivor}) ++ ghosts}
     end)
   end
 
@@ -245,31 +250,38 @@ defmodule Streamix.Iptv.Content.GindexIngest do
     )
   end
 
-  defp drop_ghosts(_series, [], _with_user_data), do: :ok
+  defp drop_ghosts(_series, [], _with_rooms), do: :ok
 
-  defp drop_ghosts(series, ghosts, with_user_data) do
+  defp drop_ghosts(series, ghosts, with_rooms) do
     {kept, deletable} =
-      Enum.split_with(ghosts, fn {_target, row} ->
-        MapSet.member?(with_user_data, row.catalog_item_id)
+      Enum.split_with(ghosts, fn {_target, row, _survivor} ->
+        MapSet.member?(with_rooms, row.catalog_item_id)
       end)
 
-    Enum.each(kept, fn {target, row} ->
+    Enum.each(kept, fn {target, row, _survivor} ->
       Logger.warning(
         "[GIndex Ingest] series #{series.id} (#{series.name}): #{episode_label(row)} is " <>
           "listed only in season #{target.season_number}, which already holds it, but an " <>
-          "older row in season #{row.season_number} carries user data; kept for review " <>
+          "older row in season #{row.season_number} has a watch-party room; kept for review " <>
           "(episode row #{row.id}, catalog item #{row.catalog_item_id})"
       )
     end)
 
     if deletable != [] do
-      ids = Enum.map(deletable, fn {_target, row} -> row.id end)
+      ids = Enum.map(deletable, fn {_target, row, _survivor} -> row.id end)
+
+      deletable
+      |> Enum.map(fn {_target, row, survivor} ->
+        {row.catalog_item_id, survivor.catalog_item_id}
+      end)
+      |> CatalogItemRedirect.record()
+
       Repo.delete_all(from(episode in Episode, where: episode.id in ^ids))
 
       Logger.info(
         "[GIndex Ingest] series #{series.id}: dropped #{length(ids)} duplicate row(s) of " <>
           "files now filed in another season: " <>
-          Enum.map_join(Enum.take(deletable, 5), " | ", fn {target, row} ->
+          Enum.map_join(Enum.take(deletable, 5), " | ", fn {target, row, _survivor} ->
             "#{episode_label(row)} #{row.season_number}->#{target.season_number}"
           end)
       )

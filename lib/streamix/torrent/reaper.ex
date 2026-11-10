@@ -25,6 +25,7 @@ defmodule Streamix.Torrent.Reaper do
   require Logger
 
   alias Streamix.SafeLog
+
   alias Streamix.Torrent.{Client, StreamSession}
 
   @registry Streamix.Torrent.StreamRegistry
@@ -97,18 +98,23 @@ defmodule Streamix.Torrent.Reaper do
 
   defp reap_if_still_unregistered(info_hash) do
     if registered?(info_hash) do
-      Logger.debug("[Torrent.Reaper] skipping #{info_hash} — session registered mid-sweep")
+      Logger.debug("[Torrent.Reaper] skipping session registered mid-sweep",
+        content_ref: SafeLog.content_ref(info_hash)
+      )
 
       :ok
     else
-      Logger.info("[Torrent.Reaper] reaping orphaned torrent #{info_hash}")
+      Logger.info("[Torrent.Reaper] reaping orphaned torrent",
+        content_ref: SafeLog.content_ref(info_hash)
+      )
 
       case Client.remove(info_hash) do
         :ok ->
           :ok
 
         {:error, reason} ->
-          Logger.warning("[Torrent.Reaper] failed to remove #{info_hash}",
+          Logger.warning("[Torrent.Reaper] failed to remove content",
+            content_ref: SafeLog.content_ref(info_hash),
             reason: SafeLog.redact_inspect(reason)
           )
       end

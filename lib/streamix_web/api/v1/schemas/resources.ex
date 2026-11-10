@@ -24,7 +24,21 @@ defmodule StreamixWeb.Api.V1.Schemas.Resources do
           [:id, :email, :name, :role]
         ),
       "AuthTokenResponse" =>
-        object("AuthTokenResponse", %{token: string(), user: ref("AuthUser")}, [:token, :user]),
+        object(
+          "AuthTokenResponse",
+          %{
+            token:
+              string(
+                min_length: 88,
+                max_length: 88,
+                pattern: "^[A-Za-z0-9_-]{86}==$",
+                description:
+                  "Opaque bearer credential: URL-safe base64 of a 32-byte session token and a 32-byte library secret. Store and send it unchanged; never log it."
+              ),
+            user: ref("AuthUser")
+          },
+          [:token, :user]
+        ),
       "AuthUserResponse" => object("AuthUserResponse", %{user: ref("AuthUser")}, [:user])
     }
   end

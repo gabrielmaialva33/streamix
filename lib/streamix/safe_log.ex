@@ -5,14 +5,22 @@ defmodule Streamix.SafeLog do
   IPTV URLs may contain provider credentials in path segments, query
   parameters, or URL userinfo. This module keeps redaction consistent across
   streaming code and bounds client-controlled diagnostic values.
+
+  Stream ids are redacted as well, and `content_ref/1` stands in for a
+  content id: on a personal provider, the content alone tells who is
+  watching (docs/privacy.md).
   """
 
   @default_text_limit 256
   @default_url_limit 240
   @default_inspect_limit 512
 
+  @xtream_media_path ~r{/(live|movie|series)/[^/?#\s]+/[^/?#\s]+/[^/?#\s.]+}i
   @credential_path ~r{/(live|movie|series|api/jogos)/[^/?#\s]+/[^/?#\s]+(?=/|$)}i
-  @credential_query ~r{([?&](?:username|password|token|api[_-]?key|apikey|auth|authorization)=)[^&#\s]*}i
+  @credential_query ~r{
+    ([?&](?:username|password|token|api[_-]?key|apikey|auth|authorization|stream_id|vod_id|series_id)=)
+    [^&\#\s]*
+  }ix
   @credential_userinfo ~r{(https?://)[^/@\s]+:[^/@\s]+@}i
   @control_characters ~r/[\x00-\x1F\x7F]/u
 
@@ -29,6 +37,7 @@ defmodule Streamix.SafeLog do
       value
       |> replace_control_characters()
       |> String.replace(@credential_userinfo, "\\1[REDACTED]@")
+      |> String.replace(@xtream_media_path, "/\\1/[REDACTED]/[REDACTED]/[REDACTED]")
       |> String.replace(@credential_path, "/\\1/[REDACTED]/[REDACTED]")
       |> String.replace(@credential_query, "\\1[REDACTED]")
       |> truncate(max_length)
@@ -50,6 +59,38 @@ defmodule Streamix.SafeLog do
     value
     |> inspect(limit: 20, printable_limit: max_length * 2, width: :infinity)
     |> redact_url(max_length: max_length)
+  end
+
+  @doc """
+  An opaque stand-in for a content identifier (a `{type, id}`, a stream key,
+  an info hash) in log lines.
+
+  It is an HMAC under a random secret created when the node boots and kept
+  only in memory: lines of one run that concern the same content share a
+  tag, but no tag can be traced back to a title from the logs or anything
+  else written to disk.
+  """
+  @spec content_ref(term()) :: String.t()
+  def content_ref(value) do
+    tag =
+      :hmac
+      |> :crypto.mac(:sha256, boot_secret(), :erlang.term_to_binary(value))
+      |> binary_part(0, 6)
+      |> Base.encode16(case: :lower)
+
+    "c:" <> tag
+  end
+
+  defp boot_secret do
+    case :persistent_term.get({__MODULE__, :boot_secret}, nil) do
+      nil ->
+        secret = :crypto.strong_rand_bytes(32)
+        :persistent_term.put({__MODULE__, :boot_secret}, secret)
+        secret
+
+      secret ->
+        secret
+    end
   end
 
   @doc """

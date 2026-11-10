@@ -1,14 +1,15 @@
 defmodule StreamixWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :streamix
 
-  # The session will be stored in the cookie and signed,
-  # this means its contents can be read but not tampered with.
-  # Set :encryption_salt if you would also like to encrypt it.
+  # The session is stored in the cookie, signed and encrypted: it carries the
+  # client's library secret (see StreamixWeb.UserAuth), which must not sit in
+  # the cookie as readable base64.
   # `secure` is false in test so HTTP localhost cookies persist for Playwright.
   @session_options [
     store: :cookie,
     key: "_streamix_key",
     signing_salt: "zYg6wPlT",
+    encryption_salt: "21b3LZJ6",
     same_site: "Lax",
     secure: Application.compile_env(:streamix, :session_secure, true),
     http_only: true
@@ -56,7 +57,10 @@ defmodule StreamixWeb.Endpoint do
   end
 
   plug Plug.RequestId
-  plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
+  # Phoenix's own request lines print the path ("GET /watch/movie/123"); they
+  # are off, and StreamixWeb.Telemetry.Handlers logs the route pattern
+  # ("GET /watch/:type/:id") instead, so logs never name what was watched.
+  plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint], log: false
 
   plug Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],

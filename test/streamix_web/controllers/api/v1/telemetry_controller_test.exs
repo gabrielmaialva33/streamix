@@ -4,7 +4,7 @@ defmodule StreamixWeb.Api.V1.TelemetryControllerTest do
   import Ecto.Query
   import Streamix.AccountsFixtures
 
-  alias Streamix.{Accounts, Repo}
+  alias Streamix.Repo
 
   setup do
     original_api_keys = Application.get_env(:streamix, :api_keys, [])
@@ -17,12 +17,12 @@ defmodule StreamixWeb.Api.V1.TelemetryControllerTest do
     end)
 
     user = user_fixture()
-    token = Accounts.generate_user_session_token(user)
+    token = api_token_fixture(user)
 
     conn =
       build_conn()
       |> put_req_header("x-api-key", api_key)
-      |> put_req_header("authorization", "Bearer #{Base.url_encode64(token)}")
+      |> put_req_header("authorization", "Bearer #{token}")
 
     %{conn: conn}
   end
@@ -66,8 +66,8 @@ defmodule StreamixWeb.Api.V1.TelemetryControllerTest do
           engine_reason: event.engine_reason,
           client_revision: event.client_revision,
           ttff_ms: event.ttff_ms,
-          user_id: event.user_id,
-          batch_id: event.batch_id
+          batch_id: event.batch_id,
+          user_id: event.user_id
         }
       )
       |> Repo.one!()
@@ -77,8 +77,11 @@ defmodule StreamixWeb.Api.V1.TelemetryControllerTest do
     assert event.engine_reason == "capability"
     assert event.client_revision == String.duplicate("d", 40)
     assert event.ttff_ms == 840
-    assert is_integer(event.user_id)
     assert event.batch_id == batch_id
+    # A playback sample says when and what kind of content was played, so it
+    # must not say by whom (docs/privacy.md). The column itself stays for one
+    # release so the previous image can still write it after a rollback.
+    assert event.user_id == nil
 
     columns =
       Repo.query!(

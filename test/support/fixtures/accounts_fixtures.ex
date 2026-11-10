@@ -69,7 +69,17 @@ defmodule Streamix.AccountsFixtures do
   end
 
   def user_scope_fixture(user) do
-    Scope.for_user(user)
+    Scope.for_user(user, library_key_fixture(user))
+  end
+
+  @doc """
+  Unlocks (creating on first use) the user's library key the way a login
+  does. Fixture users share `valid_user_password/0`, so repeated calls return
+  the same key.
+  """
+  def library_key_fixture(user) do
+    {:ok, key} = Streamix.Library.unlock(user, valid_user_password())
+    key
   end
 
   def set_password(user) do

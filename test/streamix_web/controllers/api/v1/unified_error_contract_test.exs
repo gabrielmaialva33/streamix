@@ -5,7 +5,6 @@ defmodule StreamixWeb.Api.V1.UnifiedErrorContractTest do
 
   alias OpenApiSpex.Plug.PutApiSpec
   alias OpenApiSpex.TestAssertions
-  alias Streamix.Accounts
 
   @protected [
     {"/api/v1/catalog/movies", "catalog.movies.list"},
@@ -99,7 +98,7 @@ defmodule StreamixWeb.Api.V1.UnifiedErrorContractTest do
 
   test "authenticated missing resources keep 404 and validation failures keep 422" do
     user = user_fixture()
-    token = Accounts.generate_user_session_token(user) |> Base.url_encode64()
+    token = api_token_fixture(user)
 
     for {method, path, params, status, code, operation} <- [
           {:get, "/api/v1/catalog/movies/999999999", %{}, 404, "content_not_found",
@@ -127,7 +126,7 @@ defmodule StreamixWeb.Api.V1.UnifiedErrorContractTest do
 
   test "subscription failures retain the upgrade hint in the common error schema" do
     user = user_fixture()
-    token = Accounts.generate_user_session_token(user) |> Base.url_encode64()
+    token = api_token_fixture(user)
 
     conn =
       integration_conn()
@@ -140,7 +139,7 @@ defmodule StreamixWeb.Api.V1.UnifiedErrorContractTest do
 
   test "action fallback preserves resource-specific invalid-id messages" do
     user = user_fixture()
-    token = Accounts.generate_user_session_token(user) |> Base.url_encode64()
+    token = api_token_fixture(user)
 
     for {path, operation, message} <- [
           {"/api/v1/providers/not-an-id", "providers.delete", "Invalid provider id"},

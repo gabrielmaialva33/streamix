@@ -3,12 +3,14 @@ defmodule Streamix.Gindex.Sync.PersistenceTest do
   use Streamix.DataCase, async: false
 
   import ExUnit.Callbacks, only: [on_exit: 1]
-  import Streamix.AccountsFixtures, only: [user_fixture: 0]
+  import Streamix.AccountsFixtures, only: [user_fixture: 0, library_key_fixture: 1]
 
   alias Streamix.Gindex.Sync.Persistence
-  alias Streamix.Iptv.{CatalogItem, Episode, Favorite, Provider, Season, WatchProgress}
+  alias Streamix.Iptv.{CatalogItem, CatalogItemRedirect, Episode, Provider, Season}
   alias Streamix.Iptv.Sync.Cleanup
+  alias Streamix.Library
   alias Streamix.Repo
+  alias Streamix.WatchParty.Room
 
   defp gindex_provider do
     %Provider{}
@@ -353,7 +355,8 @@ defmodule Streamix.Gindex.Sync.PersistenceTest do
       # The Vida shape: the S02E07 file was filed as season 1, episode 7.
       assert {:ok, 2} = sync(provider, series_with_seasons([{1, [{101, 1}, {207, 7}]}]), now)
       [misfiled] = rows_of(207)
-      progress = insert_progress!(user, misfiled.catalog_item_id)
+      key = library_key_fixture(user)
+      watch!(key, misfiled)
 
       assert {:ok, 2} =
                sync(
@@ -370,7 +373,7 @@ defmodule Streamix.Gindex.Sync.PersistenceTest do
       # The progress now sits on the row the season-2 listing points at, and
       # the orphan sweep has nothing to take.
       assert {:ok, %{catalog_items: 0}} = Cleanup.cleanup_orphaned_user_data()
-      assert Repo.get!(WatchProgress, progress.id).catalog_item_id == moved.catalog_item_id
+      assert history_of(key) == [moved.id]
     end
 
     test "lands on numbers held by a renumbered file and by a file that is gone" do
@@ -505,7 +508,10 @@ defmodule Streamix.Gindex.Sync.PersistenceTest do
       assert season_rows() == [{1, 101, 1}, {2, 207, 7}]
     end
 
-    test "keeps a legacy duplicate that carries user data, and says so" do
+    # The server cannot see whose history hangs off a ghost: it is sealed per
+    # user. The ghost goes, and a redirect lets each owner's next read move
+    # their entry to the row that stays.
+    test "drops a legacy duplicate that carries user data, and its owner's history follows" do
       provider = gindex_provider()
       user = user_fixture()
       now = ~U[2026-10-12 12:00:00Z]
@@ -518,8 +524,53 @@ defmodule Streamix.Gindex.Sync.PersistenceTest do
                )
 
       [ghost, correct] = rows_of(207)
-      progress = insert_progress!(user, ghost.catalog_item_id)
-      Repo.insert!(%Favorite{user_id: user.id, catalog_item_id: ghost.catalog_item_id})
+      key = library_key_fixture(user)
+      watch!(key, ghost)
+      assert {:ok, _favorite} = Library.add_favorite(key, "episode", ghost.id)
+
+      assert {:ok, 2} =
+               sync(
+                 provider,
+                 series_with_seasons([{1, [{101, 1}]}, {2, [{207, 7}]}]),
+                 DateTime.add(now, 60)
+               )
+
+      assert rows_of(207) == [correct]
+      refute Repo.get(Episode, ghost.id)
+
+      assert CatalogItemRedirect.successors([ghost.catalog_item_id]) == %{
+               ghost.catalog_item_id => correct.catalog_item_id
+             }
+
+      assert {:ok, %{catalog_items: 1}} = Cleanup.cleanup_orphaned_user_data()
+
+      assert history_of(key) == [correct.id]
+      assert [%{content_type: "episode", content_id: favorite_id}] = Library.list_favorites(key)
+      assert favorite_id == correct.id
+    end
+
+    test "keeps a legacy duplicate a watch-party room points at, and says so" do
+      provider = gindex_provider()
+      user = user_fixture()
+      now = ~U[2026-10-12 12:00:00Z]
+
+      assert {:ok, 3} =
+               sync(
+                 provider,
+                 series_with_seasons([{1, [{101, 1}, {207, 7}]}, {2, [{207, 7}]}]),
+                 now
+               )
+
+      [ghost, correct] = rows_of(207)
+
+      %Room{}
+      |> Room.create_changeset(%{
+        host_user_id: user.id,
+        catalog_item_id: ghost.catalog_item_id,
+        source_type: "episode",
+        source_id: ghost.id
+      })
+      |> Repo.insert!()
 
       log =
         ExUnit.CaptureLog.capture_log(fn ->
@@ -535,13 +586,11 @@ defmodule Streamix.Gindex.Sync.PersistenceTest do
       assert log =~ "[warning]"
       assert log =~ "/1:/Series/Example/207.mkv"
       assert log =~ "listed only in season 2"
-      assert log =~ "older row in season 1 carries user data"
-
-      assert {:ok, %{catalog_items: 0}} = Cleanup.cleanup_orphaned_user_data()
-      assert Repo.get(WatchProgress, progress.id)
+      assert log =~ "older row in season 1 has a watch-party room"
+      assert CatalogItemRedirect.successors([ghost.catalog_item_id]) == %{}
     end
 
-    test "moves the copy that carries user data when the listed season has none" do
+    test "moves the oldest copy when the listed season has none, and history follows" do
       provider = gindex_provider()
       user = user_fixture()
       now = ~U[2026-10-12 12:00:00Z]
@@ -549,9 +598,10 @@ defmodule Streamix.Gindex.Sync.PersistenceTest do
       assert {:ok, 2} =
                sync(provider, series_with_seasons([{1, [{207, 7}]}, {3, [{207, 7}]}]), now)
 
-      [plain, watched] = rows_of(207)
+      [oldest, watched] = rows_of(207)
       assert watched.season_number == 3
-      insert_progress!(user, watched.catalog_item_id)
+      key = library_key_fixture(user)
+      watch!(key, watched)
 
       assert {:ok, 3} =
                sync(
@@ -561,9 +611,11 @@ defmodule Streamix.Gindex.Sync.PersistenceTest do
                )
 
       assert [%{season_number: 2, episode_num: 7} = moved] = rows_of(207)
-      assert moved.id == watched.id
-      assert moved.catalog_item_id == watched.catalog_item_id
-      refute Repo.get(Episode, plain.id)
+      assert moved.id == oldest.id
+      refute Repo.get(Episode, watched.id)
+
+      assert {:ok, _counts} = Cleanup.cleanup_orphaned_user_data()
+      assert history_of(key) == [moved.id]
     end
 
     @tag :capture_log
@@ -623,13 +675,16 @@ defmodule Streamix.Gindex.Sync.PersistenceTest do
     end
   end
 
-  defp insert_progress!(user, catalog_item_id) do
-    Repo.insert!(%WatchProgress{
-      user_id: user.id,
-      catalog_item_id: catalog_item_id,
-      progress_seconds: 600,
-      last_watched_at: ~U[2026-10-01 20:00:00Z]
-    })
+  defp watch!(key, episode_row) do
+    assert {:ok, _entry} =
+             Library.add_watch_history(key, "episode", episode_row.id, %{progress_seconds: 600})
+  end
+
+  # Episode ids in the user's history, as their own read resolves them.
+  defp history_of(key) do
+    key
+    |> Library.list_watch_history()
+    |> Enum.map(& &1.content_id)
   end
 
   test "rolls back the catalog item when the series cannot be inserted" do

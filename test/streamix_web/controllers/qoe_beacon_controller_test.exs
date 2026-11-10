@@ -26,8 +26,19 @@ defmodule StreamixWeb.QoeBeaconControllerTest do
     assert conn |> post(~p"/api/qoe/beacon", @sample) |> response(204)
     assert conn |> post(~p"/api/qoe/beacon", @sample) |> response(204)
 
-    assert [%Event{user_id: user_id, end_reason: "navigation", device_class: "mobile"}] = stored()
-    assert user_id == user.id
+    assert [%Event{end_reason: "navigation", device_class: "mobile"}] = stored()
+    assert %{rows: [[nil]]} = Repo.query!("SELECT user_id FROM qoe_events")
+
+    # LiveView and unload beacon share the same key and therefore deduplicate.
+    assert {:ok, %{accepted: 0}} =
+             Streamix.Qoe.record_client_event(
+               Streamix.AccountsFixtures.library_key_fixture(user),
+               @sample
+             )
+
+    %{conn: other_conn} = register_and_log_in_user(%{conn: build_conn()})
+    assert other_conn |> post(~p"/api/qoe/beacon", @sample) |> response(204)
+    assert length(stored()) == 2
   end
 
   test "an anonymous beacon is refused and stores nothing", %{conn: conn} do

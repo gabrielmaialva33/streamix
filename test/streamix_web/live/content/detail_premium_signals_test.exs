@@ -277,16 +277,14 @@ defmodule StreamixWeb.Content.DetailPremiumSignalsTest do
         |> Map.fetch!(:episodes)
         |> hd()
 
+      key = library_key_fixture(user)
+
+      # The original copy first, so the alternative is the latest one watched.
       assert {:ok, _} =
-               Streamix.Library.update_watch_progress(user.id, "episode", episode.id, 120, 1200)
+               Streamix.Library.update_watch_progress(key, "episode", original.id, 60, 1200)
 
-      assert {:ok, old_progress} =
-               Streamix.Library.update_watch_progress(user.id, "episode", original.id, 60, 1200)
-
-      Streamix.Iptv.WatchProgress
-      |> Repo.get!(old_progress.id)
-      |> Ecto.Changeset.change(last_watched_at: DateTime.add(DateTime.utc_now(:second), -60))
-      |> Repo.update!()
+      assert {:ok, _} =
+               Streamix.Library.update_watch_progress(key, "episode", episode.id, 120, 1200)
 
       conn = log_in_user(conn, user)
 

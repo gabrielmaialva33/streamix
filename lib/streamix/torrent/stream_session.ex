@@ -29,6 +29,8 @@ defmodule Streamix.Torrent.StreamSession do
 
   require Logger
 
+  alias Streamix.SafeLog
+
   alias Streamix.Torrent.Client
 
   @registry Streamix.Torrent.StreamRegistry
@@ -268,7 +270,10 @@ defmodule Streamix.Torrent.StreamSession do
     state = %{state | idle_timer: nil}
 
     if map_size(state.viewers) == 0 do
-      Logger.info("[Torrent.StreamSession] idle grace expired for #{state.info_hash}, exiting")
+      Logger.info(
+        "[Torrent.StreamSession] idle grace expired for #{SafeLog.content_ref(state.info_hash)}, exiting"
+      )
+
       {:stop, :normal, state}
     else
       {:noreply, state}
@@ -316,7 +321,7 @@ defmodule Streamix.Torrent.StreamSession do
         file_idx = pick_video_file(summary)
 
         Logger.info(
-          "[Torrent.StreamSession] added #{state.info_hash}, file_idx=#{inspect(file_idx)}"
+          "[Torrent.StreamSession] added #{SafeLog.content_ref(state.info_hash)}, file_idx=#{inspect(file_idx)}"
         )
 
         schedule_ready_check()
@@ -336,7 +341,7 @@ defmodule Streamix.Torrent.StreamSession do
       {:error, reason} ->
         Logger.warning(
           "[Torrent.StreamSession] add attempt #{attempt}/#{@max_add_attempts} failed " <>
-            "for #{state.info_hash}: #{inspect(reason)}"
+            "for #{SafeLog.content_ref(state.info_hash)}: #{inspect(reason)}"
         )
 
         state = %{state | add_attempts: attempt, last_error: reason}

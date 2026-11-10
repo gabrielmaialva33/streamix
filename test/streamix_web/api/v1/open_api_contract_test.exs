@@ -193,7 +193,7 @@ defmodule StreamixWeb.Api.V1.OpenApiContractTest do
     user = user_fixture()
     provider = provider_fixture(user)
     movie = movie_fixture(provider)
-    token = Streamix.Accounts.generate_user_session_token(user) |> Base.url_encode64()
+    token = api_token_fixture(user)
 
     authenticated = fn -> put_req_header(build_conn(), "authorization", "Bearer #{token}") end
 

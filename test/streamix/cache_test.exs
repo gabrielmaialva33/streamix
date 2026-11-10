@@ -132,13 +132,44 @@ defmodule Streamix.CacheTest do
     test "groups_key/1 generates correct key" do
       assert Cache.groups_key(111) == "groups:user:111"
     end
+  end
 
-    test "personalization keys share the user namespace" do
-      assert Cache.user_profile_key(123) == "ai:user:123:profile"
-      assert Cache.user_insights_key(123) == "ai:user:123:insights"
+  describe "fetch_personal/4" do
+    setup do
+      previous = Application.get_env(:streamix, :disable_local_cache)
+      Application.put_env(:streamix, :disable_local_cache, false)
+      on_exit(fn -> Application.put_env(:streamix, :disable_local_cache, previous) end)
+      user_id = 9_000_000_000 + System.unique_integer([:positive])
+      %{user_id: user_id, other_id: user_id + 1}
+    end
 
-      assert Cache.recommendations_key(123, "movies", 20, true) ==
-               "ai:user:123:recommendations:movies:20:exclude:true"
+    test "memoises per user and kind, and invalidation drops every kind", %{
+      user_id: user_id,
+      other_id: other_id
+    } do
+      assert Cache.fetch_personal(user_id, :profile, 60_000, fn -> [0.1] end) == [0.1]
+      assert Cache.fetch_personal(user_id, :insights, 60_000, fn -> %{has_data: true} end)
+      assert Cache.fetch_personal(other_id, :profile, 60_000, fn -> [0.9] end) == [0.9]
+
+      assert Cache.fetch_personal(user_id, :profile, 60_000, fn -> flunk("recomputed") end) ==
+               [0.1]
+
+      assert {:ok, _deleted} = Cache.invalidate_personalization(user_id)
+
+      assert Cache.fetch_personal(user_id, :profile, 60_000, fn -> [0.2] end) == [0.2]
+
+      assert Cache.fetch_personal(user_id, :insights, 60_000, fn -> :recomputed end) ==
+               :recomputed
+
+      assert Cache.fetch_personal(other_id, :profile, 60_000, fn -> flunk("recomputed") end) ==
+               [0.9]
+    end
+
+    test "never writes to Redis", %{user_id: user_id} do
+      Cache.fetch_personal(user_id, :profile, 60_000, fn -> [0.1] end)
+
+      assert {:ok, 0} = Cache.delete_pattern("*:user:#{user_id}*")
+      assert {:ok, 0} = Cache.delete_pattern("*#{user_id}*")
     end
   end
 
@@ -147,8 +178,8 @@ defmodule Streamix.CacheTest do
       Cache.set("categories:user:1", ["News"])
       Cache.set("groups:user:1", ["Group1"])
       Cache.set("other:user:1", "data")
-      Cache.set(Cache.user_profile_key(1), [0.1, 0.2])
-      Cache.set(Cache.recommendations_key(1, "movies", 20, true), [%{id: 1}])
+      Cache.set("ai:user:1:profile", [0.1, 0.2])
+      Cache.set("ai:user:1:recommendations:movies:20:exclude:true", [%{id: 1}])
       Cache.set("categories:user:2", ["Sports"])
 
       {:ok, count} = Cache.invalidate_user(1)
@@ -157,32 +188,34 @@ defmodule Streamix.CacheTest do
       assert is_nil(Cache.get("categories:user:1"))
       assert is_nil(Cache.get("groups:user:1"))
       assert is_nil(Cache.get("other:user:1"))
-      assert is_nil(Cache.get(Cache.user_profile_key(1)))
-      assert is_nil(Cache.get(Cache.recommendations_key(1, "movies", 20, true)))
+      assert is_nil(Cache.get("ai:user:1:profile"))
+      assert is_nil(Cache.get("ai:user:1:recommendations:movies:20:exclude:true"))
       assert Cache.get("categories:user:2") == ["Sports"]
     end
   end
 
   describe "invalidate_personalization/1" do
-    test "removes canonical, home and rolling-deploy legacy entries" do
-      Cache.set(Cache.user_profile_key(1), [0.1, 0.2])
-      Cache.set(Cache.user_insights_key(1), %{has_data: true})
-      Cache.set(Cache.recommendations_key(1, "movies", 20, true), [%{id: 1}])
+    # Personalization lives in local memory now (fetch_personal/4); these are
+    # the Redis keys older releases wrote, which must not outlive a deploy.
+    test "sweeps personalization older releases left in Redis" do
+      Cache.set("ai:user:1:profile", [0.1, 0.2])
+      Cache.set("ai:user:1:insights", %{has_data: true})
+      Cache.set("ai:user:1:recommendations:movies:20:exclude:true", [%{id: 1}])
       Cache.set("home:trending:user:1:all:7", [%{id: 1}])
       Cache.set("user_profile:1", [9.9])
       Cache.set("recommendations:1:movies:20", [%{id: 9}])
-      Cache.set(Cache.user_profile_key(2), [0.3, 0.4])
+      Cache.set("ai:user:2:profile", [0.3, 0.4])
 
       assert {:ok, deleted} = Cache.invalidate_personalization(1)
       assert deleted == 5
 
-      assert is_nil(Cache.get(Cache.user_profile_key(1)))
-      assert is_nil(Cache.get(Cache.user_insights_key(1)))
-      assert is_nil(Cache.get(Cache.recommendations_key(1, "movies", 20, true)))
+      assert is_nil(Cache.get("ai:user:1:profile"))
+      assert is_nil(Cache.get("ai:user:1:insights"))
+      assert is_nil(Cache.get("ai:user:1:recommendations:movies:20:exclude:true"))
       assert is_nil(Cache.get("home:trending:user:1:all:7"))
       assert is_nil(Cache.get("user_profile:1"))
       assert is_nil(Cache.get("recommendations:1:movies:20"))
-      assert Cache.get(Cache.user_profile_key(2)) == [0.3, 0.4]
+      assert Cache.get("ai:user:2:profile") == [0.3, 0.4]
     end
   end
 

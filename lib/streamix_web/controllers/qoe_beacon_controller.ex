@@ -14,8 +14,8 @@ defmodule StreamixWeb.QoeBeaconController do
 
   def create(conn, params) do
     case conn.assigns[:current_scope] do
-      %{user: %{id: user_id}} ->
-        _result = Qoe.record_client_event(user_id, Map.delete(params, "_csrf_token"))
+      %{user: %{}, library_key: %Streamix.Library.Key{} = library_key} ->
+        _result = Qoe.record_client_event(library_key, Map.delete(params, "_csrf_token"))
         send_resp(conn, :no_content, "")
 
       _anonymous ->

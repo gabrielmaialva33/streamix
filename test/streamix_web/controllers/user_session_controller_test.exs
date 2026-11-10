@@ -74,6 +74,44 @@ defmodule StreamixWeb.UserSessionControllerTest do
       |> get(~p"/settings")
 
     assert restored_conn.status == 200
+
+    # The cookie restores the library secret along with the session token.
+    assert restored_conn.assigns.current_scope.library_key == library_key_fixture(user)
+  end
+
+  test "login unlocks the library and keeps only its wrap in the database", %{conn: conn} do
+    user = user_fixture()
+
+    conn =
+      post(conn, ~p"/login", %{
+        "user" => %{"email" => user.email, "password" => valid_user_password()}
+      })
+
+    secret = get_session(conn, :library_secret)
+    assert byte_size(secret) == 32
+
+    token_row = Repo.get_by!(UserToken, user_id: user.id, context: "session")
+    assert is_binary(token_row.library_key)
+    assert :binary.match(token_row.library_key, secret) == :nomatch
+
+    conn = conn |> recycle() |> get(~p"/history")
+    assert html_response(conn, 200)
+    assert conn.assigns.current_scope.library_key == library_key_fixture(user)
+  end
+
+  test "a session from before the library was sealed ends and must log in again", %{conn: conn} do
+    user = user_fixture()
+    legacy_token = Streamix.Accounts.generate_user_session_token(user)
+
+    conn =
+      conn
+      |> init_test_session(%{})
+      |> put_session(:user_token, legacy_token)
+      |> get(~p"/history")
+
+    assert redirected_to(conn) == ~p"/login"
+    refute get_session(conn, :user_token)
+    refute Repo.get_by(UserToken, token: legacy_token)
   end
 
   test "allows opting out of persistent login", %{conn: conn} do

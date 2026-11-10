@@ -19,6 +19,8 @@ defmodule Streamix.Gindex.UrlCache do
 
   require Logger
 
+  alias Streamix.SafeLog
+
   @table_name :gindex_url_cache
   @default_ttl :timer.minutes(30)
   @refresh_margin :timer.minutes(5)
@@ -149,7 +151,7 @@ defmodule Streamix.Gindex.UrlCache do
 
       {:error, reason} ->
         Logger.warning(
-          "[GIndex UrlCache] Failed to get URL for #{type} #{id}: #{inspect(reason)}"
+          "[GIndex UrlCache] Failed to get URL for #{SafeLog.content_ref({type, id})}: #{inspect(reason)}"
         )
 
         fallback_to_db_cache(type, id, source, reason)
@@ -165,7 +167,8 @@ defmodule Streamix.Gindex.UrlCache do
 
       {:error, reason} ->
         Logger.warning(
-          "[GIndex UrlCache] Could not persist URL for #{type} #{id}: #{inspect(reason)}"
+          "[GIndex UrlCache] Could not persist URL for #{SafeLog.content_ref({type, id})}: " <>
+            inspect(reason)
         )
     end
   end
@@ -175,10 +178,16 @@ defmodule Streamix.Gindex.UrlCache do
       %{cached_url: url, cached_until: %DateTime{} = expires_at}
       when is_binary(url) and url != "" ->
         if DateTime.compare(expires_at, DateTime.utc_now()) == :gt do
-          Logger.info("[GIndex UrlCache] Using fallback DB cache for #{type} #{id}")
+          Logger.info(
+            "[GIndex UrlCache] Using fallback DB cache for #{SafeLog.content_ref({type, id})}"
+          )
+
           {:ok, url}
         else
-          Logger.warning("[GIndex UrlCache] DB cache expired for #{type} #{id}")
+          Logger.warning(
+            "[GIndex UrlCache] DB cache expired for #{SafeLog.content_ref({type, id})}"
+          )
+
           {:error, upstream_error}
         end
 

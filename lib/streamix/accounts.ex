@@ -6,6 +6,7 @@ defmodule Streamix.Accounts do
   import Ecto.Query, warn: false
   alias Streamix.Accounts.{IpTracker, Role, Scope, SessionPolicy, User, UserNotifier, UserToken}
   alias Streamix.Billing
+  alias Streamix.Library
   alias Streamix.Repo
 
   ## Database getters
@@ -260,9 +261,10 @@ defmodule Streamix.Accounts do
   end
 
   @doc """
-  Builds the authenticated request scope for a user.
+  Builds the authenticated request scope for a user and, when the session has
+  unlocked it, their library key.
   """
-  defdelegate scope_for_user(user), to: Scope, as: :for_user
+  defdelegate scope_for_user(user, library_key \\ nil), to: Scope, as: :for_user
 
   @doc """
   Extracts the session metadata persisted with an authenticated request.
@@ -363,7 +365,11 @@ defmodule Streamix.Accounts do
   def update_user_password(user, attrs) do
     user
     |> User.password_changeset(attrs)
-    |> update_user_and_delete_all_tokens()
+    |> update_user_and_delete_all_tokens(fn updated ->
+      # Without the current password nobody can open the old library key, so
+      # the sealed history and favorites go with it. See Streamix.Library.
+      Library.forget(updated.id)
+    end)
   end
 
   @doc """
@@ -376,7 +382,15 @@ defmodule Streamix.Accounts do
   """
   def update_user_password(user, current_password, attrs) do
     if User.valid_password?(user, current_password) do
-      update_user_password(user, attrs)
+      new_password = attrs["password"] || attrs[:password]
+      changeset = User.password_changeset(user, attrs)
+
+      update_user_and_delete_all_tokens(changeset, fn updated ->
+        # Re-wrap the library key so history and favorites survive the change.
+        updated.id
+        |> Library.change_password(current_password, new_password)
+        |> library_rewrap_result(changeset)
+      end)
     else
       changeset =
         user
@@ -508,10 +522,11 @@ defmodule Streamix.Accounts do
 
   @doc """
   Generates a session token.
-  Optionally accepts ip_info map with :ip_address, :user_agent, :country, :city
+  Optionally accepts ip_info map with :ip_address, :user_agent, :country, :city,
+  and the session's sealed library key (see `Streamix.Library.seal_session/1`).
   """
-  def generate_user_session_token(user, ip_info \\ %{}) do
-    {token, user_token} = UserToken.build_session_token(user, ip_info)
+  def generate_user_session_token(user, ip_info \\ %{}, library_key \\ nil) do
+    {token, user_token} = UserToken.build_session_token(user, ip_info, library_key)
     Repo.insert!(user_token)
     token
   end
@@ -522,10 +537,24 @@ defmodule Streamix.Accounts do
   If the token is valid `{user, token_inserted_at}` is returned, otherwise `nil` is returned.
   """
   def get_user_by_session_token(token) do
+    case get_session_by_token(token) do
+      {user, inserted_at, _library_key} -> {user, inserted_at}
+      nil -> nil
+    end
+  end
+
+  @doc """
+  Like `get_user_by_session_token/1`, but also returns the session's sealed
+  library key: `{user, token_inserted_at, sealed_library_key}`, or `nil`.
+
+  The sealed key is `nil` for sessions created before the library was
+  encrypted; those cannot read the library and must log in again.
+  """
+  def get_session_by_token(token) do
     {:ok, query} = UserToken.verify_session_token_query(token)
 
     case Repo.one(query) do
-      {user, inserted_at} -> {Repo.preload(user, :role), inserted_at}
+      {user, inserted_at, library_key} -> {Repo.preload(user, :role), inserted_at, library_key}
       nil -> nil
     end
   end
@@ -555,11 +584,24 @@ defmodule Streamix.Accounts do
     :ok
   end
 
+  defp library_rewrap_result(:ok, _changeset), do: :ok
+
+  defp library_rewrap_result({:error, :locked}, changeset) do
+    {:error,
+     changeset
+     |> Ecto.Changeset.add_error(
+       :current_password,
+       "não foi possível abrir sua biblioteca com esta senha"
+     )
+     |> Map.put(:action, :validate)}
+  end
+
   ## Token helper
 
-  defp update_user_and_delete_all_tokens(changeset) do
+  defp update_user_and_delete_all_tokens(changeset, after_update) do
     Repo.transact(fn ->
-      with {:ok, user} <- Repo.update(changeset) do
+      with {:ok, user} <- Repo.update(changeset),
+           :ok <- after_update.(user) do
         tokens_to_expire = Repo.all_by(UserToken, user_id: user.id)
 
         Repo.delete_all(from(t in UserToken, where: t.id in ^Enum.map(tokens_to_expire, & &1.id)))

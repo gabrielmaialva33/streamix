@@ -13,8 +13,8 @@ defmodule Streamix.AI.UserAnalytics.Filters do
   """
   def get_user_genre_filters(nil), do: default_genre_filters()
 
-  def get_user_genre_filters(user_id) do
-    case Insights.get_user_insights(user_id) do
+  def get_user_genre_filters(key) do
+    case Insights.get_user_insights(key) do
       %{favorite_genres: [_ | _] = genres} ->
         user_genres =
           genres

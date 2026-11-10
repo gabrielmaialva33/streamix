@@ -312,7 +312,7 @@ defmodule Streamix.BillingTest do
     assert {:ok, first} = Billing.start_playback_session(user, attrs)
     assert {:ok, second} = Billing.start_playback_session(user, %{attrs | content_id: 8})
 
-    assert Repo.reload!(first).status == "ended"
+    refute Repo.reload(first)
     assert second.status == "active"
     assert second.client_id == "tab-a"
     assert Billing.active_playback_count(user) == 1

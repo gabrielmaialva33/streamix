@@ -15,10 +15,16 @@ defmodule Streamix.AI.UserAnalytics do
 
   ## Architecture
 
-  1. User watches content -> WatchProgress saved
+  1. User watches content -> sealed WatchProgress saved (see Streamix.Library)
   2. Background job generates embedding for content
-  3. User profile vector = weighted average of watched content vectors
+  3. User profile vector = weighted average of watched content vectors,
+     computed inside the user's session with their library key
   4. Recommendations = Qdrant search using profile vector
+
+  Everything derived from the history takes the user's `Streamix.Library.Key`
+  and lives only in this node's memory (`Streamix.Cache.fetch_personal/4`):
+  no taste vector, insight or recommendation list is written to Qdrant,
+  Redis or the database.
   """
 
   alias Streamix.AI.UserAnalytics.Channels
@@ -30,25 +36,25 @@ defmodule Streamix.AI.UserAnalytics do
   alias Streamix.AI.UserAnalytics.Profile
   alias Streamix.AI.UserAnalytics.Recommendations
 
-  defdelegate compute_user_profile(user_id), to: Profile
-  defdelegate get_user_profile(user_id), to: Profile
-  defdelegate get_personalization_context(user_id), to: Context, as: :load
+  defdelegate compute_user_profile(key), to: Profile
+  defdelegate get_user_profile(key), to: Profile
+  defdelegate get_personalization_context(key), to: Context, as: :load
 
-  defdelegate get_recommendations(user_id, opts \\ []), to: Recommendations
+  defdelegate get_recommendations(key, opts \\ []), to: Recommendations
   defdelegate get_similar_to(content_id, collection, opts \\ []), to: Recommendations
   defdelegate get_more_like_this(content, collection), to: Recommendations
 
-  defdelegate get_channel_recommendations(user_id, opts \\ []), to: Channels
-  defdelegate get_personalized_channels(user_id, opts \\ []), to: Channels
+  defdelegate get_channel_recommendations(key, opts \\ []), to: Channels
+  defdelegate get_personalized_channels(key, opts \\ []), to: Channels
 
-  defdelegate get_personalized_trending(user_id, opts \\ []), to: PersonalizedContent
-  defdelegate get_personalized_series(user_id, opts \\ []), to: PersonalizedContent
+  defdelegate get_personalized_trending(key, opts \\ []), to: PersonalizedContent
+  defdelegate get_personalized_series(key, opts \\ []), to: PersonalizedContent
 
-  defdelegate get_user_genre_filters(user_id), to: Filters
+  defdelegate get_user_genre_filters(key), to: Filters
   defdelegate get_period_filters(), to: Filters
   defdelegate get_channel_category_filters(), to: Filters
 
-  defdelegate get_user_insights(user_id), to: Insights
+  defdelegate get_user_insights(key), to: Insights
 
   defdelegate index_content(content, collection), to: Indexing
   defdelegate index_contents(contents, collection), to: Indexing

@@ -7,12 +7,13 @@ defmodule StreamixWeb.Content.FavoriteState do
 
   @type status :: :added | :removed
 
-  def toggle(user_id, content_type, content_id, attrs \\ %{})
+  @doc "Toggles a favorite with the signed-in user's library key (`scope.library_key`)."
+  def toggle(library_key, content_type, content_id, attrs \\ %{})
 
   def toggle(nil, _content_type, _content_id, _attrs), do: {:error, :unauthorized}
 
-  def toggle(user_id, content_type, content_id, attrs) do
-    Library.toggle_favorite(user_id, content_type, content_id, attrs)
+  def toggle(library_key, content_type, content_id, attrs) do
+    Library.toggle_favorite(library_key, content_type, content_id, attrs)
   end
 
   def apply_map(socket, assign_key, content_id, :added) do

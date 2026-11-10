@@ -4,7 +4,7 @@ defmodule StreamixWeb.Api.V1.ProvidersControllerTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
-  alias Streamix.{Accounts, Repo}
+  alias Streamix.Repo
 
   setup do
     original_api_keys = Application.get_env(:streamix, :api_keys, [])
@@ -16,11 +16,11 @@ defmodule StreamixWeb.Api.V1.ProvidersControllerTest do
   test "index serializes the live-channel counter without exposing credentials", %{conn: conn} do
     user = user_fixture()
     provider = provider_fixture(user, %{live_channels_count: 7})
-    token = Accounts.generate_user_session_token(user)
+    token = api_token_fixture(user)
 
     response =
       conn
-      |> put_req_header("authorization", "Bearer #{Base.url_encode64(token)}")
+      |> put_req_header("authorization", "Bearer #{token}")
       |> get(~p"/api/v1/providers")
       |> json_response(200)
 
@@ -41,11 +41,11 @@ defmodule StreamixWeb.Api.V1.ProvidersControllerTest do
       })
       |> Repo.update!()
 
-    token = Accounts.generate_user_session_token(user)
+    token = api_token_fixture(user)
 
     response =
       conn
-      |> put_req_header("authorization", "Bearer #{Base.url_encode64(token)}")
+      |> put_req_header("authorization", "Bearer #{token}")
       |> get(~p"/api/v1/providers")
       |> json_response(200)
 
@@ -55,11 +55,11 @@ defmodule StreamixWeb.Api.V1.ProvidersControllerTest do
 
   test "create returns formatted validation errors for invalid payload", %{conn: conn} do
     user = user_fixture()
-    token = Accounts.generate_user_session_token(user)
+    token = api_token_fixture(user)
 
     conn =
       conn
-      |> put_req_header("authorization", "Bearer #{Base.url_encode64(token)}")
+      |> put_req_header("authorization", "Bearer #{token}")
       |> post(~p"/api/v1/providers", %{
         "name" => "",
         "url" => "not-a-url",
@@ -82,11 +82,11 @@ defmodule StreamixWeb.Api.V1.ProvidersControllerTest do
 
   test "create rejects an HTTP scheme without a host", %{conn: conn} do
     user = user_fixture()
-    token = Accounts.generate_user_session_token(user)
+    token = api_token_fixture(user)
 
     response =
       conn
-      |> put_req_header("authorization", "Bearer #{Base.url_encode64(token)}")
+      |> put_req_header("authorization", "Bearer #{token}")
       |> post(~p"/api/v1/providers", %{
         "name" => "Broken",
         "url" => "http:",

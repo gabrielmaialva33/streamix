@@ -4,6 +4,7 @@ defmodule Streamix.AI.UserAnalytics.PersonalizedContent do
   alias Streamix.AI.UserAnalytics.Insights
   alias Streamix.AI.UserAnalytics.Profile
   alias Streamix.Catalog
+  alias Streamix.Library.Key
 
   @doc """
   Gets personalized trending movies for user.
@@ -17,7 +18,7 @@ defmodule Streamix.AI.UserAnalytics.PersonalizedContent do
   - `:days` - Trending period (7 | 30 | nil for all time)
   - `:show_adult` - Include adult content (default: false)
   """
-  def get_personalized_trending(user_id, opts \\ []) do
+  def get_personalized_trending(%Key{} = key, opts \\ []) do
     limit = opts[:limit] || 12
     genre = opts[:genre] || "all"
     days = Keyword.get(opts, :days, 7)
@@ -25,7 +26,7 @@ defmodule Streamix.AI.UserAnalytics.PersonalizedContent do
 
     Catalog.list_trending_movies(limit: limit * 2, days: days, show_adult: show_adult)
     |> filter_by_genre(genre)
-    |> maybe_reorder_by_user_taste(user_id, personalization_input(opts))
+    |> maybe_reorder_by_user_taste(key, personalization_input(opts))
     |> Enum.take(limit)
   end
 
@@ -39,14 +40,14 @@ defmodule Streamix.AI.UserAnalytics.PersonalizedContent do
   - `:genre` - Filter by genre
   - `:days` - Recent additions period
   """
-  def get_personalized_series(user_id, opts \\ []) do
+  def get_personalized_series(%Key{} = key, opts \\ []) do
     limit = opts[:limit] || 12
     genre = opts[:genre] || "all"
     show_adult = Keyword.get(opts, :show_adult, false)
 
     Catalog.list_top_10_series(limit: limit * 2, show_adult: show_adult)
     |> filter_by_genre(genre)
-    |> maybe_reorder_by_user_taste(user_id, personalization_input(opts))
+    |> maybe_reorder_by_user_taste(key, personalization_input(opts))
     |> Enum.take(limit)
   end
 
@@ -67,9 +68,9 @@ defmodule Streamix.AI.UserAnalytics.PersonalizedContent do
     }
   end
 
-  defp maybe_reorder_by_user_taste(items, user_id, input) do
-    profile = resolve_profile(input.profile, user_id)
-    insights = resolve_insights(input.insights, user_id)
+  defp maybe_reorder_by_user_taste(items, key, input) do
+    profile = resolve_profile(input.profile, key)
+    insights = resolve_insights(input.insights, key)
 
     if personalization_available?(profile, insights, input.semantic_scores) do
       rank_items(items, insights, input.semantic_scores, current_year: input.current_year)
@@ -126,12 +127,12 @@ defmodule Streamix.AI.UserAnalytics.PersonalizedContent do
     semantic + genre + rating + recency + upstream_order
   end
 
-  defp resolve_profile(:fetch, user_id), do: Profile.get_user_profile(user_id)
-  defp resolve_profile(profile, _user_id), do: profile
+  defp resolve_profile(:fetch, key), do: Profile.get_user_profile(key)
+  defp resolve_profile(profile, _key), do: profile
 
-  defp resolve_insights(:fetch, user_id), do: Insights.get_user_insights(user_id)
-  defp resolve_insights(insights, _user_id) when is_map(insights), do: insights
-  defp resolve_insights(_insights, _user_id), do: %{}
+  defp resolve_insights(:fetch, key), do: Insights.get_user_insights(key)
+  defp resolve_insights(insights, _key) when is_map(insights), do: insights
+  defp resolve_insights(_insights, _key), do: %{}
 
   defp genre_match?(item, %MapSet{} = favorite_slugs) do
     item
