@@ -33,6 +33,16 @@ defmodule Streamix.Playback do
   @doc "Whether a VOD item is quarantined until sync changes it or the recheck window expires."
   defdelegate vod_dead?(content), to: Streamix.Iptv.Content.VodAvailability, as: :dead?
 
+  @doc """
+  Whether `content` of `type` answered not-found recently enough to skip it:
+  live channels use their 24-hour recheck window, VOD its seven-day quarantine.
+  """
+  @spec content_dead?(String.t() | atom(), map()) :: boolean()
+  def content_dead?(type, content) when type in ["live_channel", :live_channel],
+    do: Channels.dead?(content)
+
+  def content_dead?(_type, content), do: vod_dead?(content)
+
   # Playability and canonical stream targets
 
   defdelegate get_episode_for_stream(id), to: SeriesOps

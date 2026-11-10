@@ -53,6 +53,29 @@ defmodule StreamixWeb.PlayerDeadVodTest do
     assert has_element?(view, "#video-player-container[data-content-id='#{alive.id}']")
   end
 
+  test "a channel that answered 404 shows it is off the air instead of retrying", %{
+    conn: conn,
+    user: user
+  } do
+    channel = provider_fixture(user) |> channel_fixture() |> mark_dead()
+
+    assert {:error, {:redirect, %{to: "/", flash: %{"error" => message}}}} =
+             live(conn, ~p"/watch/live_channel/#{channel.id}")
+
+    assert message =~ "fora do ar"
+  end
+
+  test "a channel past its 24-hour recheck window is tried again", %{conn: conn, user: user} do
+    channel =
+      provider_fixture(user)
+      |> channel_fixture()
+      |> Ecto.Changeset.change(dead_since: DateTime.add(DateTime.utc_now(:second), -25 * 3600))
+      |> Streamix.Repo.update!()
+
+    {:ok, view, _html} = live(conn, ~p"/watch/live_channel/#{channel.id}")
+    assert has_element?(view, "#video-player-container")
+  end
+
   defp mark_dead(content) do
     content
     |> Ecto.Changeset.change(dead_since: DateTime.utc_now(:second))

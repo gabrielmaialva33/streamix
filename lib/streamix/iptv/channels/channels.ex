@@ -316,6 +316,18 @@ defmodule Streamix.Iptv.Channels do
   end
 
   @doc """
+  Whether `channel` answered 404 within the recheck window, the same window
+  that hides it from listings. After the window it is tried again.
+  """
+  @spec dead?(map() | term()) :: boolean()
+  def dead?(%{dead_since: %DateTime{} = since}) do
+    cutoff = DateTime.add(DateTime.utc_now(), -@dead_recheck_hours * 3600, :second)
+    DateTime.compare(since, cutoff) == :gt
+  end
+
+  def dead?(_channel), do: false
+
+  @doc """
   Clears the dead flag for a channel (called implicitly by sync when the
   upstream lists the channel again, or after a successful resolve).
   """

@@ -80,7 +80,7 @@ defmodule Streamix.Iptv.Sync.NormalizersTest do
       assert attrs.tv_archive == false
     end
 
-    test "resets dead_since while normalizing upstream channel attrs" do
+    test "leaves dead_since out, so a sync cannot revive a channel that answered 404" do
       attrs =
         LiveChannel.attrs(
           %{
@@ -93,7 +93,7 @@ defmodule Streamix.Iptv.Sync.NormalizersTest do
         )
 
       assert attrs.name == "Recovered Channel"
-      assert attrs.dead_since == nil
+      refute Map.has_key?(attrs, :dead_since)
     end
   end
 

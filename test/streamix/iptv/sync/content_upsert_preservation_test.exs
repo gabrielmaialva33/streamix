@@ -249,6 +249,26 @@ defmodule Streamix.Iptv.Sync.ContentUpsertPreservationTest do
     refute reloaded.tv_archive
   end
 
+  test "a sync keeps a live channel's 404 marker; the recheck window decides", %{
+    provider: provider
+  } do
+    channel = channel_fixture(provider, %{stream_id: 7272, name: "Canal"})
+    dead_at = DateTime.utc_now(:second)
+    :ok = Streamix.Iptv.Channels.mark_dead(channel.id)
+
+    # The panel keeps listing a channel whose stream is gone.
+    sync(
+      [%{"stream_id" => 7272, "name" => "Canal", "tv_archive" => 0}],
+      provider,
+      LiveChannel,
+      ChannelNormalizer,
+      :stream_id,
+      "live"
+    )
+
+    assert DateTime.compare(Repo.get!(LiveChannel, channel.id).dead_since, dead_at) != :lt
+  end
+
   defp extra_metadata(Movie), do: %{duration_secs: 7200, imdb_id: "tt0137523"}
   defp extra_metadata(Series), do: %{}
 

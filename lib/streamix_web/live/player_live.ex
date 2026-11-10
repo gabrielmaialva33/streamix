@@ -505,7 +505,7 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   defp load_available_content(socket, type, user_id, content, provider, return_to) do
-    if Streamix.Playback.vod_dead?(content) do
+    if Streamix.Playback.content_dead?(type, content) do
       # Never probe here: the replacement goes through
       # load_authorized_content/6, which shows the startup screen and probes
       # off the mount when its provider needs it.
@@ -529,16 +529,19 @@ defmodule StreamixWeb.PlayerLive do
         {:error, :no_sources, _attempted} ->
           {:ok,
            socket
-           |> put_flash(
-             :error,
-             "Este vídeo está indisponível no momento. Tente outra versão nos detalhes."
-           )
+           |> put_flash(:error, unavailable_message(type))
            |> redirect(to: ~p"/")}
       end
     else
       load_authorized_content(socket, type, user_id, content, provider, return_to)
     end
   end
+
+  defp unavailable_message("live_channel"),
+    do: "Este canal está fora do ar no momento. Tente outro canal."
+
+  defp unavailable_message(_type),
+    do: "Este vídeo está indisponível no momento. Tente outra versão nos detalhes."
 
   defp load_authorized_content(
          socket,
