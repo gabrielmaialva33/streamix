@@ -14,6 +14,7 @@ import {
 } from "./playback_engine_activation.js";
 import { scheduleLowPriority } from "./playback_environment.js";
 import { loadAVPlayer } from "./playback_module_loader.js";
+import { mediaErrorCode } from "./playback_reasons.js";
 
 export const NATIVE_PLAYBACK_MESSAGES = Object.freeze({
   ABORTED: "Reproducao cancelada",
@@ -27,10 +28,7 @@ export const NATIVE_METADATA_PROBE_TIMEOUT_MS = 5_000;
 
 // HTMLMediaElement error codes. Spelled out so the activation stays usable
 // without the browser global.
-const MEDIA_ERR_ABORTED = 1;
 const MEDIA_ERR_NETWORK = 2;
-const MEDIA_ERR_DECODE = 3;
-const MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
 
 export const NATIVE_ENGINE_ACTIVATION_HOST_METHODS = Object.freeze([
   ...PLAYBACK_ENGINE_ACTIVATION_HOST_METHODS,
@@ -125,6 +123,9 @@ export class NativeEngineActivation {
 
     this.host.setNativePlaybackEventsSuppressed(false);
     this.host.syncPiPAvailability();
+    // Whether this activation ever showed a frame: before that, any failure of
+    // a progressive VOD earns one AVPlayer attempt.
+    this.framePresented = false;
     const resumeTime = this.host.takeResumeTime();
     this.logger.info("Playing with native video element, url:", url);
     // Inline playback uses the same gesture chrome on every device. Safari's
@@ -149,6 +150,7 @@ export class NativeEngineActivation {
     const playHandler = () => {
       if (!this.host.isSessionCurrent(sessionId)) return;
 
+      this.framePresented = true;
       this.logger.debug("Native playback started");
       this.trace("native_playing", sessionId);
       const presentation = this.host.getPresentation();
@@ -258,6 +260,18 @@ export class NativeEngineActivation {
 
       if (error?.name === "NotSupportedError" && this.canTryAVPlayerForCurrentVod()) {
         this.logger.debug("[VideoPlayer] Native play failed, AVPlayer fallback will be attempted");
+        return;
+      }
+
+      // Any other rejection before a frame (not a blocked autoplay) used to
+      // end the session on an error screen; AVPlayer may still play it.
+      if (
+        error?.name !== "NotAllowedError" &&
+        !this.framePresented &&
+        this.canTryAVPlayerForCurrentVod()
+      ) {
+        this.host.recordPlaybackError("play_rejected");
+        this.host.tryAVPlayerFallback("failover");
         return;
       }
 
@@ -434,22 +448,31 @@ export class NativeEngineActivation {
   }
 
   resolveMediaError(error) {
-    this.host.recordPlaybackError();
+    const code = mediaErrorCode(error);
+    this.host.recordPlaybackError(code);
+
+    if (code === "media_network") return NATIVE_PLAYBACK_MESSAGES.NETWORK;
+
+    // A codec the browser cannot decode: AVPlayer decodes it in software,
+    // even mid-playback.
+    const unsupported = code === "media_decode" || code === "media_unsupported";
+
+    // Before the first frame, an aborted or unexplained failure of a
+    // progressive VOD also gets one AVPlayer attempt. Telemetry showed native
+    // MP4 sessions ending on "fatal_media_error" without ever trying it.
+    if ((unsupported || !this.framePresented) && this.canTryAVPlayerForCurrentVod()) {
+      this.logger.debug("[VideoPlayer] Native playback failed, trying AVPlayer fallback", code);
+      this.host.tryAVPlayerFallback(unsupported ? "fallback_codec" : "failover");
+      return null;
+    }
+
     if (!error) return NATIVE_PLAYBACK_MESSAGES.FAILED;
 
-    switch (error.code) {
-      case MEDIA_ERR_ABORTED:
+    switch (code) {
+      case "media_aborted":
         return NATIVE_PLAYBACK_MESSAGES.ABORTED;
-      case MEDIA_ERR_NETWORK:
-        return NATIVE_PLAYBACK_MESSAGES.NETWORK;
-      case MEDIA_ERR_DECODE:
-      case MEDIA_ERR_SRC_NOT_SUPPORTED:
-        // Try AVPlayer for any VOD content that may have unsupported codecs.
-        if (this.canTryAVPlayerForCurrentVod()) {
-          this.logger.debug("[VideoPlayer] Format not supported, trying AVPlayer fallback");
-          this.host.tryAVPlayerFallback();
-          return null;
-        }
+      case "media_decode":
+      case "media_unsupported":
         return NATIVE_PLAYBACK_MESSAGES.UNSUPPORTED;
       default:
         return NATIVE_PLAYBACK_MESSAGES.FAILED;

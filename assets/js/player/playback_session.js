@@ -1,5 +1,5 @@
 import { ENGINE_ID, normalizeEngineId } from "./engine_contract.js";
-import { clientRevision, endReason, engineReason } from "./playback_reasons.js";
+import { clientRevision, endReason, engineReason, errorCode } from "./playback_reasons.js";
 
 const defaultNow = () => globalThis.performance?.now?.() ?? Date.now();
 
@@ -81,8 +81,12 @@ export class PlaybackSession {
     }
   }
 
-  recordError() {
-    if (this.active) this.active.errorCount += 1;
+  recordError(code) {
+    if (!this.active) return;
+    this.active.errorCount += 1;
+    // The latest failure is the one that decided the session's fate.
+    const known = errorCode(code);
+    if (known) this.active.errorCode = known;
   }
 
   recordFallback(engine, reason) {
@@ -124,6 +128,7 @@ export class PlaybackSession {
                 : "unknown"),
       ),
       engine_reason: session.engineReason,
+      error_code: session.errorCode,
       client_revision: session.clientRevision,
       engine: session.engine,
       content_type: session.contentType,

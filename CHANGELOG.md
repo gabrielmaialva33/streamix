@@ -196,6 +196,10 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Player toasts and overlays cancel their timers when replaced or when the player closes.
 - Prices on the plans and billing pages are formatted in the plan's currency instead of always "R$".
 - The first tap on a phone shows the player controls at once.
+- A movie or episode whose native playback fails before its first frame (an aborted or unexplained media error, or a
+  rejected `play()`) now tries the AVPlayer engine once instead of ending on an error screen; before, only decode and
+  unsupported-format errors did. Playback telemetry records the failure as `error_code` (`media_decode`,
+  `media_unsupported`, `media_aborted`, `media_network`, `media_unknown`, `play_rejected`).
 - `POST /api/v1/auth/register` with an email already in use answers `422` with `email: has already been taken`;
   it crashed into a `500` because a validation option was not text.
 - Rate-limit buckets are separate per route group. They all shared one counter per client, so a viewer's HLS

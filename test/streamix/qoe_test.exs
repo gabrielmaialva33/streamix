@@ -1,6 +1,8 @@
 defmodule Streamix.QoeTest do
   use Streamix.DataCase, async: true
 
+  import Ecto.Query
+
   alias Streamix.Qoe
   alias Streamix.Qoe.Event
   alias Streamix.Repo
@@ -29,6 +31,26 @@ defmodule Streamix.QoeTest do
     refute Map.has_key?(event, :provider_id)
     refute Map.has_key?(event, :title)
     refute Map.has_key?(event, :url)
+  end
+
+  test "persists a known playback error code and drops anything else" do
+    for {code, stored} <- [
+          {"media_decode", "media_decode"},
+          {"play_rejected", "play_rejected"},
+          {"<script>", nil}
+        ] do
+      assert {:ok, %{accepted: 1}} =
+               Qoe.record_client_event(nil, %{
+                 "batch_id" => Ecto.UUID.generate(),
+                 "kind" => "playback",
+                 "event" => "playback_session",
+                 "outcome" => "error",
+                 "end_reason" => "fatal_media_error",
+                 "error_code" => code
+               })
+
+      assert Repo.one!(from e in Event, order_by: [desc: e.id], limit: 1).error_code == stored
+    end
   end
 
   test "invalid and oversized labels or revisions are discarded, and older clients remain accepted" do

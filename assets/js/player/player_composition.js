@@ -613,9 +613,9 @@ export const playerComposition = {
         this.fallbackAttempts++;
         this.lastFallbackTime = Date.now();
       },
-      recordPlaybackError: () => {
+      recordPlaybackError: (code) => {
         this.providerEngineMemory?.interrupt();
-        this.playbackMetrics?.recordError();
+        this.playbackMetrics?.recordError(code);
         this.recoveryGuard?.attempt();
       },
       recoverFromMpegtsError: (data) => this.recoverFromMpegtsError(data),
@@ -796,7 +796,7 @@ export const playerComposition = {
       playNative: () => this.playNative(),
       playWithMpegts: () => this.playWithMpegts(),
       pushEvent: (event, payload) => this.pushEventSafe(event, payload),
-      recordError: () => this.playbackMetrics?.recordError(),
+      recordError: (code) => this.playbackMetrics?.recordError(code),
       showErrorWithDiagnostics: (message, error, runDiagnostics) =>
         this.showErrorWithDiagnostics(message, error, runDiagnostics),
       showPlaybackError: (message) => this.showPlaybackError(message),

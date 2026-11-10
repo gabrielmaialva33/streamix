@@ -262,7 +262,7 @@ test("engine activations consume the host contract and never reach for the hook 
   assert.match(mpegts, /this\.host\.recoverFromMpegtsError\(/);
   assert.doesNotMatch(mpegts, /PlaybackEngineTransitionController\(/);
   assert.match(native, /this\.deps\.createNativePlaybackEngine\(\{/);
-  assert.match(native, /this\.host\.tryAVPlayerFallback\(\)/);
+  assert.match(native, /this\.host\.tryAVPlayerFallback\(/);
   assert.match(native, /this\.deps\.loadAVPlayer\(\)/);
   assert.doesNotMatch(native, /AVPlayerWrapper|transitionNativeToAVPlayer|MediaError\./);
   assert.match(avplayer, /this\.host\.getTransitionController\(\)/);

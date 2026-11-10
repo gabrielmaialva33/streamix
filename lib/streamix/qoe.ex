@@ -163,6 +163,7 @@ defmodule Streamix.Qoe do
       event: enum_value(metric, ["event", "type"], @events, "unknown"),
       outcome: enum_value(metric, "outcome", @outcomes, "unknown"),
       end_reason: Labels.end_reason(value(metric, "end_reason")),
+      error_code: Labels.error_code(value(metric, "error_code")),
       engine_reason: Labels.engine_reason(value(metric, "engine_reason")),
       client_revision: Labels.client_revision(value(metric, "client_revision")),
       engine: enum_value(metric, "engine", @engines, "unknown"),

@@ -358,11 +358,25 @@ test("media errors map to messages and unsupported VOD formats try AVPlayer firs
   network.video.dispatchEvent(new Event("error"));
   assert.equal(network.calls.errors.length, 1, "the handler detaches after a terminal error");
 
-  const unknown = createHarness();
-  unknown.activation.activate(unknown.request());
-  unknown.video.error = null;
-  unknown.video.dispatchEvent(new Event("error"));
-  assert.deepEqual(unknown.calls.errors, [NATIVE_PLAYBACK_MESSAGES.FAILED]);
+  // Before any frame, an unexplained or aborted failure of a progressive VOD
+  // gets the AVPlayer attempt too, instead of an error screen.
+  for (const error of [null, { code: 1 }, { code: 99 }]) {
+    const early = createHarness();
+    early.activation.activate(early.request());
+    early.video.error = error;
+    early.video.dispatchEvent(new Event("error"));
+    assert.equal(early.calls.tryAVPlayer, 1, `no AVPlayer attempt for ${JSON.stringify(error)}`);
+    assert.deepEqual(early.calls.errors, []);
+  }
+
+  // After a frame, only codec failures move to AVPlayer.
+  const late = createHarness();
+  late.activation.activate(late.request());
+  late.video.dispatchEvent(new Event("playing"));
+  late.video.error = null;
+  late.video.dispatchEvent(new Event("error"));
+  assert.equal(late.calls.tryAVPlayer, 0);
+  assert.deepEqual(late.calls.errors, [NATIVE_PLAYBACK_MESSAGES.FAILED]);
 });
 
 test("native errors are ignored while AVPlayer owns playback or the session moved on", () => {
@@ -434,6 +448,23 @@ test("playAfterResume applies autoplay and unsupported-format policies", async (
   const stale = createHarness();
   await stale.activation.playAfterResume(1);
   assert.equal(stale.video.playCalls, 0);
+});
+
+test("a VOD play() rejection before any frame tries AVPlayer instead of an error screen", async () => {
+  const rejected = createHarness();
+  rejected.video.playError = Object.assign(new Error("decoder lost"), {
+    name: "InvalidStateError",
+  });
+  await rejected.activation.playAfterResume(9);
+  assert.equal(rejected.calls.tryAVPlayer, 1);
+  assert.deepEqual(rejected.calls.errors, []);
+
+  // Live has no AVPlayer path: the error screen stays.
+  const live = createHarness({ state: { contentType: "live" } });
+  live.video.playError = Object.assign(new Error("decoder lost"), { name: "InvalidStateError" });
+  await live.activation.playAfterResume(9);
+  assert.equal(live.calls.tryAVPlayer, 0);
+  assert.deepEqual(live.calls.errors, ["Falha ao iniciar reproducao: decoder lost"]);
 });
 
 test("playAfterResume triggers showResumeToast when resumeTime exceeds 10s (AGY-10)", async () => {

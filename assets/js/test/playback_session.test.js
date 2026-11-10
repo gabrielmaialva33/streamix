@@ -35,6 +35,7 @@ test("summarizes one playback session without retaining stream URLs", () => {
     outcome: "completed",
     end_reason: "completed",
     engine_reason: "unknown",
+    error_code: undefined,
     client_revision: undefined,
     engine: "avplayer",
     content_type: "vod",
@@ -136,4 +137,17 @@ test("a playback session reports the device class it began on", () => {
 
   session.begin({ deviceClass: "tablet-ish" });
   assert.equal(session.finish("cancelled").device_class, "unknown");
+});
+
+test("a session keeps the latest known error code and drops unknown labels", () => {
+  const session = new PlaybackSession({ now: () => 0, batchId: () => "batch" });
+
+  session.begin();
+  session.recordError("media_aborted");
+  session.recordError("media_decode");
+  session.recordError("made_up");
+  const summary = session.finish("error", "fatal_media_error");
+
+  assert.equal(summary.error_code, "media_decode");
+  assert.equal(summary.error_count, 3);
 });
