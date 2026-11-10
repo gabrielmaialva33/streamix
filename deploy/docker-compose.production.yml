@@ -39,7 +39,7 @@ services:
   # the default noeviction policy: do not add maxmemory-policy *-lru here, it
   # would evict their jobs and locks. Streamix only keeps TTL'd cache in it.
   redis:
-    image: ${REDIS_IMAGE:-redis:8.10.2-alpine}
+    image: ${REDIS_IMAGE:-redis:8.10.3-alpine}
     container_name: streamix-redis
     command: ["redis-server", "--appendonly", "yes"]
     ports:
