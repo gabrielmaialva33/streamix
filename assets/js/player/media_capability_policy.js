@@ -18,7 +18,18 @@ function contentTypeFor({ container, videoCodec, audioCodec }) {
   return `${type}; codecs="${codecs}"`;
 }
 
+// Progressive files play straight through <video>; only hls.js and mpegts.js
+// feed Media Source Extensions. Asking MediaCapabilities about "media-source"
+// for an MP4 told iPhones, whose MSE support is limited, that they could not
+// play files Safari plays natively, and sent them to the WASM engine.
+const MSE_STREAM_TYPES = new Set(["hls", "m3u8", "ts", "xtream", "flv"]);
+
+export function decodingTypeFor(streamType) {
+  return MSE_STREAM_TYPES.has(String(streamType).toLowerCase()) ? "media-source" : "file";
+}
+
 export function buildMediaDecodingConfiguration({
+  type = "file",
   container = "mp4",
   videoCodec = DEFAULT_VIDEO_CODEC,
   audioCodec = DEFAULT_AUDIO_CODEC,
@@ -34,7 +45,7 @@ export function buildMediaDecodingConfiguration({
   const normalizedAudioCodec = normalizeCodec(audioCodec, DEFAULT_AUDIO_CODEC);
 
   return Object.freeze({
-    type: "media-source",
+    type: type === "media-source" ? "media-source" : "file",
     video: Object.freeze({
       contentType: contentTypeFor({
         container,
@@ -66,7 +77,10 @@ export function summarizeMediaCapability(result, configuration = null) {
     smooth,
     powerEfficient,
     preferNative: supported && smooth && powerEfficient,
-    avoidNative: result != null && (!supported || !smooth),
+    // Only "not supported" rules native out: when the browser decodes it but
+    // not smoothly, AVPlayer's software decoding is slower still. Smoothness
+    // keeps steering resolution through avoidHighResolution.
+    avoidNative: result != null && !supported,
     avoidHighResolution: result != null && (!smooth || !powerEfficient),
     configuration,
   });
@@ -105,6 +119,7 @@ export function configurationFromPlayerElement(element, streamType = "mp4") {
     dataset.container || (String(streamType).toLowerCase().includes("webm") ? "webm" : "mp4");
 
   return buildMediaDecodingConfiguration({
+    type: decodingTypeFor(streamType),
     container,
     videoCodec: dataset.videoCodec || DEFAULT_VIDEO_CODEC,
     audioCodec: dataset.audioCodec || DEFAULT_AUDIO_CODEC,

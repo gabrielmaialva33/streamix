@@ -8,8 +8,9 @@ import {
   summarizeMediaCapability,
 } from "../player/media_capability_policy.js";
 
-test("builds a bounded media-source decoding configuration", () => {
+test("builds a bounded decoding configuration", () => {
   const configuration = buildMediaDecodingConfiguration({
+    type: "media-source",
     videoCodec: "hvc1.1.6.L120.B0",
     width: 3840,
     height: 2160,
@@ -44,13 +45,27 @@ test("summarizes smooth and power-efficient decoding", () => {
     },
   );
 
+  // Decodable but not smoothly: keep native (AVPlayer decodes in software,
+  // slower still) and only steer resolution down.
   const risky = summarizeMediaCapability({
     supported: true,
     smooth: false,
     powerEfficient: false,
   });
-  assert.equal(risky.avoidNative, true);
+  assert.equal(risky.avoidNative, false);
   assert.equal(risky.avoidHighResolution, true);
+
+  const unsupported = summarizeMediaCapability({ supported: false, smooth: false });
+  assert.equal(unsupported.avoidNative, true);
+});
+
+test("progressive files ask about file playback, MSE engines about media-source", () => {
+  for (const streamType of ["mp4", "mkv", "webm", "unknown"]) {
+    assert.equal(configurationFromPlayerElement(null, streamType).type, "file", streamType);
+  }
+  for (const streamType of ["hls", "m3u8", "ts", "xtream", "flv"]) {
+    assert.equal(configurationFromPlayerElement(null, streamType).type, "media-source", streamType);
+  }
 });
 
 test("probes navigator.mediaCapabilities through an injected boundary", async () => {
