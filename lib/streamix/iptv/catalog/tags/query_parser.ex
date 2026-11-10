@@ -17,6 +17,7 @@ defmodule Streamix.Iptv.Tags.QueryParser do
   """
 
   alias Streamix.Iptv.Genres.Normalizer
+  alias Streamix.Iptv.Genres.Vocabulary, as: GenreVocabulary
   alias Streamix.Iptv.Tags.Vocabulary
 
   @type t :: %{
@@ -159,6 +160,30 @@ defmodule Streamix.Iptv.Tags.QueryParser do
   @spec structured?(t()) :: boolean()
   def structured?(%{genres: genres, tags: tags, decades: decades}),
     do: genres != [] or decades != [] or map_size(tags) > 0
+
+  @doc """
+  What the parse understood, as pt-BR labels in reading order: named
+  genres, decades, then tags. An era tag that only restates a decade is
+  left out.
+  """
+  @spec labels(t()) :: [String.t()]
+  def labels(%{genres: genres, decades: decades, tags: tags}) do
+    decade_eras = Enum.flat_map(decades, &List.wrap(era_slug(&1)))
+
+    tag_labels =
+      for facet <- Vocabulary.facets(),
+          slug <- Map.get(tags, facet, []),
+          not (facet == :eras and slug in decade_eras),
+          label = Vocabulary.name(facet, slug),
+          do: label
+
+    (Enum.flat_map(genres, &List.wrap(GenreVocabulary.name(&1))) ++
+       Enum.map(decades, &decade_label/1) ++ tag_labels)
+    |> Enum.uniq()
+  end
+
+  defp decade_label(decade) when decade >= 2000, do: "Anos #{decade}"
+  defp decade_label(decade), do: "Anos #{rem(decade, 100)}"
 
   # --- Decades ---
 

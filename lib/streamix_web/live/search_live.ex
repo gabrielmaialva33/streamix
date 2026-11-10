@@ -7,6 +7,8 @@ defmodule StreamixWeb.SearchLive do
   - Real-time search with debouncing
   - Content type filtering
   - Recent searches history
+  - "Descobrir": titles matching what the query describes ("terror anos 80
+    leve"), from `Streamix.AI.discover/3`, loaded after the title results
   """
   use StreamixWeb, :live_view
   import StreamixWeb.App.Filters, only: [filter_button: 1, filter_strip: 1]
@@ -17,12 +19,13 @@ defmodule StreamixWeb.SearchLive do
   import StreamixWeb.Content.CardComponents
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
-  alias Streamix.Library
+  alias Streamix.{AI, Catalog, Library, Providers}
   alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.Content.HelperComponents
   alias StreamixWeb.ReturnPath
 
   @page_size 24
+  @discover_limit 18
   @result_types %{"channels" => :channels, "movies" => :movies, "series" => :series}
 
   @doc false
@@ -44,6 +47,9 @@ defmodule StreamixWeb.SearchLive do
       |> stream(:search_channels, [])
       |> stream(:search_movies, [])
       |> stream(:search_series, [])
+      |> assign(discover_labels: [], discover_counts: %{movies: 0, series: 0}, discovering: false)
+      |> stream(:discover_movies, [])
+      |> stream(:discover_series, [])
 
     {:ok, socket}
   end
@@ -57,6 +63,7 @@ defmodule StreamixWeb.SearchLive do
       |> assign(current_path: ~p"/search?q=#{query}")
       |> assign(loading: true)
       |> perform_search()
+      |> maybe_discover()
 
     {:noreply, socket}
   end
@@ -82,6 +89,7 @@ defmodule StreamixWeb.SearchLive do
           searched: false
         )
         |> reset_result_streams()
+        |> reset_discovery()
 
       {:noreply, socket}
     else
@@ -140,6 +148,34 @@ defmodule StreamixWeb.SearchLive do
     end
   end
 
+  @doc false
+  @impl true
+  def handle_async(:discover, {:ok, {query, {:ok, found}}}, socket) do
+    if query == socket.assigns.query do
+      library_key = socket.assigns.current_scope.library_key
+      movies = mark_favorites(found.movies, favorite_ids_for(library_key, :movies, found.movies))
+      series = mark_favorites(found.series, favorite_ids_for(library_key, :series, found.series))
+
+      {:noreply,
+       socket
+       |> assign(
+         discover_labels: found.labels,
+         discover_counts: %{movies: length(movies), series: length(series)},
+         discovering: false
+       )
+       |> stream(:discover_movies, movies, reset: true)
+       |> stream(:discover_series, series, reset: true)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Discovery is a bonus row: when the vector search fails the title results
+  # still stand, so the row just stays away.
+  def handle_async(:discover, _failed, socket) do
+    {:noreply, reset_discovery(socket)}
+  end
+
   defp toggle_favorite(library_key, type, content_id) do
     FavoriteState.toggle(library_key, type, content_id)
   end
@@ -188,6 +224,15 @@ defmodule StreamixWeb.SearchLive do
           </div>
         </form>
       </div>
+
+      <.discover_section
+        :if={@searched && @filter == "all" && (@discovering || discover_count(@discover_counts) > 0)}
+        labels={@discover_labels}
+        counts={@discover_counts}
+        discovering={@discovering}
+        movies={@streams.discover_movies}
+        series={@streams.discover_series}
+      />
 
       <div :if={@searched && has_results?(@result_counts)} class="space-y-8">
         <.filter_strip id="search-filter-strip">
@@ -258,7 +303,10 @@ defmodule StreamixWeb.SearchLive do
       </div>
 
       <div
-        :if={@searched && !has_results?(@result_counts)}
+        :if={
+          @searched && !has_results?(@result_counts) && !@discovering &&
+            discover_count(@discover_counts) == 0
+        }
         id="search-empty"
         role="status"
         aria-live="polite"
@@ -272,6 +320,58 @@ defmodule StreamixWeb.SearchLive do
 
       <.search_hints :if={!@searched} />
     </div>
+    """
+  end
+
+  defp discover_section(assigns) do
+    ~H"""
+    <section id="search-discover-section" class="space-y-4" aria-live="polite">
+      <div class="flex flex-wrap items-center gap-2">
+        <h2 class="flex items-center gap-2 text-lg font-semibold text-text-primary">
+          <.icon name="hero-sparkles" class="size-5 text-brand" /> Descobrir
+        </h2>
+        <span
+          :for={label <- @labels}
+          class="search-discover-label rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text-secondary"
+        >
+          {label}
+        </span>
+      </div>
+
+      <p
+        :if={@discovering && discover_count(@counts) == 0}
+        id="search-discover-loading"
+        class="text-sm text-text-secondary"
+      >
+        Procurando títulos com essa cara...
+      </p>
+
+      <div :if={@counts.movies > 0} class="space-y-2">
+        <h3 class="text-sm font-medium text-text-secondary">Filmes</h3>
+        <div id="search-discover-movies" phx-update="stream" class="responsive-poster-grid">
+          <div
+            :for={{dom_id, movie} <- @movies}
+            id={dom_id}
+            class="catalog-stream-item catalog-stream-item--poster"
+          >
+            <.movie_card movie={movie} is_favorite={movie.is_favorite} on_play="play_movie" />
+          </div>
+        </div>
+      </div>
+
+      <div :if={@counts.series > 0} class="space-y-2">
+        <h3 class="text-sm font-medium text-text-secondary">Séries</h3>
+        <div id="search-discover-series" phx-update="stream" class="responsive-poster-grid">
+          <div
+            :for={{dom_id, series} <- @series}
+            id={dom_id}
+            class="catalog-stream-item catalog-stream-item--poster"
+          >
+            <.series_card series={series} is_favorite={series.is_favorite} />
+          </div>
+        </div>
+      </div>
+    </section>
     """
   end
 
@@ -644,6 +744,69 @@ defmodule StreamixWeb.SearchLive do
       series: Library.list_favorite_ids(library_key, "series", Enum.map(series, & &1.id))
     }
   end
+
+  # --- Discovery ---
+
+  # A query earns the row when it describes something the catalog can filter
+  # on, or reads like a description (three words or more); a lone title
+  # word is served by the title search alone.
+  defp maybe_discover(socket) do
+    query = socket.assigns.query
+    parsed = Catalog.parse_discovery_query(query)
+
+    describes? =
+      Catalog.discovery_query_structured?(parsed) or
+        length(String.split(query, ~r/\s+/u, trim: true)) >= 3
+
+    if describes? and AI.semantic_search_available?() do
+      user_id = socket.assigns.user_id
+      show_adult = socket.assigns.current_scope.user.show_adult_content
+
+      socket
+      |> reset_discovery()
+      |> assign(discovering: true)
+      |> start_async(:discover, fn -> {query, discover(user_id, query, show_adult)} end)
+    else
+      reset_discovery(socket)
+    end
+  end
+
+  defp discover(user_id, query, show_adult) do
+    provider_ids = user_id |> Providers.list_visible_providers() |> Enum.map(& &1.id)
+
+    with {:ok, %{results: results, parsed: parsed}} <-
+           AI.discover(query, [:movies, :series, :animes],
+             provider_ids: provider_ids,
+             limit: @discover_limit
+           ) do
+      series_ids =
+        (results.series ++ results.animes)
+        |> Enum.sort_by(& &1.score, :desc)
+        |> Enum.map(& &1.id)
+
+      {:ok,
+       %{
+         labels: Catalog.discovery_query_labels(parsed),
+         movies:
+           Catalog.list_visible_movies_by_ids(user_id, Enum.map(results.movies, & &1.id),
+             show_adult: show_adult
+           ),
+         series:
+           user_id
+           |> Catalog.list_visible_series_by_ids(series_ids, show_adult: show_adult)
+           |> Enum.take(@discover_limit)
+       }}
+    end
+  end
+
+  defp reset_discovery(socket) do
+    socket
+    |> assign(discover_labels: [], discover_counts: %{movies: 0, series: 0}, discovering: false)
+    |> stream(:discover_movies, [], reset: true)
+    |> stream(:discover_series, [], reset: true)
+  end
+
+  defp discover_count(%{movies: movies, series: series}), do: movies + series
 
   defp mark_favorites(items, favorite_ids) do
     Enum.map(items, &Map.put(&1, :is_favorite, MapSet.member?(favorite_ids, &1.id)))

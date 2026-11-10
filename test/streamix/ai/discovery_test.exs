@@ -86,6 +86,29 @@ defmodule Streamix.AI.DiscoveryTest do
     assert body["limit"] >= 120
   end
 
+  test "several collections share one query embedding" do
+    owner = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      send(owner, {:request, conn.host, conn.request_path})
+
+      case conn.host do
+        "qdrant.test" -> Req.Test.json(conn, %{"result" => [point(9, 0.5, "tmdb:9", %{})]})
+        _gemini -> Req.Test.json(conn, %{"embedding" => %{"values" => [0.3]}})
+      end
+    end)
+
+    query = "faroeste #{System.unique_integer([:positive])}"
+
+    assert {:ok, %{results: %{movies: [%{id: 9}], series: [%{id: 9}]}}} =
+             Discovery.discover(query, [:movies, :series])
+
+    assert_received {:request, "generativelanguage.googleapis.com", _path}
+    refute_received {:request, "generativelanguage.googleapis.com", _path}
+    assert_received {:request, "qdrant.test", "/collections/movies/points/search"}
+    assert_received {:request, "qdrant.test", "/collections/series/points/search"}
+  end
+
   defp point(id, score, key, payload) do
     %{
       "id" => id,

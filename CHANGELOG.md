@@ -47,6 +47,10 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   provider is selected.
 - Response-contract tests covering success, validation, not-found, and authentication responses against the published
   schemas.
+- `/search` has a "Descobrir" row: a query that describes something ("terror anos 80 leve", "comédia romântica de
+  natal", or any phrase of three words or more) shows what was understood as chips and the matching movies and
+  series from the viewer's providers, loaded after the title results so those stay instant. Typing reuses a query's
+  embedding for 30 minutes instead of spending the embedding API's shared per-minute budget again.
 - Discovery search (`Streamix.AI.discover/3`): a query such as "terror dos anos 80 leve" is parsed, without a model
   call, into the genres it names, decades (released then, or set then) and tags. Genres, decades and the viewer's
   providers filter in Qdrant; tags and the genres a subgenre implies only add to the score, so titles still awaiting

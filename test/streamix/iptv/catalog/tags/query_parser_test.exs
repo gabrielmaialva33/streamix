@@ -55,6 +55,16 @@ defmodule Streamix.Iptv.Tags.QueryParserTest do
     assert QueryParser.structured?(QueryParser.parse("slasher"))
   end
 
+  test "labels say what was understood, without restating a decade" do
+    assert "terror anos 80 leve" |> QueryParser.parse() |> QueryParser.labels() ==
+             ["Terror", "Anos 80", "Leve"]
+
+    assert "slasher anos 2000" |> QueryParser.parse() |> QueryParser.labels() ==
+             ["Anos 2000", "Slasher"]
+
+    assert "filmes do nolan" |> QueryParser.parse() |> QueryParser.labels() == []
+  end
+
   test "blank and non-text queries parse to nothing" do
     for query <- ["", "   ", nil, "de do da"] do
       parsed = QueryParser.parse(query)
