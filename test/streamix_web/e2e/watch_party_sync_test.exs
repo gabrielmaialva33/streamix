@@ -167,6 +167,26 @@ defmodule StreamixWeb.E2E.WatchPartySyncTest do
     source = """
     (() => {
       window.__streamixLazyHookDiagnostics = true;
+      // This fixture simulates native MP4 playback. Host MediaCapabilities
+      // must agree with canPlayType below, or Chromium can select real WASM
+      // playback while the test continues controlling the simulated video.
+      const decodingInfo = async () => ({
+        supported: false,
+        smooth: false,
+        powerEfficient: false
+      });
+      if (navigator.mediaCapabilities) {
+        Object.defineProperty(navigator.mediaCapabilities, "decodingInfo", {
+          value: decodingInfo,
+          configurable: true
+        });
+      } else {
+        Object.defineProperty(navigator, "mediaCapabilities", {
+          value: {decodingInfo},
+          configurable: true
+        });
+      }
+
       const probe = window.__streamixPartyProbe = {events: []};
       window.__partyBridgeEvents = [];
       document.addEventListener("streamix:playback", (event) => {
