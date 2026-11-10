@@ -50,6 +50,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Changed
 
+- Production app logs go to journald (`journalctl -t streamix`), so they survive the container being recreated on
+  every deploy.
 - A title whose provider has to probe its sources opens at once on a startup screen and plays when a source is named;
   a probe that fails, or one slower than its budget while another provider has the title, moves to that provider
   server-side, so the first try plays.

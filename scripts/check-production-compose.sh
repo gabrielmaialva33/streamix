@@ -49,7 +49,8 @@ jq -e '
   .services.streamix.image
     == "ghcr.io/gabrielmaialva33/streamix@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" and
   (.services.postgres.command
-    | any(. == "shared_preload_libraries=timescaledb,pg_stat_statements"))
+    | any(. == "shared_preload_libraries=timescaledb,pg_stat_statements")) and
+  .services.streamix.logging.driver == "journald"
 ' "${rendered_config}" >/dev/null
 
 for service in postgres qdrant rabbitmq redis streamix; do
