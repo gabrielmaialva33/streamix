@@ -50,21 +50,21 @@ defmodule StreamixWeb.Router do
     plug :accepts, ["json"]
     plug StreamixWeb.Plugs.CORS
     # 60 requests per minute per IP for stream proxy
-    plug StreamixWeb.Plugs.RateLimit, limit: 60, period: 60_000
+    plug StreamixWeb.Plugs.RateLimit, name: :api_rate_limited, limit: 60, period: 60_000
   end
 
   # HLS requests include playlists, audio, keys and segments. The generic
   # stream-proxy limit is too low for normal adaptive playback.
   pipeline :embedplay_stream do
     plug StreamixWeb.Plugs.CORS
-    plug StreamixWeb.Plugs.RateLimit, limit: 1200, period: 60_000
+    plug StreamixWeb.Plugs.RateLimit, name: :embedplay_stream, limit: 1200, period: 60_000
   end
 
   # The Xtream media gateway answers one request per playlist, key and
   # segment, so it gets the same HLS-sized bucket.
   pipeline :media_stream do
     plug StreamixWeb.Plugs.CORS
-    plug StreamixWeb.Plugs.RateLimit, limit: 1200, period: 60_000
+    plug StreamixWeb.Plugs.RateLimit, name: :media_stream, limit: 1200, period: 60_000
   end
 
   # Public diagnostic beacons can't authenticate because `sendBeacon()` can't
@@ -73,7 +73,7 @@ defmodule StreamixWeb.Router do
   pipeline :internal_diag_rate_limited do
     plug :accepts, ["json"]
     plug StreamixWeb.Plugs.CORS
-    plug StreamixWeb.Plugs.RateLimit, limit: 6, period: 60_000
+    plug StreamixWeb.Plugs.RateLimit, name: :internal_diag_rate_limited, limit: 6, period: 60_000
   end
 
   # The player reports a finished playback session with sendBeacon() when the
@@ -85,14 +85,23 @@ defmodule StreamixWeb.Router do
     plug :fetch_session
     plug :protect_from_forgery
     plug :fetch_current_scope_for_user
-    plug StreamixWeb.Plugs.RateLimit, limit: 30, period: 60_000
+    plug StreamixWeb.Plugs.RateLimit, name: :session_beacon, limit: 30, period: 60_000
+  end
+
+  # The stream proxy answers every range request a player makes, including a
+  # household's several devices behind one address. It only serves signed
+  # stream tokens, so this bucket guards against floods, not ordinary viewing.
+  pipeline :stream_proxy do
+    plug :accepts, ["json"]
+    plug StreamixWeb.Plugs.CORS
+    plug StreamixWeb.Plugs.RateLimit, name: :stream_proxy, limit: 600, period: 60_000
   end
 
   # WebVTT is not part of Plug's default MIME registry, so the generic
   # JSON API pipeline rejects the player's `Accept: text/vtt` with 406.
   pipeline :subtitle_rate_limited do
     plug StreamixWeb.Plugs.CORS
-    plug StreamixWeb.Plugs.RateLimit, limit: 60, period: 60_000
+    plug StreamixWeb.Plugs.RateLimit, name: :subtitle_rate_limited, limit: 60, period: 60_000
   end
 
   # Torrent endpoints serve both JSON status and media bytes. Keep session
@@ -108,7 +117,7 @@ defmodule StreamixWeb.Router do
   # tight to blunt credential-stuffing: five attempts per minute per IP
   # is enough for a human who mistyped and far too few for a bot.
   pipeline :auth_rate_limited do
-    plug StreamixWeb.Plugs.RateLimit, limit: 5, period: 60_000
+    plug StreamixWeb.Plugs.RateLimit, name: :auth_rate_limited, limit: 5, period: 60_000
   end
 
   # Looser pipeline for token-lookup endpoints (`/auth/me`, `/auth/logout`).
@@ -118,7 +127,7 @@ defmodule StreamixWeb.Router do
   # re-mount more than once a minute). 60/min gives clients room to
   # refresh aggressively without opening a brute-force window.
   pipeline :auth_session_rate_limited do
-    plug StreamixWeb.Plugs.RateLimit, limit: 60, period: 60_000
+    plug StreamixWeb.Plugs.RateLimit, name: :auth_session_rate_limited, limit: 60, period: 60_000
   end
 
   # Protected API pipeline with rate limiting and API key auth
@@ -131,7 +140,7 @@ defmodule StreamixWeb.Router do
     # ordinary navigation; 360 covers ~12 screen changes a minute while
     # still stopping bulk catalog scraping. Households share one IP, so
     # don't tighten this without per-user keying.
-    plug StreamixWeb.Plugs.RateLimit, limit: 360, period: 60_000
+    plug StreamixWeb.Plugs.RateLimit, name: :api_v1, limit: 360, period: 60_000
     plug StreamixWeb.Plugs.ApiKeyAuth
   end
 
@@ -232,12 +241,16 @@ defmodule StreamixWeb.Router do
 
   # Stream proxy - public access for video streaming (rate limited)
   scope "/api", StreamixWeb do
-    pipe_through :api_rate_limited
+    pipe_through :stream_proxy
 
     # Handle CORS preflight for AVPlayer fetch()
     options "/stream/proxy", StreamController, :options
     get "/stream/proxy", StreamController, :proxy
     head "/stream/proxy", StreamController, :proxy
+  end
+
+  scope "/api", StreamixWeb do
+    pipe_through :api_rate_limited
 
     # Resolve-only endpoint — used by the gindex.mahina.fun nginx
     # reverse proxy to translate a signed token into the upstream
