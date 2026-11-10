@@ -25,7 +25,7 @@ defmodule Streamix.Iptv.Streaming.VodProxyLivenessTest do
     channel = channel_fixture(provider)
     port = start_proxy_server(:terminal)
 
-    VodProxy.pipe(conn(:get, "/proxy"), "http://127.0.0.1:#{port}/stream",
+    VodProxy.pipe(conn(:get, "/proxy"), proxy_url(port),
       provider_id: provider.id,
       content_id: channel.id,
       media_type: "channel"
@@ -43,7 +43,7 @@ defmodule Streamix.Iptv.Streaming.VodProxyLivenessTest do
 
     port = start_proxy_server(:ok)
 
-    VodProxy.pipe(conn(:get, "/proxy"), "http://127.0.0.1:#{port}/stream",
+    VodProxy.pipe(conn(:get, "/proxy"), proxy_url(port),
       provider_id: provider.id,
       content_id: channel.id,
       media_type: "channel"
@@ -59,7 +59,7 @@ defmodule Streamix.Iptv.Streaming.VodProxyLivenessTest do
       movie = movie_fixture(provider)
       port = start_proxy_server(unquote(status))
 
-      VodProxy.pipe(conn(:get, "/proxy"), "http://127.0.0.1:#{port}/stream",
+      VodProxy.pipe(conn(:get, "/proxy"), proxy_url(port),
         provider_id: provider.id,
         content_id: movie.id,
         media_type: "movie"
@@ -81,7 +81,7 @@ defmodule Streamix.Iptv.Streaming.VodProxyLivenessTest do
       movie = movie_fixture(provider)
       port = start_proxy_server(unquote(status))
 
-      VodProxy.pipe(conn(:get, "/proxy"), "http://127.0.0.1:#{port}/stream",
+      VodProxy.pipe(conn(:get, "/proxy"), proxy_url(port),
         provider_id: provider.id,
         content_id: movie.id,
         media_type: "movie"
@@ -114,7 +114,7 @@ defmodule Streamix.Iptv.Streaming.VodProxyLivenessTest do
       movie = movie_fixture(provider)
       first = start_proxy_server({:resolve, 503})
       second = start_proxy_server({:resolve, 404})
-      urls = ["http://127.0.0.1:#{first}/stream", "http://127.0.0.1:#{second}/stream"]
+      urls = [proxy_url(first), proxy_url(second)]
 
       apply(VodProxy, unquote(method), [
         conn(:get, "/proxy"),
@@ -132,7 +132,7 @@ defmodule Streamix.Iptv.Streaming.VodProxyLivenessTest do
     movie = movie_fixture(provider)
     first = start_proxy_server(:terminal)
     second = start_proxy_server(:ok)
-    urls = ["http://127.0.0.1:#{first}/stream", "http://127.0.0.1:#{second}/stream"]
+    urls = [proxy_url(first), proxy_url(second)]
 
     response =
       VodProxy.pipe(conn(:get, "/proxy"), hd(urls),
@@ -153,7 +153,7 @@ defmodule Streamix.Iptv.Streaming.VodProxyLivenessTest do
       movie = movie_fixture(provider)
       first = start_proxy_server({:resolve, 404})
       second = start_proxy_server({:resolve, 410})
-      urls = ["http://127.0.0.1:#{first}/stream", "http://127.0.0.1:#{second}/stream"]
+      urls = [proxy_url(first), proxy_url(second)]
 
       apply(VodProxy, unquote(method), [
         conn(:get, "/proxy"),
@@ -171,7 +171,7 @@ defmodule Streamix.Iptv.Streaming.VodProxyLivenessTest do
     movie = movie_fixture(provider)
     first = start_proxy_server({:resolve, 404})
     second = start_proxy_server({:resolve, 503})
-    urls = ["http://127.0.0.1:#{first}/stream", "http://127.0.0.1:#{second}/stream"]
+    urls = [proxy_url(first), proxy_url(second)]
 
     assert {:error, _} =
              Streamix.Playback.resolve_stream_url_for_proxy(hd(urls),
@@ -190,7 +190,7 @@ defmodule Streamix.Iptv.Streaming.VodProxyLivenessTest do
     movie = movie_fixture(provider)
     first = start_proxy_server({:resolve, 404})
     second = start_proxy_server({:resolve, 410})
-    urls = ["http://127.0.0.1:#{first}/stream", "http://127.0.0.1:#{second}/stream"]
+    urls = [proxy_url(first), proxy_url(second)]
 
     assert {:error, _} =
              Streamix.Playback.resolve_stream_url_for_proxy(hd(urls),
@@ -209,7 +209,7 @@ defmodule Streamix.Iptv.Streaming.VodProxyLivenessTest do
     movie = movie_fixture(provider)
     first = start_proxy_server({:resolve, 404})
     second = start_proxy_server(:ok)
-    urls = ["http://127.0.0.1:#{first}/stream", "http://127.0.0.1:#{second}/stream"]
+    urls = [proxy_url(first), proxy_url(second)]
 
     assert {:ok, _} =
              Streamix.Playback.resolve_stream_url_for_proxy(hd(urls),
@@ -229,6 +229,11 @@ defmodule Streamix.Iptv.Streaming.VodProxyLivenessTest do
       assert_receive {:DOWN, ^ref, :process, ^pid, _}, 5_000
     end
   end
+
+  # The resolver's Redis L2 survives clear_cache/0. A reused ephemeral port
+  # must not pick up another test's cached 404 or resolved URL.
+  defp proxy_url(port),
+    do: "http://127.0.0.1:#{port}/stream/#{System.unique_integer([:positive])}"
 
   defp start_proxy_server(mode) do
     counter = start_supervised!(Supervisor.child_spec({Agent, fn -> 0 end}, id: make_ref()))
