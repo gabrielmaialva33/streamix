@@ -9,6 +9,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Content.SeriesSources
   alias StreamixWeb.LiveSessionNavigation
+  alias StreamixWeb.PlayerHelpers
   alias StreamixWeb.ReturnPath
 
   import StreamixWeb.SourcePickerComponents
@@ -176,6 +177,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   defp select_source(socket, selected) do
+    previous = socket.assigns[:playable_episode]
     seasons = Detail.seasons_with_episodes(selected)
 
     open_numbers =
@@ -218,6 +220,21 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
         Map.new(episodes, &{&1.id, selected_episode_path(selected, &1, current_path)})
     )
     |> stream(:seasons, seasons, reset: true)
+    |> maybe_prewarm_playable(previous, selected)
+  end
+
+  # Warm the episode "Assistir"/"Continuar" will open (its redirect chain and
+  # first block), once per episode, from the connected page only.
+  defp maybe_prewarm_playable(socket, previous, selected) do
+    playable = socket.assigns.playable_episode
+    user = socket.assigns.current_scope.user
+
+    if (connected?(socket) and playable) && user &&
+         (is_nil(previous) or previous.id != playable.id) do
+      PlayerHelpers.prewarm_upstream_redirect("episode", playable, user.id, selected.provider_id)
+    end
+
+    socket
   end
 
   defp default_source(sources, progress, fallback) do

@@ -50,6 +50,10 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Changed
 
+- Title pages warm the copy their play button opens: the movie page warmed the requested movie even when the source
+  ranking picked another provider's copy, and now re-warms when the viewer switches source; the episode page warms the
+  first block too (it lacked the provider, so only the redirect was warmed); the series page warms the episode
+  "Assistir"/"Continuar" will open.
 - Fewer titles start on the slow WASM engine: the browser capability check asks about file playback for progressive
   MP4/MKV (it asked about Media Source Extensions, which made iPhones reject files Safari plays natively), and only
   "not supported" rules the native player out; "not smooth" now just lowers the resolution.

@@ -104,11 +104,6 @@ defmodule StreamixWeb.Content.MovieDetailLive do
         is_favorite =
           Detail.favorite?(socket.assigns.current_scope.library_key, "movie", movie.id)
 
-        # Prewarm the upstream redirect chain in the background. The
-        # user is on the detail page now and will likely click play in
-        # a few seconds — by then the resolution is cached.
-        maybe_prewarm_upstream_redirect(socket, provider, movie, user_id)
-
         current_path =
           mode
           |> detail_base_path(provider, movie)
@@ -125,6 +120,11 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           |> SourceBadges.distinct_copies(movie.id)
 
         selected_movie = selected_variant(movie_variants, movie, preferred_provider_id)
+
+        # Warm the copy "Assistir" will play, which the ranking may have taken
+        # from another provider: its redirect chain and first block are ready
+        # by the time the viewer taps play a few seconds later.
+        maybe_prewarm_upstream_redirect(socket, selected_movie, user_id)
         movie_watch_paths = build_watch_paths(movie_variants, current_path)
 
         socket =
@@ -197,7 +197,15 @@ defmodule StreamixWeb.Content.MovieDetailLive do
         _ -> nil
       end
 
-    {:noreply, if(variant, do: select_variant(socket, variant), else: socket)}
+    socket =
+      if variant && variant.id != socket.assigns.selected_movie.id do
+        maybe_prewarm_upstream_redirect(socket, variant, socket.assigns.user_id)
+        select_variant(socket, variant)
+      else
+        socket
+      end
+
+    {:noreply, socket}
   end
 
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
@@ -457,12 +465,15 @@ defmodule StreamixWeb.Content.MovieDetailLive do
     end)
   end
 
-  defp maybe_prewarm_upstream_redirect(_socket, %{provider_type: :torrent}, _movie, _user_id),
-    do: :ok
+  defp maybe_prewarm_upstream_redirect(socket, movie, user_id) do
+    if connected?(socket) and not torrent_copy?(movie),
+      do: PlayerHelpers.prewarm_upstream_redirect("movie", movie, user_id, movie.provider_id)
 
-  defp maybe_prewarm_upstream_redirect(socket, _provider, movie, user_id) do
-    if connected?(socket), do: PlayerHelpers.prewarm_upstream_redirect("movie", movie, user_id)
+    :ok
   end
+
+  defp torrent_copy?(%{provider: %{provider_type: type}}), do: type in [:torrent, "torrent"]
+  defp torrent_copy?(_movie), do: false
 
   defp start_detail_tasks(socket, movie) do
     if connected?(socket) do

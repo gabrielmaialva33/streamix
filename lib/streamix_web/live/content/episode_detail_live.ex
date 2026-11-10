@@ -83,7 +83,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
     # Enrich episode with TMDB data if needed
     episode = Detail.maybe_fetch_episode_info(episode)
 
-    maybe_prewarm(socket, episode, user_id)
+    maybe_prewarm(socket, episode, user_id, series.provider_id)
 
     navigation = Detail.episode_navigation(episode)
 
@@ -117,11 +117,12 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
     {:ok, socket}
   end
 
-  # Prewarm the upstream redirect chain — by the time the user clicks
-  # "Assistir", the resolver cache is hot.
-  defp maybe_prewarm(socket, episode, user_id) do
+  # Prewarm the upstream redirect chain and the first block — by the time the
+  # user clicks "Assistir", both are hot. The provider comes from the series:
+  # without it only the redirect was warmed.
+  defp maybe_prewarm(socket, episode, user_id, provider_id) do
     if connected?(socket) and user_id do
-      PlayerHelpers.prewarm_upstream_redirect("episode", episode, user_id)
+      PlayerHelpers.prewarm_upstream_redirect("episode", episode, user_id, provider_id)
     end
 
     :ok
