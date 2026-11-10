@@ -44,86 +44,89 @@ defmodule StreamixWeb.E2E.WatchPartySyncTest do
     %{media_origin: "http://127.0.0.1:#{port}"}
   end
 
-  test "host commands synchronize a locked viewer and host buffering pauses the room", context do
-    host_session = context.conn
-    guest_session = new_browser_session(context)
-    host = user_fixture()
-    guest = user_fixture()
-    grant_party_access!([host, guest])
+  for iteration <- 1..12 do
+    test "host commands synchronize a locked viewer and host buffering pauses the room (#{iteration})",
+         context do
+      host_session = context.conn
+      guest_session = new_browser_session(context)
+      host = user_fixture()
+      guest = user_fixture()
+      grant_party_access!([host, guest])
 
-    provider =
-      provider_fixture(host, %{
-        visibility: "global",
-        is_system: true,
-        provider_type: "xtream",
-        is_active: true,
-        url: context.media_origin
-      })
+      provider =
+        provider_fixture(host, %{
+          visibility: "global",
+          is_system: true,
+          provider_type: "xtream",
+          is_active: true,
+          url: context.media_origin
+        })
 
-    movie =
-      movie_fixture(provider, %{
-        name: "Two Browser Party Movie",
-        container_extension: "mp4",
-        duration_secs: 120
-      })
+      movie =
+        movie_fixture(provider, %{
+          name: "Two Browser Party Movie",
+          container_extension: "mp4",
+          duration_secs: 120
+        })
 
-    room =
-      %Room{}
-      |> Room.create_changeset(%{
-        host_user_id: host.id,
-        catalog_item_id: movie.catalog_item_id,
-        source_type: "movie",
-        source_id: movie.id
-      })
-      |> Repo.insert!()
+      room =
+        %Room{}
+        |> Room.create_changeset(%{
+          host_user_id: host.id,
+          catalog_item_id: movie.catalog_item_id,
+          source_type: "movie",
+          source_id: movie.id
+        })
+        |> Repo.insert!()
 
-    on_exit(fn -> RoomServer.stop(room.id) end)
+      on_exit(fn -> RoomServer.stop(room.id) end)
 
-    host_session =
-      host_session
-      |> install_authenticated_cookie(host)
-      |> install_media_probe()
-      |> visit(~p"/party/#{room.invite_code}/watch")
-      |> assert_has("body .phx-connected #video-player-container")
+      host_session =
+        host_session
+        |> install_authenticated_cookie(host)
+        |> install_media_probe()
+        |> visit(~p"/party/#{room.invite_code}/watch")
+        |> assert_has("body .phx-connected #video-player-container")
 
-    guest_session =
-      guest_session
-      |> install_authenticated_cookie(guest)
-      |> install_media_probe()
-      |> visit(~p"/party/#{room.invite_code}/watch")
-      |> assert_has("body .phx-connected #video-player-container")
+      guest_session =
+        guest_session
+        |> install_authenticated_cookie(guest)
+        |> install_media_probe()
+        |> visit(~p"/party/#{room.invite_code}/watch")
+        |> assert_has("body .phx-connected #video-player-container")
 
-    wait_for_playback_bridge(host_session)
-    wait_for_playback_bridge(guest_session)
-    assert_viewer_transport_locked(guest_session)
+      wait_for_playback_bridge(host_session)
+      wait_for_playback_bridge(guest_session)
+      assert_viewer_transport_locked(guest_session)
 
-    host_pause_seek_play(host_session, 33)
+      host_pause_seek_play(host_session, 33)
 
-    try do
+      try do
+        wait_for_playback(guest_session, false, 33)
+        host_pause(host_session)
+        wait_for_playback(guest_session, true, 33)
+      rescue
+        error ->
+          dump_host_state(host_session)
+          reraise error, __STACKTRACE__
+      end
+
+      host_play(host_session)
       wait_for_playback(guest_session, false, 33)
-      host_pause(host_session)
+
+      Phoenix.PubSub.subscribe(Streamix.PubSub, Streamix.WatchParty.topic(room.id))
+      host_buffering(host_session, true)
+      assert_receive {:sync_command, %{host_buffering: true}}, 5_000
       wait_for_playback(guest_session, true, 33)
-    rescue
-      error ->
-        dump_host_state(host_session)
-        reraise error, __STACKTRACE__
+      wait_for_status(guest_session, "Aguardando o buffer")
+
+      host_buffering(host_session, false)
+      wait_for_playback(guest_session, false, 33)
+
+      host_session |> visit(~p"/") |> assert_has("body")
+      wait_for_status(guest_session, "Anfitrião desconectado")
+      wait_for_playback(guest_session, true, 33)
     end
-
-    host_play(host_session)
-    wait_for_playback(guest_session, false, 33)
-
-    Phoenix.PubSub.subscribe(Streamix.PubSub, Streamix.WatchParty.topic(room.id))
-    host_buffering(host_session, true)
-    assert_receive {:sync_command, %{host_buffering: true}}, 5_000
-    wait_for_playback(guest_session, true, 33)
-    wait_for_status(guest_session, "Aguardando o buffer")
-
-    host_buffering(host_session, false)
-    wait_for_playback(guest_session, false, 33)
-
-    host_session |> visit(~p"/") |> assert_has("body")
-    wait_for_status(guest_session, "Anfitrião desconectado")
-    wait_for_playback(guest_session, true, 33)
   end
 
   defp new_browser_session(context) do
@@ -166,26 +169,6 @@ defmodule StreamixWeb.E2E.WatchPartySyncTest do
     source = """
     (() => {
       window.__streamixLazyHookDiagnostics = true;
-      // This fixture simulates native MP4 playback. Host MediaCapabilities
-      // must agree with canPlayType below, or Chromium can select real WASM
-      // playback while the test continues controlling the simulated video.
-      const decodingInfo = async () => ({
-        supported: false,
-        smooth: false,
-        powerEfficient: false
-      });
-      if (navigator.mediaCapabilities) {
-        Object.defineProperty(navigator.mediaCapabilities, "decodingInfo", {
-          value: decodingInfo,
-          configurable: true
-        });
-      } else {
-        Object.defineProperty(navigator, "mediaCapabilities", {
-          value: {decodingInfo},
-          configurable: true
-        });
-      }
-
       const probe = window.__streamixPartyProbe = {events: []};
       window.__partyBridgeEvents = [];
       document.addEventListener("streamix:playback", (event) => {
