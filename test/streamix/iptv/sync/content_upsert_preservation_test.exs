@@ -3,7 +3,7 @@ defmodule Streamix.Iptv.Sync.ContentUpsertPreservationTest do
 
   import Streamix.IptvFixtures
 
-  alias Streamix.Iptv.{Genres, LiveChannel, Movie, Series}
+  alias Streamix.Iptv.{Channels, Genres, LiveChannel, Movie, Series}
   alias Streamix.Iptv.Sync.ContentUpsert
   alias Streamix.Iptv.Sync.Normalizers.LiveChannel, as: ChannelNormalizer
   alias Streamix.Iptv.Sync.Normalizers.Movie, as: MovieNormalizer
@@ -254,7 +254,7 @@ defmodule Streamix.Iptv.Sync.ContentUpsertPreservationTest do
   } do
     channel = channel_fixture(provider, %{stream_id: 7272, name: "Canal"})
     dead_at = DateTime.utc_now(:second)
-    :ok = Streamix.Iptv.Channels.mark_dead(channel.id)
+    :ok = Channels.mark_dead(channel.id)
 
     # The panel keeps listing a channel whose stream is gone.
     sync(

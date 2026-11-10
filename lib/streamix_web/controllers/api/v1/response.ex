@@ -55,12 +55,14 @@ defmodule StreamixWeb.Api.V1.Response do
   # `fields: [:email]`), and stringifying every option crashed a duplicate
   # email registration into a 500.
   defp interpolate_changeset_error({message, opts}) do
-    Regex.replace(~r"%{(\w+)}", message, fn placeholder, key ->
-      case Enum.find(opts, fn {name, _value} -> Atom.to_string(name) == key end) do
-        {_name, value} -> interpolation_value(value)
-        nil -> placeholder
-      end
-    end)
+    Regex.replace(~r"%{(\w+)}", message, &fill_placeholder(&1, &2, opts))
+  end
+
+  defp fill_placeholder(placeholder, key, opts) do
+    case Enum.find(opts, fn {name, _value} -> Atom.to_string(name) == key end) do
+      {_name, value} -> interpolation_value(value)
+      nil -> placeholder
+    end
   end
 
   defp interpolation_value(value) when is_binary(value), do: value
