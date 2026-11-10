@@ -77,9 +77,9 @@ rollback() {
     docker tag "${previous_image}" "${IMAGE_NAME}:latest"
 
     if [ "${had_versioned_compose}" = true ]; then
-      compose "${IMAGE_NAME}:latest" up -d --force-recreate --remove-orphans streamix
+      compose "${IMAGE_NAME}:latest" up -d --no-deps --force-recreate --remove-orphans streamix
     else
-      docker compose -f "${legacy_compose}" up -d --force-recreate --remove-orphans streamix
+      docker compose -f "${legacy_compose}" up -d --no-deps --force-recreate --remove-orphans streamix
     fi
   fi
 
@@ -397,7 +397,7 @@ if ! compose "${image_ref}" run --rm --no-deps streamix /app/bin/migrate; then
 fi
 
 echo "[deploy] recreating container"
-if ! compose "${image_ref}" up -d --force-recreate --remove-orphans streamix; then
+if ! compose "${image_ref}" up -d --no-deps --force-recreate --remove-orphans streamix; then
   rollback "container recreation failed"
 fi
 

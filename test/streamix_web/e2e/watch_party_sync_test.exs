@@ -98,10 +98,16 @@ defmodule StreamixWeb.E2E.WatchPartySyncTest do
     assert_viewer_transport_locked(guest_session)
 
     host_pause_seek_play(host_session, 33)
-    wait_for_playback(guest_session, false, 33)
 
-    host_pause(host_session)
-    wait_for_playback(guest_session, true, 33)
+    try do
+      wait_for_playback(guest_session, false, 33)
+      host_pause(host_session)
+      wait_for_playback(guest_session, true, 33)
+    rescue
+      error ->
+        dump_host_state(host_session)
+        reraise error, __STACKTRACE__
+    end
 
     host_play(host_session)
     wait_for_playback(guest_session, false, 33)
@@ -160,7 +166,31 @@ defmodule StreamixWeb.E2E.WatchPartySyncTest do
     source = """
     (() => {
       window.__streamixLazyHookDiagnostics = true;
+      // This fixture simulates native MP4 playback. Host MediaCapabilities
+      // must agree with canPlayType below, or Chromium can select real WASM
+      // playback while the test continues controlling the simulated video.
+      const decodingInfo = async () => ({
+        supported: true,
+        smooth: true,
+        powerEfficient: true
+      });
+      if (navigator.mediaCapabilities) {
+        Object.defineProperty(navigator.mediaCapabilities, "decodingInfo", {
+          value: decodingInfo,
+          configurable: true
+        });
+      } else {
+        Object.defineProperty(navigator, "mediaCapabilities", {
+          value: {decodingInfo},
+          configurable: true
+        });
+      }
+
       const probe = window.__streamixPartyProbe = {events: []};
+      window.__partyBridgeEvents = [];
+      document.addEventListener("streamix:playback", (event) => {
+        window.__partyBridgeEvents.push({type: event.detail.type, position: event.detail.position});
+      });
 
       Object.defineProperty(HTMLMediaElement.prototype, "src", {
         configurable: true,
@@ -362,6 +392,37 @@ defmodule StreamixWeb.E2E.WatchPartySyncTest do
       [is_function: true, timeout: 5_000],
       fn ready ->
         assert ready
+      end
+    )
+  end
+
+  defp dump_host_state(session) do
+    PhoenixTest.Playwright.evaluate(
+      session,
+      """
+      () => {
+        const player = document.getElementById("video-player-container");
+        const hook = player?.__videoPlayerHook;
+        const sync = document.getElementById("watch-party-sync");
+        return {
+          events: window.__streamixPartyProbe?.events,
+          paused: player?.streamixPlayback?.isPaused(),
+          position: player?.streamixPlayback?.getCurrentTime(),
+          engine: player?.streamixPlayback?.engine,
+          sourceType: hook?.sourceType,
+          selectedEngine: hook?._selectedEngine,
+          mediaCapability: hook?.mediaCapabilityProfile,
+          session: hook?.playbackSessionId,
+          suppressed: hook?._suppressNativePlaybackEvents,
+          switching: hook?._switchingToAVPlayer,
+          server: sync?.dataset,
+          bridgeEvents: window.__partyBridgeEvents
+        };
+      }
+      """,
+      [is_function: true],
+      fn state ->
+        IO.puts("Watch Party host failure diagnostics: " <> Jason.encode!(state))
       end
     )
   end

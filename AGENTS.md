@@ -89,6 +89,14 @@ Important local setup facts:
 - Keep GitHub Actions pinned to immutable commit SHAs and retain the release tag in a comment.
 - A stateful infrastructure major (PostgreSQL, TimescaleDB, Redis, RabbitMQ, Qdrant) still requires a rehearsed data
   migration and rollback; "latest" never means replacing a production data format blindly.
+- A deploy only recreates the `streamix` container (`--no-deps`, guarded by `DeployContractTest`). A new infra image
+  in `deploy/docker-compose.production.yml` takes effect only when that service is recreated by hand on the VPS, at an
+  agreed time: Postgres and Redis there are shared with other apps (BullMQ queues in Redis, other apps' databases in
+  Postgres). Back up first (`/opt/streamix/bin/backup-database.sh`), recreate one service with
+  `docker compose --env-file /opt/streamix/.env -f /opt/streamix/docker-compose.production.yml up -d --no-deps <svc>`,
+  and after a TimescaleDB image run `ALTER EXTENSION timescaledb UPDATE;` (`psql -X`, first command of a session) in
+  `streamix_prod`, then restart `streamix`: pooled sessions keep the old library and fail with "already loaded with a
+  different version".
 
 ## Project Structure
 

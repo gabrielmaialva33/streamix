@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: timescale/timescaledb:2.30.2-pg17
+    image: timescale/timescaledb:2.31.0-pg17
     container_name: streamix-postgres
     command:
       [
@@ -27,7 +27,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:8.10.2-alpine
+    image: redis:8.10.3-alpine
     container_name: streamix-redis
     ports:
       - "6379:6379"
@@ -41,7 +41,7 @@ services:
       retries: 5
 
   rabbitmq:
-    image: rabbitmq:4.3.6-management-alpine
+    image: rabbitmq:4.4.0-management-alpine
     container_name: streamix-rabbitmq
     ports:
       - "5672:5672" # AMQP
@@ -59,7 +59,7 @@ services:
       retries: 5
 
   qdrant:
-    image: qdrant/qdrant:v1.19.2
+    image: qdrant/qdrant:v1.20.0
     container_name: streamix-qdrant
     ports:
       - "6333:6333" # REST API
@@ -75,7 +75,7 @@ services:
       retries: 5
 
   rqbit:
-    image: ikatson/rqbit:9.0.1
+    image: ikatson/rqbit:9.1.0
     container_name: streamix-rqbit
     command: ["server", "start", "/home/rqbit/downloads"]
     ports:

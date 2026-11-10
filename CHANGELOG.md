@@ -50,6 +50,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Changed
 
+- A production deploy recreates only the app container. It used to start and recreate dependencies whose image
+  changed, so merging an infrastructure image bump restarted the shared Postgres and Redis.
 - Production app logs go to journald (`journalctl -t streamix`), so they survive the container being recreated on
   every deploy.
 - A title whose provider has to probe its sources opens at once on a startup screen and plays when a source is named;
