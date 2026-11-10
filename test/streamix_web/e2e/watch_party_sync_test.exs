@@ -412,6 +412,7 @@ defmodule StreamixWeb.E2E.WatchPartySyncTest do
           engine: player?.streamixPlayback?.engine,
           sourceType: hook?.sourceType,
           selectedEngine: hook?._selectedEngine,
+          mediaCapability: hook?.mediaCapabilityProfile,
           session: hook?.playbackSessionId,
           suppressed: hook?._suppressNativePlaybackEvents,
           switching: hook?._switchingToAVPlayer,
