@@ -22,6 +22,15 @@ defmodule Streamix.Iptv.SearchDocumentsTest do
     assert document.genres == nil
   end
 
+  test "pages through the whole catalog in short queries" do
+    provider = provider_fixture(user_fixture())
+    movies = for n <- 1..5, do: movie_fixture(provider, %{title: "Filme #{n}"})
+
+    documents = Streamix.Search.list_search_documents(:movies, provider.id, page_size: 2)
+
+    assert Enum.map(documents, & &1.id) == Enum.map(movies, & &1.id)
+  end
+
   test "excludes content owned by inactive providers" do
     user = user_fixture()
     provider = provider_fixture(user, %{is_active: false})

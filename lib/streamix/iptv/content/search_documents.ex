@@ -17,6 +17,8 @@ defmodule Streamix.Iptv.SearchDocuments do
 
   @type kind :: :movies | :series | :animes
 
+  @page_size 2_000
+
   @spec list(kind(), integer() | nil, keyword()) :: [map()]
   def list(kind, provider_id \\ nil, opts \\ [])
       when kind in [:movies, :series, :animes] and
@@ -28,13 +30,30 @@ defmodule Streamix.Iptv.SearchDocuments do
       raise ArgumentError, "expected :after_id to be a non-negative integer"
     end
 
-    kind
-    |> schema_for()
-    |> base_query(after_id)
-    |> VodAvailability.exclude_dead()
-    |> scope_to_kind(kind)
-    |> maybe_filter_provider(provider_id)
-    |> Repo.all()
+    page_size = Keyword.get(opts, :page_size, @page_size)
+
+    # Keyset pages keep each query short. Loading the whole catalog in one
+    # query held a connection past its 15 s checkout and dropped it, failing
+    # the nightly indexing run.
+    Stream.unfold(after_id, fn
+      nil ->
+        nil
+
+      cursor ->
+        page =
+          kind
+          |> schema_for()
+          |> base_query(cursor)
+          |> VodAvailability.exclude_dead()
+          |> scope_to_kind(kind)
+          |> maybe_filter_provider(provider_id)
+          |> limit(^page_size)
+          |> Repo.all()
+
+        next = if length(page) == page_size, do: List.last(page).id, else: nil
+        if page == [], do: nil, else: {page, next}
+    end)
+    |> Stream.flat_map(& &1)
     |> Enum.map(&to_document/1)
   end
 

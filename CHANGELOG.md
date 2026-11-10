@@ -157,6 +157,18 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Player toasts and overlays cancel their timers when replaced or when the player closes.
 - Prices on the plans and billing pages are formatted in the plan's currency instead of always "R$".
 - The first tap on a phone shows the player controls at once.
+- `POST /api/v1/auth/register` with an email already in use answers `422` with `email: has already been taken`;
+  it crashed into a `500` because a validation option was not text.
+- Rate-limit buckets are separate per route group. They all shared one counter per client, so a viewer's HLS
+  segments spent the allowance of the stream proxy, the login and the QoE beacon; and the stream proxy, which
+  answers every range request of a household's devices, now allows 600 requests a minute instead of 60.
+- The Prometheus reporter no longer grows without bound when nothing scrapes `/metrics`: raw distribution samples
+  are folded into their buckets every minute (production held 17.8 million samples, 3.3 GB, after five days).
+- A live channel that answered 404 stays marked through provider syncs for its 24-hour recheck window, and the
+  player says it is off the air instead of retrying it. Every sync used to clear the mark, since panels keep
+  listing channels whose stream is gone, and viewers looped on such a channel.
+- The nightly embeddings run reads the catalog in pages instead of one query that held a database connection past
+  its 15-second limit.
 - Every active Xtream provider's TV guide is refreshed hourly when due. Before, a guide only refreshed when someone
   opened the channel page filtered to that provider, so a non-global provider's guide ran out and its channels showed
   no programs.
