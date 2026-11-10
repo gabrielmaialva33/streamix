@@ -101,7 +101,14 @@ defmodule StreamixWeb.E2E.WatchPartySyncTest do
     wait_for_playback(guest_session, false, 33)
 
     host_pause(host_session)
-    wait_for_playback(guest_session, true, 33)
+
+    try do
+      wait_for_playback(guest_session, true, 33)
+    rescue
+      error ->
+        dump_host_state(host_session)
+        reraise error, __STACKTRACE__
+    end
 
     host_play(host_session)
     wait_for_playback(guest_session, false, 33)
@@ -161,6 +168,10 @@ defmodule StreamixWeb.E2E.WatchPartySyncTest do
     (() => {
       window.__streamixLazyHookDiagnostics = true;
       const probe = window.__streamixPartyProbe = {events: []};
+      window.__partyBridgeEvents = [];
+      document.addEventListener("streamix:playback", (event) => {
+        window.__partyBridgeEvents.push({type: event.detail.type, position: event.detail.position});
+      });
 
       Object.defineProperty(HTMLMediaElement.prototype, "src", {
         configurable: true,
@@ -362,6 +373,36 @@ defmodule StreamixWeb.E2E.WatchPartySyncTest do
       [is_function: true, timeout: 5_000],
       fn ready ->
         assert ready
+      end
+    )
+  end
+
+  defp dump_host_state(session) do
+    PhoenixTest.Playwright.evaluate(
+      session,
+      """
+      () => {
+        const player = document.getElementById("video-player-container");
+        const hook = player?.__videoPlayerHook;
+        const sync = document.getElementById("watch-party-sync");
+        return {
+          events: window.__streamixPartyProbe?.events,
+          paused: player?.streamixPlayback?.isPaused(),
+          position: player?.streamixPlayback?.getCurrentTime(),
+          engine: player?.streamixPlayback?.engine,
+          sourceType: hook?.sourceType,
+          selectedEngine: hook?._selectedEngine,
+          session: hook?.playbackSessionId,
+          suppressed: hook?._suppressNativePlaybackEvents,
+          switching: hook?._switchingToAVPlayer,
+          server: sync?.dataset,
+          bridgeEvents: window.__partyBridgeEvents
+        };
+      }
+      """,
+      [is_function: true],
+      fn state ->
+        IO.inspect(state, label: "Watch Party host failure diagnostics", limit: :infinity)
       end
     )
   end
