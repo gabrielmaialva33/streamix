@@ -23,9 +23,13 @@ defmodule Streamix.Iptv.TmdbClient.Transport do
     |> request(profile)
   end
 
-  # Bare details, no appended resources: just what the genre backfill reads.
+  # Details with only keywords and credits appended: what the metadata
+  # backfill reads. No videos or images, which make up most of a full fetch.
   def get_details(kind, tmdb_id, profile) when kind in [:movie, :tv] do
-    request("#{@base_url}/#{kind}/#{tmdb_id}?language=pt-BR", profile)
+    request(
+      "#{@base_url}/#{kind}/#{tmdb_id}?append_to_response=keywords,credits&language=pt-BR",
+      profile
+    )
   end
 
   def get_season(series_tmdb_id, season_number, profile) do

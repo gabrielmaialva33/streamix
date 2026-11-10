@@ -101,7 +101,9 @@ defmodule Streamix.Iptv.Content.VodAvailability do
     if schema in [Movie, Episode] do
       changed =
         updates
-        |> Enum.reject(fn {key, _} -> key in [:updated_at, :dead_since, :tmdb_genre_ids] end)
+        |> Enum.reject(fn {key, _} ->
+          key in [:updated_at, :dead_since, :tmdb_genre_ids, :tmdb_keyword_ids]
+        end)
         |> Enum.reduce(dynamic(false), fn {key, value}, changed ->
           dynamic(
             [content],

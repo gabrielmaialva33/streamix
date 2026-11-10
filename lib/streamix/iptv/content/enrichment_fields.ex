@@ -20,11 +20,16 @@ defmodule Streamix.Iptv.Content.EnrichmentFields do
 
   def fields(content_type), do: Map.get(@fields, content_type, [])
 
-  @doc "Invalidates genres fetched for a different TMDB identity."
+  @doc "Invalidates genres and keywords fetched for a different TMDB identity."
   def invalidate_tmdb_genres(changeset) do
     case fetch_change(changeset, :tmdb_id) do
-      {:ok, _new_id} -> force_change(changeset, :tmdb_genre_ids, nil)
-      :error -> changeset
+      {:ok, _new_id} ->
+        changeset
+        |> force_change(:tmdb_genre_ids, nil)
+        |> force_change(:tmdb_keyword_ids, nil)
+
+      :error ->
+        changeset
     end
   end
 
@@ -53,7 +58,11 @@ defmodule Streamix.Iptv.Content.EnrichmentFields do
 
     updates =
       if content_type in ["movie", "series"] and :tmdb_id in row_fields do
-        [{:tmdb_genre_ids, retained_tmdb_genres()} | updates]
+        [
+          {:tmdb_genre_ids, retained_tmdb(:tmdb_genre_ids)},
+          {:tmdb_keyword_ids, retained_tmdb(:tmdb_keyword_ids)}
+          | updates
+        ]
       else
         updates
       end
@@ -63,8 +72,9 @@ defmodule Streamix.Iptv.Content.EnrichmentFields do
   end
 
   # Compare the same effective identifier used by conflict_value/3: omitted,
-  # empty and zero provider values preserve both identity and its fetched genres.
-  defp retained_tmdb_genres do
+  # empty and zero provider values preserve both identity and what was fetched
+  # for it (genres, keywords).
+  defp retained_tmdb(field) do
     dynamic(
       [content],
       fragment(
@@ -74,7 +84,7 @@ defmodule Streamix.Iptv.Content.EnrichmentFields do
         """,
         content.tmdb_id,
         content.tmdb_id,
-        content.tmdb_genre_ids
+        field(content, ^field)
       )
     )
   end

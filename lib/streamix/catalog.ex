@@ -217,6 +217,14 @@ defmodule Streamix.Catalog do
     to: Streamix.Iptv.Genres,
     as: :apply_tmdb
 
+  @doc "Stores TMDB keywords and credits on every matching provider copy."
+  defdelegate apply_tmdb_metadata(kind, tmdb_id, metadata),
+    to: Streamix.Iptv.TmdbMetadata,
+    as: :apply_tmdb
+
+  @doc "TMDB keyword names by id."
+  defdelegate tmdb_keyword_names(ids), to: Streamix.Iptv.TmdbMetadata, as: :keyword_names
+
   @doc "Replaces incremental source genres while preserving TMDB ownership."
   defdelegate put_string_genres(kind, items), to: Streamix.Iptv.Genres
 end

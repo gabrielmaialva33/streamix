@@ -47,24 +47,22 @@ defmodule Streamix.Iptv.TmdbClient do
   end
 
   @doc """
-  Fetches only a title's TMDB genre ids (`:movie` or `:tv`), uncached and
-  without appended resources.
+  Fetches a title's genre ids, keywords and credits (`:movie` or `:tv`),
+  uncached and without videos or images.
 
-  The genre backfill reads tens of thousands of titles once; the full detail
-  fetch would cache each large response for a day. Returns `{:ok, ids}`, or
-  `{:error, :missing_genres}` when the answer carries no genre list.
+  The metadata backfill reads tens of thousands of titles once; the full
+  detail fetch would cache each large response for a day. Returns
+  `{:ok, %{genre_ids: ids | nil, keywords: [...], credits: [...]}}`; see
+  `Streamix.Iptv.TmdbClient.Parser.metadata/2`.
   """
-  @spec get_genre_ids(:movie | :tv, String.t() | integer(), keyword()) ::
-          {:ok, [pos_integer()]} | {:error, term()}
-  def get_genre_ids(kind, tmdb_id, opts \\ []) when kind in [:movie, :tv] do
+  @spec get_metadata(:movie | :tv, String.t() | integer(), keyword()) ::
+          {:ok, Parser.metadata()} | {:error, term()}
+  def get_metadata(kind, tmdb_id, opts \\ []) when kind in [:movie, :tv] do
     profile = Config.profile_from(opts)
 
     with true <- Config.enabled?(profile) || {:error, :tmdb_not_configured},
          {:ok, data} <- Transport.get_details(kind, tmdb_id, profile) do
-      case Parser.genre_ids(data) do
-        ids when is_list(ids) -> {:ok, ids}
-        nil -> {:error, :missing_genres}
-      end
+      {:ok, Parser.metadata(kind, data)}
     end
   end
 

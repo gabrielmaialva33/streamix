@@ -47,6 +47,11 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   provider is selected.
 - Response-contract tests covering success, validation, not-found, and authentication responses against the published
   schemas.
+- Every title now keeps its TMDB keywords ("time travel", "heist", "based on novel or book") and the credits people
+  search by: billed cast, directors and writers (a series' creators count as writers). Movies had no credits at all:
+  TMDB sent them with every detail request and they were dropped. The nightly 05:45 job became
+  `BackfillTmdbMetadataWorker`, which fetches genres, keywords and credits in one uncached request per `tmdb_id`,
+  four at a time; a job's `"limit"` arg lifts its nightly cap for a one-off catch-up.
 
 ### Changed
 

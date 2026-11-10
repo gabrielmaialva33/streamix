@@ -87,16 +87,22 @@ defmodule Streamix.Iptv.Sync.ContentUpsertPreservationTest do
     } do
       schema = unquote(schema)
       record = apply(Streamix.IptvFixtures, unquote(fixture), [provider, %{tmdb_id: "550"}])
-      record = record |> Ecto.Changeset.change(tmdb_genre_ids: [18]) |> Repo.update!()
+
+      record =
+        record
+        |> Ecto.Changeset.change(tmdb_genre_ids: [18], tmdb_keyword_ids: [4379])
+        |> Repo.update!()
 
       for attrs <- [%{}, %{tmdb_id: "550"}, %{tmdb_genre_ids: [28]}] do
         unchanged = schema.changeset(record, attrs) |> Ecto.Changeset.apply_changes()
         assert unchanged.tmdb_genre_ids == [18]
+        assert unchanged.tmdb_keyword_ids == [4379]
       end
 
       updated = schema.changeset(record, %{tmdb_id: "551"}) |> Repo.update!()
       assert updated.tmdb_id == "551"
       assert updated.tmdb_genre_ids == nil
+      assert updated.tmdb_keyword_ids == nil
     end
 
     test "#{kind} upsert invalidates fetched genres on a new TMDB identity only", %{
@@ -105,7 +111,11 @@ defmodule Streamix.Iptv.Sync.ContentUpsertPreservationTest do
       schema = unquote(schema)
       id_field = unquote(id_field)
       record = apply(Streamix.IptvFixtures, unquote(fixture), [provider, %{tmdb_id: "550"}])
-      record = record |> Ecto.Changeset.change(tmdb_genre_ids: [18]) |> Repo.update!()
+
+      record =
+        record
+        |> Ecto.Changeset.change(tmdb_genre_ids: [18], tmdb_keyword_ids: [4379])
+        |> Repo.update!()
 
       for incoming <- ["550", nil, "", "0", "551"] do
         payload = %{
@@ -120,9 +130,11 @@ defmodule Streamix.Iptv.Sync.ContentUpsertPreservationTest do
         if incoming == "551" do
           assert updated.tmdb_id == "551"
           assert updated.tmdb_genre_ids == nil
+          assert updated.tmdb_keyword_ids == nil
         else
           assert updated.tmdb_id == "550"
           assert updated.tmdb_genre_ids == [18]
+          assert updated.tmdb_keyword_ids == [4379]
         end
       end
     end

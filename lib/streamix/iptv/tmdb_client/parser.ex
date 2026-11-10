@@ -74,8 +74,111 @@ defmodule Streamix.Iptv.TmdbClient.Parser do
   defp maybe_put(map, _key, ""), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
-  @doc "TMDB genre ids of a movie or TV detail response, or nil when it has none."
-  def genre_ids(data) when is_map(data), do: parse_genre_ids(data["genres"])
+  @cast_limit 10
+  @crew_limit 3
+  @writing_jobs ~w(Screenplay Writer Novel Story Author Book)
+
+  @type keyword_tag :: %{id: pos_integer(), name: String.t()}
+  @type credit :: %{
+          name: String.t(),
+          role: String.t(),
+          position: non_neg_integer()
+        }
+  @type metadata :: %{
+          genre_ids: [pos_integer()] | nil,
+          keywords: [keyword_tag()],
+          credits: [credit()]
+        }
+
+  @doc """
+  Genre ids, keywords and the credits worth searching by, from a detail
+  response with `keywords,credits` appended. `genre_ids` is nil when the
+  answer carries no genre list at all.
+
+  Credits keep the billed cast (top #{@cast_limit}), directors and writers;
+  a series' creators count as its writers. Keyword names are TMDB's English
+  labels, which is the only language TMDB publishes them in.
+  """
+  @spec metadata(:movie | :tv, map()) :: metadata()
+  def metadata(kind, data) when kind in [:movie, :tv] and is_map(data) do
+    %{
+      genre_ids: parse_genre_ids(data["genres"]),
+      keywords: parse_keywords(keyword_list(kind, data["keywords"])),
+      credits: parse_credits(data["credits"], data["created_by"])
+    }
+  end
+
+  # Movies list them under "keywords", series under "results".
+  defp keyword_list(:movie, %{"keywords" => list}), do: list
+  defp keyword_list(:tv, %{"results" => list}), do: list
+  defp keyword_list(_kind, _keywords), do: []
+
+  defp parse_keywords(list) when is_list(list) do
+    list
+    |> Enum.flat_map(fn
+      %{"id" => id, "name" => name} when is_integer(id) and id > 0 and is_binary(name) ->
+        case String.trim(name) do
+          "" -> []
+          name -> [%{id: id, name: name}]
+        end
+
+      _ ->
+        []
+    end)
+    |> Enum.uniq_by(& &1.id)
+  end
+
+  defp parse_keywords(_list), do: []
+
+  defp parse_credits(credits, created_by) do
+    credits = if is_map(credits), do: credits, else: %{}
+    crew = list_or_empty(credits["crew"])
+
+    cast =
+      credits["cast"]
+      |> list_or_empty()
+      |> Enum.sort_by(&order_of/1)
+      |> names()
+      |> Enum.take(@cast_limit)
+
+    directors = crew |> Enum.filter(&(&1["job"] == "Director")) |> names()
+
+    writers =
+      list_or_empty(created_by) ++
+        Enum.filter(crew, &(&1["department"] == "Writing" and &1["job"] in @writing_jobs))
+
+    role_credits("cast", cast) ++
+      role_credits("director", Enum.take(directors, @crew_limit)) ++
+      role_credits("writer", writers |> names() |> Enum.take(@crew_limit))
+  end
+
+  defp role_credits(role, names) do
+    names
+    |> Enum.with_index()
+    |> Enum.map(fn {name, position} -> %{name: name, role: role, position: position} end)
+  end
+
+  # Trimmed, non-blank names in order, first occurrence wins.
+  defp names(people) do
+    people
+    |> Enum.flat_map(fn
+      %{"name" => name} when is_binary(name) ->
+        case String.trim(name) do
+          "" -> []
+          name -> [name]
+        end
+
+      _ ->
+        []
+    end)
+    |> Enum.uniq_by(&String.downcase/1)
+  end
+
+  defp order_of(%{"order" => order}) when is_integer(order), do: order
+  defp order_of(_person), do: 1_000_000
+
+  defp list_or_empty(list) when is_list(list), do: list
+  defp list_or_empty(_value), do: []
 
   defp parse_genre_ids(genres) when is_list(genres) do
     genres

@@ -47,6 +47,7 @@ defmodule Streamix.Iptv.Movie do
     field :tmdb_id, :string
     # Written only by Genres.apply_tmdb/3, never provider changesets.
     field :tmdb_genre_ids, {:array, :integer}
+    field :tmdb_keyword_ids, {:array, :integer}
     field :imdb_id, :string
     field :variant_key, :string, writable: :never, load_in_query: false
     field :youtube_trailer, :string
