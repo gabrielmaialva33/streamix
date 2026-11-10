@@ -9,6 +9,7 @@ defmodule StreamixWeb.Catalog.Serializer do
   owns the transport payload.
   """
 
+  alias Streamix.Catalog
   alias Streamix.Helpers
   alias StreamixWeb.Catalog.ImageProxy
   alias StreamixWeb.Catalog.StreamUrls
@@ -60,7 +61,7 @@ defmodule StreamixWeb.Catalog.Serializer do
 
   defp serialize_featured_movie(movie) do
     poster = ImageProxy.proxy(movie.stream_icon)
-    backdrops = Streamix.Catalog.backdrop_urls(movie)
+    backdrops = Catalog.backdrop_urls(movie)
     hero_backdrop = List.first(backdrops) || movie.stream_icon
 
     %{
@@ -82,7 +83,7 @@ defmodule StreamixWeb.Catalog.Serializer do
 
   defp serialize_featured_series(series) do
     poster = ImageProxy.proxy(series.cover)
-    backdrops = Streamix.Catalog.backdrop_urls(series)
+    backdrops = Catalog.backdrop_urls(series)
     hero_backdrop = List.first(backdrops) || series.cover
 
     %{
@@ -153,13 +154,13 @@ defmodule StreamixWeb.Catalog.Serializer do
       content_rating: movie.content_rating,
       tagline: movie.tagline,
       poster: ImageProxy.proxy(movie.stream_icon),
-      backdrop: ImageProxy.proxy(Streamix.Catalog.backdrop_urls(movie)),
+      backdrop: ImageProxy.proxy(Catalog.backdrop_urls(movie)),
       youtube_trailer: movie.youtube_trailer,
       stream_url: StreamUrls.signed_movie_url(movie),
       browser_stream_url: StreamUrls.browser_movie_url(movie),
       provider: serialize_provider_ref(movie.provider)
     }
-    |> with_image_variants(movie.stream_icon, List.first(Streamix.Catalog.backdrop_urls(movie)))
+    |> with_image_variants(movie.stream_icon, List.first(Catalog.backdrop_urls(movie)))
   end
 
   # ---------------------------------------------------------------------
@@ -195,13 +196,13 @@ defmodule StreamixWeb.Catalog.Serializer do
       cast: Helpers.cast_names(series.credits),
       director: Helpers.director_names(series.credits),
       poster: ImageProxy.proxy(series.cover),
-      backdrop: ImageProxy.proxy(Streamix.Catalog.backdrop_urls(series)),
+      backdrop: ImageProxy.proxy(Catalog.backdrop_urls(series)),
       season_count: length(seasons),
       episode_count: Enum.sum(Enum.map(seasons, fn s -> length(s.episodes || []) end)),
       seasons: Enum.map(seasons, &serialize_season/1),
       provider: serialize_provider_ref(series.provider)
     }
-    |> with_image_variants(series.cover, List.first(Streamix.Catalog.backdrop_urls(series)))
+    |> with_image_variants(series.cover, List.first(Catalog.backdrop_urls(series)))
   end
 
   def serialize_season(season) do

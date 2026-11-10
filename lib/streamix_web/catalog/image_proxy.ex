@@ -13,6 +13,8 @@ defmodule StreamixWeb.Catalog.ImageProxy do
   input cardinality so serializers can feed it raw struct fields.
   """
 
+  alias Streamix.PublicUrls
+
   # Bumping this forces the CDN to re-fetch images served to catalog
   # clients after a config change. Keep in sync with the previous
   # inline version in `CatalogController` unless you actually want a
@@ -24,8 +26,8 @@ defmodule StreamixWeb.Catalog.ImageProxy do
   def proxy(urls) when is_list(urls), do: Enum.map(urls, &proxy/1)
 
   def proxy(url) when is_binary(url) do
-    tmdb = Application.get_env(:streamix, :tmdb_proxy_url, "https://tmdb.mahina.fun")
-    imgmxa = Application.get_env(:streamix, :imgmxa_proxy_url, "https://imgmxa.mahina.fun")
+    tmdb = PublicUrls.tmdb_proxy()
+    imgmxa = PublicUrls.imgmxa_proxy()
 
     url
     |> String.replace("https://image.tmdb.org", tmdb)

@@ -19,7 +19,9 @@ defmodule StreamixWeb.Telemetry do
       # every 10_000ms. Learn more here: https://hexdocs.pm/telemetry_metrics
       {:telemetry_poller, measurements: periodic_measurements(), period: 10_000},
       # Prometheus reporter — scraped via GET /metrics on the Phoenix endpoint.
-      {TelemetryMetricsPrometheus.Core, metrics: metrics()}
+      {TelemetryMetricsPrometheus.Core, metrics: metrics()},
+      # Keeps the reporter's raw distribution samples bounded when nothing scrapes.
+      StreamixWeb.Telemetry.PrometheusCompactor
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

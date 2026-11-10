@@ -1,4 +1,6 @@
 defmodule Streamix.Iptv.Access do
+  alias Streamix.Iptv.Content.VodAvailability
+
   @moduledoc """
   Helpers for content access control queries.
 
@@ -164,6 +166,8 @@ defmodule Streamix.Iptv.Access do
   """
   @spec browsable(Ecto.Queryable.t(), atom()) :: Ecto.Query.t()
   def browsable(query, binding) when is_atom(binding) do
-    where(query, [{^binding, p}], p.is_active == true and p.health_status == :healthy)
+    query
+    |> VodAvailability.exclude_dead()
+    |> where([{^binding, p}], p.is_active == true and p.health_status == :healthy)
   end
 end

@@ -119,6 +119,10 @@ defmodule StreamixWeb.XtreamLiveHlsTest do
     assert length(first_segments) == 5
     refute_leak(first)
 
+    # The immediate variant request reuses the playlist fetched for the
+    # synthetic master instead of re-walking the redirect chain.
+    assert playlist_fetches() == 0
+
     Agent.update(context.sequence, &(&1 + 2))
 
     second = get(build_conn(), live)
@@ -129,8 +133,8 @@ defmodule StreamixWeb.XtreamLiveHlsTest do
     assert Enum.drop(first_segments, 2) == Enum.take(second_segments, 3)
     assert length(second_segments -- first_segments) == 2
 
-    # Never cached: both refreshes reached upstream.
-    assert playlist_fetches() == 2
+    # Subsequent refreshes reach upstream.
+    assert playlist_fetches() == 1
 
     segment = get(build_conn(), List.last(second_segments))
     assert segment.status == 200
@@ -281,6 +285,127 @@ defmodule StreamixWeb.XtreamLiveHlsTest do
     for secret <- [@user, @pass, @panel, @cdn, "cdn-token"], do: refute(log =~ secret)
   end
 
+  describe "live startup over Bandit upstream" do
+    setup do
+      {:ok, sequence} = Agent.start_link(fn -> 4_209 end)
+      {:ok, port} = start_bandit_upstream(self(), sequence)
+      :persistent_term.put({__MODULE__, :bandit_port}, port)
+      bandit_http = [adapter: __MODULE__.BanditAdapter]
+
+      on_exit(fn -> :persistent_term.erase({__MODULE__, :bandit_port}) end)
+
+      Application.put_env(:streamix, :xtream_hls,
+        http_options: bandit_http,
+        live_prefetch_segments: 1,
+        live_playlist_ttl_ms: 2_000,
+        live_sync_segments: 3
+      )
+
+      Application.put_env(:streamix, :xtream_delivery, http_options: bandit_http)
+      :ok = SegmentCache.flush()
+
+      provider =
+        global_provider_fixture(%{
+          url: "http://#{@panel}",
+          username: @user,
+          password: @pass,
+          probe_live_delivery: true
+        })
+
+      channel = provider |> channel_fixture(%{stream_id: 501}) |> Repo.preload(:provider)
+      token = StreamToken.sign_channel(channel.id, nil, bypass_subscription: true)
+
+      %{
+        provider: provider,
+        channel: channel,
+        token: token,
+        sequence: sequence,
+        port: port,
+        master: master_path(token)
+      }
+    end
+
+    test "reuses the synthetic master's playlist on the immediate variant request and prefetches live edge minus 3",
+         context do
+      master = get(build_conn(), context.master)
+      assert master.status == 200
+      [live] = lines(master.resp_body)
+      sid = session_id(live)
+
+      # Probe + master each walked the 302 and fetched the playlist once.
+      assert_receive {:bandit_playlist, 4_209}, 1_000
+      assert_receive {:bandit_playlist, 4_209}, 1_000
+
+      # Serving the live playlist prefetches the segment at live edge minus
+      # liveSyncDurationCount=3 (index 5 - 3 = 2 -> seg-4211.ts).
+      assert_receive {:bandit_segment, "/hls/501/seg-4211.ts"}, 1_000
+      wait_for_prefetch_idle(sid)
+      refute_received {:bandit_segment, "/hls/501/seg-4209.ts"}
+      refute_received {:bandit_segment, "/hls/501/seg-4210.ts"}
+
+      # Even if the upstream sequence advances before the immediate variant
+      # request arrives (< 2 s), the variant reuses the master's playlist
+      # without hitting upstream again.
+      Agent.update(context.sequence, &(&1 + 1))
+      variant = get(build_conn(), live)
+      assert variant.status == 200
+      assert variant.resp_body =~ "#EXT-X-MEDIA-SEQUENCE:4209"
+      refute_received {:bandit_playlist, _seq}
+
+      segments = lines(variant.resp_body)
+      assert length(segments) == 5
+
+      # The player requests the live-sync segment (index 2, seg-4211.ts): it is
+      # served straight from SegmentCache (no second fetch of seg-4211.ts) and
+      # advances lookahead to seg-4212.ts.
+      first_segment = get(build_conn(), Enum.at(segments, 2))
+      assert first_segment.status == 200
+      assert first_segment.resp_body == @ts_segment
+      refute_received {:bandit_segment, "/hls/501/seg-4211.ts"}
+
+      assert_receive {:bandit_segment, "/hls/501/seg-4212.ts"}, 1_000
+      wait_for_prefetch_idle(sid)
+
+      # The next playlist refresh goes upstream and gets the new sequence.
+      refresh = get(build_conn(), live)
+      assert refresh.status == 200
+      assert refresh.resp_body =~ "#EXT-X-MEDIA-SEQUENCE:4210"
+      assert_receive {:bandit_playlist, 4_210}, 1_000
+    end
+
+    test "refetches the variant playlist upstream when the master playlist TTL expires",
+         context do
+      master = get(build_conn(), context.master)
+      [live] = lines(master.resp_body)
+      sid = session_id(live)
+
+      assert_receive {:bandit_playlist, 4_209}, 1_000
+      assert_receive {:bandit_playlist, 4_209}, 1_000
+      assert_receive {:bandit_segment, "/hls/501/seg-4211.ts"}, 1_000
+      wait_for_prefetch_idle(sid)
+
+      # Age the stashed master playlist past its 2 s TTL.
+      expired_at = System.monotonic_time(:millisecond) - 1
+
+      :sys.replace_state(Sessions, fn state ->
+        update_in(state.sessions[sid].live_playlists, fn live_playlists ->
+          Map.new(live_playlists, fn {rid, {template, _}} -> {rid, {template, expired_at}} end)
+        end)
+      end)
+
+      Agent.update(context.sequence, &(&1 + 3))
+
+      variant = get(build_conn(), live)
+      assert variant.status == 200
+      assert variant.resp_body =~ "#EXT-X-MEDIA-SEQUENCE:4212"
+      assert_receive {:bandit_playlist, 4_212}, 1_000
+
+      # The fresh playlist's live-sync segment (4212 + 2 = 4214) is prefetched.
+      assert_receive {:bandit_segment, "/hls/501/seg-4214.ts"}, 1_000
+      wait_for_prefetch_idle(sid)
+    end
+  end
+
   defp master_path(token), do: "/api/stream/hls/master.m3u8?token=#{encoded(token)}"
   defp encoded(token), do: URI.encode_www_form(token)
 
@@ -340,6 +465,91 @@ defmodule StreamixWeb.XtreamLiveHlsTest do
     if Enum.any?(pending, fn {_key, %{waiters: waiters}} -> length(waiters) >= count end),
       do: :ok,
       else: wait_for_waiters(count)
+  end
+
+  defp wait_for_prefetch_idle(session_id) do
+    if MapSet.size(:sys.get_state(Sessions).sessions[session_id].prefetching) > 0,
+      do: wait_for_prefetch_idle(session_id),
+      else: :ok
+  end
+
+  defp start_bandit_upstream(owner, sequence) do
+    {:ok, server} =
+      start_supervised(
+        {Bandit,
+         plug: {__MODULE__.LiveBanditPlug, owner: owner, sequence: sequence},
+         port: 0,
+         startup_log: false}
+      )
+
+    {:ok, {_address, port}} = ThousandIsland.listener_info(server)
+    {:ok, port}
+  end
+
+  defmodule BanditAdapter do
+    @moduledoc false
+
+    def run(request) do
+      port = :persistent_term.get({StreamixWeb.XtreamLiveHlsTest, :bandit_port})
+
+      Req.Finch.run(%{
+        request
+        | url: %{request.url | scheme: "http", host: "127.0.0.1", port: port}
+      })
+    end
+  end
+
+  defmodule LiveBanditPlug do
+    @moduledoc false
+
+    import Plug.Conn
+
+    @cdn "104.16.3.3"
+    @ts_segment <<0x47>> <> :binary.copy(<<0>>, 187) <> <<0x47>> <> :binary.copy(<<1>>, 187)
+
+    def init(opts), do: opts
+
+    def call(%{request_path: "/live/megauser/s3cr3t-Pa55word/" <> file} = conn, _opts) do
+      channel = Path.rootname(file)
+
+      conn
+      |> put_resp_header(
+        "location",
+        "https://#{@cdn}/hls/#{channel}/index.m3u8?token=cdn-token"
+      )
+      |> send_resp(302, "")
+    end
+
+    def call(%{request_path: "/hls/" <> rest} = conn, opts) do
+      owner = Keyword.fetch!(opts, :owner)
+      sequence = Keyword.fetch!(opts, :sequence)
+
+      case Path.split(rest) do
+        [_channel, "index.m3u8"] ->
+          seq = Agent.get(sequence, & &1)
+          send(owner, {:bandit_playlist, seq})
+
+          segments = for n <- seq..(seq + 4), do: "#EXTINF:10.0,\nseg-#{n}.ts\n"
+
+          body =
+            IO.iodata_to_binary([
+              "#EXTM3U\n#EXT-X-VERSION:6\n#EXT-X-TARGETDURATION:10\n",
+              "#EXT-X-MEDIA-SEQUENCE:#{seq}\n",
+              segments
+            ])
+
+          conn
+          |> put_resp_content_type("application/vnd.apple.mpegurl", nil)
+          |> send_resp(200, body)
+
+        [_channel, "seg-" <> _] ->
+          send(owner, {:bandit_segment, conn.request_path})
+
+          conn
+          |> put_resp_content_type("video/mp2t", nil)
+          |> send_resp(200, @ts_segment)
+      end
+    end
   end
 
   # Channel 501: live HLS on the CDN. 123: redirects to a third-party embed

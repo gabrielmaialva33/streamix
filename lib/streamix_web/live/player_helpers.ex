@@ -3,6 +3,8 @@ defmodule StreamixWeb.PlayerHelpers do
   Shared helpers for loading playable content.
   Used by PlayerLive and WatchPartyLive.Show.
   """
+  alias Streamix.Catalog
+  alias Streamix.Providers
   alias Streamix.Torrent
   alias StreamixWeb.Catalog.StreamUrls
   alias StreamixWeb.Content.DisplayTitle
@@ -131,17 +133,17 @@ defmodule StreamixWeb.PlayerHelpers do
   associated movie rather than the transient torrent stream id.
   """
   def resolve_catalog_item_id("gindex", %{id: id}),
-    do: Streamix.Catalog.resolve_catalog_item_id("movie", id)
+    do: Catalog.resolve_catalog_item_id("movie", id)
 
   def resolve_catalog_item_id("gindex_episode", %{id: id}),
-    do: Streamix.Catalog.resolve_catalog_item_id("episode", id)
+    do: Catalog.resolve_catalog_item_id("episode", id)
 
   def resolve_catalog_item_id("torrent", %{movie_id: movie_id}),
-    do: Streamix.Catalog.resolve_catalog_item_id("movie", movie_id)
+    do: Catalog.resolve_catalog_item_id("movie", movie_id)
 
   def resolve_catalog_item_id(type, %{id: id})
       when type in ["live_channel", "movie", "series", "episode"] do
-    Streamix.Catalog.resolve_catalog_item_id(type, id)
+    Catalog.resolve_catalog_item_id(type, id)
   end
 
   def resolve_catalog_item_id(_type, _content), do: {:error, :invalid_content_type}
@@ -231,7 +233,7 @@ defmodule StreamixWeb.PlayerHelpers do
   end
 
   defp load_gindex_movie(id) do
-    movie = Streamix.Catalog.get_movie_with_provider!(id)
+    movie = Catalog.get_movie_with_provider!(id)
 
     if movie.gindex_path do
       {:ok, movie, movie.provider}
@@ -241,7 +243,7 @@ defmodule StreamixWeb.PlayerHelpers do
   end
 
   defp load_gindex_episode(id) do
-    episode = Streamix.Catalog.get_episode_with_context!(id)
+    episode = Catalog.get_episode_with_context!(id)
 
     if episode.gindex_path do
       {:ok, episode, episode.season.series.provider}
@@ -254,7 +256,7 @@ defmodule StreamixWeb.PlayerHelpers do
 
   def load_next_episode(type, content, provider, user_id)
       when type in ["episode", "gindex_episode"] do
-    case Streamix.Catalog.get_next_episode(content.id) do
+    case Catalog.get_next_episode(content.id) do
       nil ->
         nil
 
@@ -293,17 +295,23 @@ defmodule StreamixWeb.PlayerHelpers do
 
   # A channel keeps the live token proxy unless its provider probes live
   # delivery and the probe found HLS; then the `.m3u8` gateway URL is minted.
-  def resolve_stream_url("live_channel", channel, provider, user_id) do
+  # `probe: false` answers from the delivery probe's cache only, falling back
+  # to the token proxy on a miss. The static render of a player page passes
+  # it: nothing plays from that HTML, and probing there kept the browser on a
+  # blank tab for as long as the slowest source took.
+  def resolve_stream_url(type, content, provider, user_id, opts \\ [])
+
+  def resolve_stream_url("live_channel", channel, provider, user_id, opts) do
     token = StreamToken.sign_channel(channel.id, user_id)
-    {:ok, xtream_stream_url(token, provider, :channel, channel)}
+    {:ok, xtream_stream_url(token, provider, :channel, channel, opts)}
   end
 
-  def resolve_stream_url("movie", movie, %{provider_type: :embedplay}, user_id) do
+  def resolve_stream_url("movie", movie, %{provider_type: :embedplay}, user_id, _opts) do
     token = StreamToken.sign_movie(movie.id, user_id)
     {:ok, "/api/stream/embedplay/video.mp4?token=#{URI.encode_www_form(token)}"}
   end
 
-  def resolve_stream_url("movie", movie, provider, user_id) do
+  def resolve_stream_url("movie", movie, provider, user_id, opts) do
     token = StreamToken.sign_movie(movie.id, user_id)
 
     if gindex_content?(movie) do
@@ -313,26 +321,26 @@ defmodule StreamixWeb.PlayerHelpers do
       # the stream URL it can pump straight into the canvas.
       {:ok, build_gindex_stream_url(token)}
     else
-      {:ok, xtream_stream_url(token, provider, :movie, movie)}
+      {:ok, xtream_stream_url(token, provider, :movie, movie, opts)}
     end
   end
 
-  def resolve_stream_url("episode", episode, provider, user_id) do
+  def resolve_stream_url("episode", episode, provider, user_id, opts) do
     token = StreamToken.sign_episode(episode.id, user_id)
 
     if gindex_content?(episode) do
       {:ok, build_gindex_stream_url(token)}
     else
-      {:ok, xtream_stream_url(token, provider, :episode, episode)}
+      {:ok, xtream_stream_url(token, provider, :episode, episode, opts)}
     end
   end
 
-  def resolve_stream_url("gindex", movie, _provider, user_id) do
+  def resolve_stream_url("gindex", movie, _provider, user_id, _opts) do
     token = StreamToken.sign_movie(movie.id, user_id)
     {:ok, build_gindex_stream_url(token)}
   end
 
-  def resolve_stream_url("gindex_episode", episode, _provider, user_id) do
+  def resolve_stream_url("gindex_episode", episode, _provider, user_id, _opts) do
     token = StreamToken.sign_episode(episode.id, user_id)
     {:ok, build_gindex_stream_url(token)}
   end
@@ -341,12 +349,13 @@ defmodule StreamixWeb.PlayerHelpers do
         "torrent",
         %{torrent_stream: %{info_hash: info_hash}},
         _provider,
-        _user_id
+        _user_id,
+        _opts
       ) do
     {:ok, "#{StreamixWeb.Endpoint.url()}/api/stream/torrent/#{info_hash}"}
   end
 
-  def resolve_stream_url(_, _, _, _), do: {:error, :not_found}
+  def resolve_stream_url(_, _, _, _, _), do: {:error, :not_found}
 
   @doc """
   Fire-and-forget prewarm of the redirect chain for the given content.
@@ -358,27 +367,53 @@ defmodule StreamixWeb.PlayerHelpers do
   an error and we no-op. Gindex content has direct URLs and skips
   prewarm.
   """
-  def prewarm_upstream_redirect(type, content, user_id) when is_map(content) do
+  def prewarm_upstream_redirect(type, content, user_id, provider_id \\ nil)
+
+  def prewarm_upstream_redirect(type, content, user_id, provider_id) when is_map(content) do
     if gindex_content?(content) do
       :ok
     else
       case content_id(content) do
         nil -> :ok
-        id -> do_prewarm(type, id, user_id, Map.get(content, :provider_id))
+        id -> do_prewarm(type, id, user_id, provider_id || Map.get(content, :provider_id))
       end
     end
   end
 
-  def prewarm_upstream_redirect(_type, _content, _user_id), do: :ok
+  def prewarm_upstream_redirect(_type, _content, _user_id, _provider_id), do: :ok
 
   defp do_prewarm(type, id, user_id, provider_id) do
     with {:ok, upstream_type} <- prewarmable_upstream_type(type),
          {:ok, url} <- StreamToken.upstream_url(upstream_type, id, user_id) do
       Streamix.Playback.prewarm_stream_url(url, provider_id: provider_id)
+      maybe_warm_vod_start(upstream_type, url, id, provider_id)
     else
       _ -> :ok
     end
   end
+
+  # The first block too, through the same cache the player will read. Not for
+  # a provider whose CDN refuses this server (direct-client playback hands the
+  # browser the CDN URL instead), nor for live channels.
+  defp maybe_warm_vod_start(type, url, id, provider_id)
+       when type in ["movie", "episode"] and is_integer(provider_id) do
+    case Providers.get_provider(provider_id) do
+      %{direct_client_playback: true} ->
+        :ok
+
+      %{} ->
+        Streamix.Playback.warm_vod_start(url,
+          provider_id: provider_id,
+          content_id: id,
+          media_type: type
+        )
+
+      nil ->
+        :ok
+    end
+  end
+
+  defp maybe_warm_vod_start(_type, _url, _id, _provider_id), do: :ok
 
   defp prewarmable_upstream_type("live_channel"), do: {:ok, "channel"}
   defp prewarmable_upstream_type("movie"), do: {:ok, "movie"}
@@ -422,7 +457,7 @@ defmodule StreamixWeb.PlayerHelpers do
   # the gateway's `.m3u8` URL, a direct-client item its container-suffixed
   # direct route, and everything else the token proxy. Items of a probed
   # provider are probed here (once, then cached) unless `probe: false`.
-  defp xtream_stream_url(token, provider, type, content, opts \\ []) do
+  defp xtream_stream_url(token, provider, type, content, opts) do
     case Streamix.Playback.xtream_route(provider, type, content, opts) do
       :proxy -> build_token_proxy_url(token)
       route -> StreamUrls.xtream_url(token, route)

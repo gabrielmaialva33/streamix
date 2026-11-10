@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readSource as readFile } from "./support/player_hook_source.js";
 
 const hookUrl = new URL("../hooks/video_player.js", import.meta.url);
 const controllerUrl = new URL("../player/player_ui_controller.js", import.meta.url);

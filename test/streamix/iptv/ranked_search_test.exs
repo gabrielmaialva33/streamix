@@ -5,8 +5,6 @@ defmodule Streamix.Iptv.RankedSearchTest do
 
   import Streamix.IptvFixtures
 
-  alias Streamix.Iptv
-
   setup do
     # `search_public` scopes to providers marked global/public, which is
     # exactly what `global_provider_fixture/0` produces.
@@ -22,7 +20,7 @@ defmodule Streamix.Iptv.RankedSearchTest do
       movie_fixture(provider, %{name: "Matrix", stream_id: 1002})
       movie_fixture(provider, %{name: "Enter the Matrix", stream_id: 1003})
 
-      [first, second, third] = Iptv.search_public_movies("Matrix", limit: 10)
+      [first, second, third] = Streamix.Search.search_public_movies("Matrix", limit: 10)
 
       assert first.name == "Matrix"
       assert second.name == "Matrix Resurrections"
@@ -33,7 +31,7 @@ defmodule Streamix.Iptv.RankedSearchTest do
       # `pokemon` with no accent still has to match `Pokémon`.
       movie_fixture(provider, %{name: "Pokémon: The First Movie", stream_id: 1004})
 
-      results = Iptv.search_public_movies("pokemon", limit: 5)
+      results = Streamix.Search.search_public_movies("pokemon", limit: 5)
       assert Enum.any?(results, &(&1.name == "Pokémon: The First Movie"))
     end
 
@@ -42,14 +40,14 @@ defmodule Streamix.Iptv.RankedSearchTest do
       # find `Matrix`.
       movie_fixture(provider, %{name: "The Matrix", stream_id: 1005})
 
-      results = Iptv.search_public_movies("Matris", limit: 5)
+      results = Streamix.Search.search_public_movies("Matris", limit: 5)
       assert Enum.any?(results, &(&1.name == "The Matrix"))
     end
 
     test "populates :rank_score on every row", %{provider: provider} do
       movie_fixture(provider, %{name: "Matrix", stream_id: 1006})
 
-      [match] = Iptv.search_public_movies("Matrix", limit: 1)
+      [match] = Streamix.Search.search_public_movies("Matrix", limit: 1)
       assert is_integer(match.rank_score)
       # Exact-match branch is 1000 in the CASE expression.
       assert match.rank_score >= 1000
@@ -61,7 +59,7 @@ defmodule Streamix.Iptv.RankedSearchTest do
       # instead of returning every row with rank_score=0.
       movie_fixture(provider, %{name: "The Godfather", stream_id: 1007})
 
-      assert Iptv.search_public_movies("qzqzqz", limit: 10) == []
+      assert Streamix.Search.search_public_movies("qzqzqz", limit: 10) == []
     end
 
     test "collapses provider variants and honors provider filters", %{provider: provider} do
@@ -83,15 +81,15 @@ defmodule Streamix.Iptv.RankedSearchTest do
           stream_id: 1009
         })
 
-      assert [_canonical] = Iptv.search_public_movies("Canonical Search", limit: 10)
+      assert [_canonical] = Streamix.Search.search_public_movies("Canonical Search", limit: 10)
 
       assert Enum.map(
-               Iptv.search_public_movies("Canonical Search", provider_id: provider.id),
+               Streamix.Search.search_public_movies("Canonical Search", provider_id: provider.id),
                & &1.id
              ) == [xtream.id]
 
       assert Enum.map(
-               Iptv.search_public_movies("Canonical Search", provider_type: :gindex),
+               Streamix.Search.search_public_movies("Canonical Search", provider_type: :gindex),
                & &1.id
              ) == [drive.id]
     end

@@ -32,6 +32,17 @@ export const classifyDeviceClass = ({
   return touchDevice && (coarsePointer || Number(viewportWidth) < 768) ? "mobile" : "desktop";
 };
 
+/** Device class of the current browser, from the same signals web vitals use. */
+export const currentDeviceClass = (win = globalThis.window) =>
+  win
+    ? classifyDeviceClass({
+        mobileHint: win.navigator?.userAgentData?.mobile,
+        coarsePointer: win.matchMedia?.("(pointer: coarse)")?.matches === true,
+        maxTouchPoints: win.navigator?.maxTouchPoints,
+        viewportWidth: win.innerWidth,
+      })
+    : "unknown";
+
 export const webVitalPayload = ({
   batchId,
   path,

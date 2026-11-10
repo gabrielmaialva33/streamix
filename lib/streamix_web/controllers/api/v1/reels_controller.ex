@@ -8,6 +8,8 @@ defmodule StreamixWeb.Api.V1.ReelsController do
   """
 
   use StreamixWeb, :controller
+
+  action_fallback StreamixWeb.Api.V1.FallbackController
   use OpenApiSpex.ControllerSpecs
 
   alias StreamixWeb.Api.V1.Schemas

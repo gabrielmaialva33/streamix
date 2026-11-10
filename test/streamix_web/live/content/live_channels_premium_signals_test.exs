@@ -4,8 +4,6 @@ defmodule StreamixWeb.Content.LiveChannelsPremiumSignalsTest do
   import Phoenix.LiveViewTest
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
-
-  alias Streamix.Iptv
   alias Streamix.Repo
 
   describe "premium signals" do
@@ -177,7 +175,12 @@ defmodule StreamixWeb.Content.LiveChannelsPremiumSignalsTest do
       refute match?({:error, {:redirect, _}}, play_html)
       refute favorite_html =~ ~s(id="channel-img-#{private_channel.id}")
       refute refresh_html =~ "Other Private Channel"
-      refute Iptv.favorite?(library_key_fixture(user), "live_channel", private_channel.id)
+
+      refute Streamix.Library.favorite?(
+               library_key_fixture(user),
+               "live_channel",
+               private_channel.id
+             )
     end
   end
 end

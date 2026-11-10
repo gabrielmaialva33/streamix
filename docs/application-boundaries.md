@@ -15,29 +15,29 @@ they are not alternate namespaces for schemas or repositories.
 | `Streamix.Providers` | Provider lifecycle, visibility, health, synthetic providers, sync state, and provider-specific source configuration |
 | `Streamix.Guide` | EPG synchronization, channel schedules, current/next programs, and guide queries |
 
-The implementation may still live under `Streamix.Iptv.*` while it is extracted.
-That namespace is an implementation detail, not the application API.
+The implementation lives under `Streamix.Iptv.*`. That namespace is an
+implementation detail, not the application API. There is no `Streamix.Iptv`
+module any more: the broad compatibility facade was retired on November 4, 2026.
 
 ## Dependency rules
 
-1. `StreamixWeb` calls the focused boundaries and never calls `Streamix.Iptv`
-   directly.
+1. `StreamixWeb` calls the focused boundaries and never reaches into
+   `Streamix.Iptv.*`.
 2. Production modules outside `lib/streamix/iptv/**` call the focused owner when
    a function/arity is already owned by a boundary.
 3. A public function/arity has exactly one boundary owner. Similar names with
    different arities are still separate contracts and must be reviewed
    explicitly.
-4. Boundary modules may call internal modules such as `Streamix.Iptv.Movies` or
-   `Streamix.Iptv.Streaming.VodProxy`; they must never route through the broad
-   `Streamix.Iptv` facade.
-5. `Streamix.Iptv` is a compatibility facade. For an owned contract, it only
-   delegates to the owning boundary; new business logic must not be added there.
-6. Calls inside `lib/streamix/iptv/**` may remain implementation-internal. Moving
-   them through an application boundary is optional and must not introduce a
-   dependency cycle.
-7. A legacy operation without a boundary owner may remain on `Streamix.Iptv`
-   temporarily. It must be classified before delivery or orchestration code is
-   migrated.
+4. Boundary modules call internal modules such as `Streamix.Iptv.Movies` or
+   `Streamix.Iptv.Streaming.VodProxy`.
+5. Calls inside `lib/streamix/iptv/**` stay implementation-internal: an internal
+   module calls another internal module, not a boundary, so no cycle appears.
+6. An operation no boundary owns yet is called on its internal module, and gets
+   a boundary owner before delivery code needs it.
+
+Library operations and history-derived AI personalization take the unlocked
+`scope.library_key` (API: `conn.assigns.current_library_key`). They never accept
+a bare user id as authorization to read viewing data. See [privacy.md](privacy.md).
 
 ## Direction of dependencies
 
@@ -49,16 +49,7 @@ controllers / LiveViews / workers / application services
                          |
                          v
        Streamix.Iptv.* implementation modules
-
- Streamix.Iptv compatibility facade
-                         |
-                         v
-              owning application boundary
 ```
-
-The compatibility arrow deliberately points toward the boundary. A boundary
-pointing back to `Streamix.Iptv` would create an architectural loop and is
-rejected by tests.
 
 ## Examples
 
@@ -68,38 +59,35 @@ Use the focused owner:
 alias Streamix.{Catalog, Library, Playback, Providers}
 
 movie = Catalog.get_public_movie(movie_id)
-{:ok, favorite} = Library.add_favorite(user_id, "movie", movie_id)
+{:ok, favorite} = Library.add_favorite(scope.library_key, "movie", movie_id)
 source = Playback.get_playable_movie(user_id, movie_id)
 provider = Providers.get_provider(provider_id)
 ```
 
-Do not use the broad facade in new production code:
-
-```elixir
-# Avoid
-Streamix.Iptv.get_public_movie(movie_id)
-```
-
-The compatibility facade remains valid only for callers not migrated yet and
-for external code that must preserve the existing API.
 
 ## Architectural tests
 
 The following tests enforce these rules:
 
 - `test/streamix/architecture/boundary_ownership_test.exs`
-  - boundaries do not depend on the broad facade;
   - public contracts do not overlap;
-  - the compatibility facade preserves every owned arity;
-  - owned facade functions route to the correct boundary.
+  - the retired `Streamix.Iptv` facade does not come back.
 - `test/streamix/architecture/application_boundary_consumers_test.exs`
   - production modules outside the IPTV implementation use the owner of every
     already-classified contract.
 - `test/streamix/architecture/application_boundaries_test.exs`
-  - the web layer uses focused boundaries instead of the broad facade.
-- `test/streamix/architecture_boundaries_test.exs`
+  - every boundary call made by the web layer is exported, and every boundary
+    is used by it.
+- `test/streamix/architecture/context_boundaries_test.exs`
+  - web and contexts reach another context only through its public module.
+- `test/streamix/architecture/layer_dependencies_test.exs`
   - web code does not call `Repo` directly and domain code does not depend on
     `StreamixWeb` outside the composition root.
+- `test/streamix/architecture/test_layout_test.exs`
+  - one module per file, and tests mirror their source paths.
+
+A call to a module that does not exist fails the build under
+`--warnings-as-errors`, so no test has to look for calls to the retired facade.
 
 ## Adding a capability
 
@@ -109,13 +97,14 @@ Before adding a function:
    stores the data.
 2. Add the public function to that boundary and delegate to an internal
    implementation module.
-3. Add or preserve the compatibility delegate in `Streamix.Iptv` when the old
-   API must remain stable.
-4. Migrate delivery and orchestration callers to the boundary.
-5. Run the architecture suite and the focused domain tests.
-6. Check the compile graph so the change does not add a cycle.
+3. Run the architecture suite and the focused domain tests.
+4. Check the compile graph so the change does not add a cycle.
 
 ## Current baseline
+
+On November 4, 2026 the compatibility facade `Streamix.Iptv` (240 delegates)
+was deleted after its last callers — tests, one internal module and two
+injected defaults — moved to the owning boundaries.
 
 After the application-boundary migration on August 24, 2026:
 

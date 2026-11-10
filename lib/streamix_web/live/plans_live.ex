@@ -3,9 +3,12 @@ defmodule StreamixWeb.PlansLive do
 
   import StreamixWeb.App.Premium
 
-  alias Streamix.Billing
-  alias StreamixWeb.Helpers.Money
+  import StreamixWeb.Billing.Formatting, only: [format_price: 2]
 
+  alias Streamix.Billing
+  alias StreamixWeb.ReturnPath
+
+  @impl true
   def mount(params, _session, socket) do
     plans = Billing.list_active_plans()
 
@@ -16,7 +19,7 @@ defmodule StreamixWeb.PlansLive do
       end
 
     current_plan_id = active_subscription && active_subscription.plan_id
-    return_to = safe_return_path(params["return_to"])
+    return_to = ReturnPath.safe(params["return_to"])
 
     socket =
       socket
@@ -32,6 +35,7 @@ defmodule StreamixWeb.PlansLive do
     {:ok, socket}
   end
 
+  @impl true
   def handle_event("checkout", %{"plan_id" => plan_id}, socket) do
     with %{user: user} <- socket.assigns.current_scope,
          plan <- Billing.get_plan!(plan_id),
@@ -82,6 +86,7 @@ defmodule StreamixWeb.PlansLive do
     end
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div id="plans-page" class="space-y-6 pb-12">
@@ -273,8 +278,6 @@ defmodule StreamixWeb.PlansLive do
   defp subscription_state(nil), do: "none"
   defp subscription_state(_subscription), do: "active"
 
-  defp format_price(price_cents, currency), do: Money.format(price_cents, currency)
-
   defp status_label("active"), do: "Ativo"
   defp status_label("trialing"), do: "Em teste"
   defp status_label("canceled"), do: "Cancelado"
@@ -323,12 +326,4 @@ defmodule StreamixWeb.PlansLive do
 
   # Only a local path: browsers drop tabs and newlines from URLs, so
   # "/\t/evil.test" would become "//evil.test".
-  defp safe_return_path("/" <> _ = path) do
-    if String.starts_with?(path, "//") or String.contains?(path, "\\") or
-         path =~ ~r/[\s\x00-\x1f\x7f]/u,
-       do: nil,
-       else: path
-  end
-
-  defp safe_return_path(_), do: nil
 end

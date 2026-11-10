@@ -5,10 +5,12 @@ defmodule StreamixWeb.Admin.PlanFormLive do
 
   alias Streamix.Billing
 
+  @impl true
   def mount(_params, _session, socket) do
     {:ok, assign(socket, current_path: "/admin/plans")}
   end
 
+  @impl true
   def handle_params(params, _url, socket) do
     {:noreply, apply_action(socket, socket.assigns.live_action, params)}
   end
@@ -33,6 +35,7 @@ defmodule StreamixWeb.Admin.PlanFormLive do
     |> assign(form: to_form(changeset))
   end
 
+  @impl true
   def handle_event("validate", %{"plan" => plan_params}, socket) do
     changeset =
       socket.assigns.plan
@@ -72,6 +75,7 @@ defmodule StreamixWeb.Admin.PlanFormLive do
     end
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div id="admin-plan-form" class="space-y-6">

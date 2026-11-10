@@ -12,7 +12,7 @@ defmodule StreamixWeb.HistoryLive do
   use StreamixWeb, :live_view
 
   import StreamixWeb.App.Feedback
-  import StreamixWeb.App.Filters, only: [filter_chip: 1, filter_strip: 1]
+  import StreamixWeb.App.Filters, only: [filter_button: 1, filter_strip: 1]
   import StreamixWeb.Content.CardComponents
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
@@ -25,6 +25,7 @@ defmodule StreamixWeb.HistoryLive do
   @episode_dash_code ~r/\s+[-–]\s+s0?(\d{1,2})\s?e0?(\d{1,4})\s+[-–]\s+/iu
 
   @doc false
+  @impl true
   def mount(_params, _session, socket) do
     %{user: user, library_key: library_key} = socket.assigns.current_scope
     show_adult = user.show_adult_content
@@ -44,29 +45,35 @@ defmodule StreamixWeb.HistoryLive do
       |> assign(counts: load_counts(library_key, show_adult))
       |> assign(sync_history: sync_history)
       |> stream(:history, [])
-      |> load_history()
 
     {:ok, socket, temporary_assigns: [loading: false]}
   end
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    {:noreply,
+     socket
+     |> assign(filter: normalize_filter(params["type"]), page: 0, end_of_list: false)
+     |> stream(:history, [], reset: true)
+     |> load_history()}
+  end
+
+  defp normalize_filter(type) when type in ~w(all live_channel movie episode), do: type
+  defp normalize_filter(_type), do: "all"
 
   # ============================================
   # Event Handlers
   # ============================================
 
   # OfflineSync hook events (client-side sync, no server action needed)
+  @impl true
   def handle_event("refresh_data", _params, socket), do: {:noreply, socket}
 
   @doc false
   def handle_event("filter", %{"type" => type}, socket) do
-    socket =
-      socket
-      |> assign(filter: type)
-      |> assign(page: 0)
-      |> assign(end_of_list: false)
-      |> stream(:history, [], reset: true)
-      |> load_history()
-
-    {:noreply, socket}
+    type = normalize_filter(type)
+    path = if type == "all", do: ~p"/history", else: ~p"/history?type=#{type}"
+    {:noreply, push_patch(socket, to: path)}
   end
 
   def handle_event("load_more", _, socket) do
@@ -127,6 +134,7 @@ defmodule StreamixWeb.HistoryLive do
   # ============================================
 
   @doc false
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="space-y-4 sm:space-y-6">
@@ -144,20 +152,29 @@ defmodule StreamixWeb.HistoryLive do
 
         <div class="flex min-w-0 items-center gap-2 sm:justify-end sm:gap-4">
           <.filter_strip id="history-filter-strip" class="min-w-0 flex-1">
-            <.filter_button type="all" label="Todos" current={@filter} count={total_count(@counts)} />
             <.filter_button
+              prefix="history"
+              type="all"
+              label="Todos"
+              current={@filter}
+              count={total_count(@counts)}
+            />
+            <.filter_button
+              prefix="history"
               type="live_channel"
               label="Ao Vivo"
               current={@filter}
               count={@counts["live_channel"] || 0}
             />
             <.filter_button
+              prefix="history"
               type="movie"
               label="Filmes"
               current={@filter}
               count={@counts["movie"] || 0}
             />
             <.filter_button
+              prefix="history"
               type="episode"
               label="Episódios"
               current={@filter}
@@ -207,19 +224,6 @@ defmodule StreamixWeb.HistoryLive do
         cta_navigate={empty_cta_path(@filter)}
       />
     </div>
-    """
-  end
-
-  defp filter_button(assigns) do
-    ~H"""
-    <.filter_chip
-      id={"history-filter-#{@type}"}
-      active={@current == @type}
-      label={@label}
-      count={if @count > 0, do: @count}
-      phx-click="filter"
-      phx-value-type={@type}
-    />
     """
   end
 

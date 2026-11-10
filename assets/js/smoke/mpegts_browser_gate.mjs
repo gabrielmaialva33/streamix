@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { dirname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 

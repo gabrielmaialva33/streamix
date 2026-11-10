@@ -3,6 +3,7 @@ defmodule Streamix.ProviderBootstrap do
 
   alias Streamix.Iptv.{GIndexProvider, GlobalProvider, TorrentProvider}
   alias Streamix.Repo
+  alias Streamix.SafeLog
 
   require Logger
 
@@ -68,7 +69,9 @@ defmodule Streamix.ProviderBootstrap do
         :ok
 
       {:error, reason} ->
-        Logger.warning("[Application] #{name} provider init failed: #{inspect(reason)}")
+        Logger.warning("[Application] #{name} provider init failed",
+          reason: SafeLog.redact_inspect(reason)
+        )
     end
   end
 end

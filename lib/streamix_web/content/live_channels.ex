@@ -8,7 +8,9 @@ defmodule StreamixWeb.Content.LiveChannels do
   import StreamixWeb.Helpers.Params, only: [parse_integer: 1]
 
   alias Phoenix.LiveView
+  alias Streamix.Catalog
   alias Streamix.Library
+  alias Streamix.Providers
   alias StreamixWeb.Catalog.Games
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.Content.FavoriteState
@@ -165,7 +167,7 @@ defmodule StreamixWeb.Content.LiveChannels do
 
   def complete_provider_sync(socket) do
     provider = socket.assigns.provider
-    categories = Streamix.Catalog.list_categories(provider.id, "live")
+    categories = Catalog.list_categories(provider.id, "live")
 
     socket
     |> assign(categories: categories)
@@ -175,7 +177,7 @@ defmodule StreamixWeb.Content.LiveChannels do
 
   def start_provider_sync(socket) do
     provider = socket.assigns.provider
-    Streamix.Providers.async_sync_provider(provider)
+    Providers.async_sync_provider(provider)
 
     socket
     |> assign(provider: %{provider | sync_status: "pending"})
@@ -197,13 +199,13 @@ defmodule StreamixWeb.Content.LiveChannels do
     channels =
       if socket.assigns.mode == :browse and socket.assigns.provider_filter == "all" do
         socket.assigns.user_id
-        |> Streamix.Catalog.list_visible_live_channels(opts)
+        |> Catalog.list_visible_live_channels(opts)
         |> enrich_channels_by_provider()
       else
         provider = socket.assigns.provider
 
         provider.id
-        |> Streamix.Catalog.list_live_channels(opts)
+        |> Catalog.list_live_channels(opts)
         |> Streamix.Guide.enrich_channels_with_epg(provider.id)
       end
 
@@ -283,7 +285,7 @@ defmodule StreamixWeb.Content.LiveChannels do
 
   defp apply_route_context(socket, %{"provider_id" => provider_id}, _provider_filter) do
     user = socket.assigns.current_scope.user
-    provider = Streamix.Providers.get_playable_provider(user.id, provider_id)
+    provider = Providers.get_playable_provider(user.id, provider_id)
 
     if provider do
       {:ok, assign_provider_context(socket, provider, :provider, Integer.to_string(provider.id))}
@@ -325,7 +327,7 @@ defmodule StreamixWeb.Content.LiveChannels do
         []
       else
         provider.id
-        |> Streamix.Catalog.list_categories("live")
+        |> Catalog.list_categories("live")
         |> filter_adult_categories(user.show_adult_content)
       end
 
@@ -443,7 +445,7 @@ defmodule StreamixWeb.Content.LiveChannels do
 
   defp provider_options(user_id) do
     user_id
-    |> Streamix.Providers.list_visible_providers()
+    |> Providers.list_visible_providers()
     |> Enum.filter(&(&1.provider_type == :xtream))
   end
 
@@ -464,12 +466,12 @@ defmodule StreamixWeb.Content.LiveChannels do
 
   defp provider_filter(_), do: "all"
 
-  defp selected_browse_provider(_user_id, "all"), do: Streamix.Providers.get_global_provider()
+  defp selected_browse_provider(_user_id, "all"), do: Providers.get_global_provider()
 
   defp selected_browse_provider(user_id, provider_filter) do
     case Integer.parse(provider_filter) do
-      {provider_id, ""} -> Streamix.Providers.get_playable_provider(user_id, provider_id)
-      _ -> Streamix.Providers.get_global_provider()
+      {provider_id, ""} -> Providers.get_playable_provider(user_id, provider_id)
+      _ -> Providers.get_global_provider()
     end
   end
 
@@ -485,19 +487,11 @@ defmodule StreamixWeb.Content.LiveChannels do
   end
 
   defp maybe_sync_epg(provider) do
-    if epg_needs_sync?(provider) do
+    if Streamix.Guide.epg_due?(provider) do
       Streamix.Guide.async_sync_epg(provider)
       true
     else
       false
     end
-  end
-
-  defp epg_needs_sync?(%{epg_synced_at: nil}), do: true
-
-  defp epg_needs_sync?(provider) do
-    interval = provider.epg_sync_interval_hours || 6
-    hours_since_sync = DateTime.diff(DateTime.utc_now(), provider.epg_synced_at, :hour)
-    hours_since_sync >= interval
   end
 end

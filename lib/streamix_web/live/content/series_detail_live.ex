@@ -4,10 +4,12 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   Works for both /browse/series/:id (global provider) and /providers/:id/series/:id (user provider).
   """
   use StreamixWeb, :live_view
+  alias Streamix.Catalog
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Content.SeriesSources
   alias StreamixWeb.LiveSessionNavigation
+  alias StreamixWeb.ReturnPath
 
   import StreamixWeb.SourcePickerComponents
   import StreamixWeb.App.Premium
@@ -40,9 +42,10 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
 
   # Mount for /providers/:provider_id/series/:id (user provider). Must
   # come first: the browse clause's pattern also matches these params.
+  @impl true
   def mount(%{"provider_id" => _, "id" => series_id} = params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    return_to = safe_return_path(params["return_to"])
+    return_to = ReturnPath.safe(params["return_to"])
     provider_filter = provider_query_param(params["provider"])
 
     Detail.with_provider(socket, :provider, params, fn provider ->
@@ -61,7 +64,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   # Mount for /browse/series/:id (global provider)
   def mount(%{"id" => series_id} = params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    return_to = safe_return_path(params["return_to"])
+    return_to = ReturnPath.safe(params["return_to"])
     provider_filter = provider_query_param(params["provider"])
 
     Detail.with_provider(socket, :browse, %{}, fn provider ->
@@ -161,6 +164,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
     {:ok, socket}
   end
 
+  @impl true
   def handle_params(params, _uri, %{assigns: %{series_sources: sources}} = socket) do
     selected =
       Enum.find(sources, &(Integer.to_string(&1.id) == params["source"])) ||
@@ -244,6 +248,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
       "?" <> URI.encode_query(query)
   end
 
+  @impl true
   def handle_async({:series_enrichment, series_id}, {:ok, series}, socket)
       when series_id == socket.assigns.series.id do
     hero_image = Detail.hero_image(series, series.cover)
@@ -298,6 +303,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   # Event Handlers
   # ============================================
 
+  @impl true
   def handle_event("select_source", %{"id" => id}, socket) do
     selected =
       Enum.find(socket.assigns.series_sources, &(Integer.to_string(&1.id) == id)) ||
@@ -382,6 +388,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   # Render
   # ============================================
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-background">
@@ -519,8 +526,8 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
           <!-- Image Gallery -->
           <.image_gallery
             images={
-              if Streamix.Catalog.has_images?(@series),
-                do: Streamix.Catalog.image_urls(@series),
+              if Catalog.has_images?(@series),
+                do: Catalog.image_urls(@series),
                 else: []
             }
             alt="Imagem da série"
@@ -553,23 +560,10 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   defp selected_episode_path(%{provider_id: provider_id, id: series_id}, episode, return_to),
     do:
       ~p"/providers/#{provider_id}/series/#{series_id}/episode/#{episode.id}"
-      |> with_return_to(return_to)
-
-  defp with_return_to(path, return_to) when is_binary(return_to) do
-    separator = if String.contains?(path, "?"), do: "&", else: "?"
-    path <> separator <> "return_to=" <> URI.encode_www_form(return_to)
-  end
+      |> ReturnPath.append(return_to)
 
   defp with_provider_filter(path, nil), do: path
   defp with_provider_filter(path, provider_filter), do: path <> "?provider=" <> provider_filter
-
-  defp safe_return_path(path) when is_binary(path) do
-    if String.starts_with?(path, "/") and not String.starts_with?(path, "//") do
-      path
-    end
-  end
-
-  defp safe_return_path(_), do: nil
 
   defp provider_query_param(value) when value in ["all", "global"], do: value
 

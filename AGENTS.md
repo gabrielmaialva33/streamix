@@ -15,12 +15,11 @@ application and REST API. The current tree includes:
 - password-based authentication and role-based access
 - personal providers plus optional system-wide global provider
 - optional GIndex ingestion for Google Drive-backed catalogs
-- live channels, movies, series, episodes, favorites, history, and watch progress — history and favorites are
-  sealed per user, so the operator cannot read what anyone watched (`docs/privacy.md`)
+- live channels, movies, series, episodes, favorites, history, and watch progress
 - AI-assisted semantic search and recommendations when embeddings + Qdrant are configured
 - watch parties with synchronized playback, presence, and room chat
 - subscription plans, premium access gates, and an admin panel
-- encrypted stream URLs, a Phoenix stream proxy, and a live stream multiplexer
+- signed stream URLs, a Phoenix stream proxy, and a live stream multiplexer
 - PWA assets, offline metadata sync hooks, and a mobile / TV-facing REST API
 
 The application release version is sourced from the root `VERSION` file (currently `0.0.100`) and consumed by
@@ -104,7 +103,6 @@ lib/streamix/
 ├── gindex/                   # GIndex transport, parsing, matching, quota, and sync
 ├── hls/                      # Shared HLS gateway: playlist rewrite, bounded fetch, registry
 ├── iptv/                     # Canonical catalog, providers, EPG, engagement, and streaming
-├── library/                  # Per-user library keys, sealing, and the legacy plaintext import
 ├── qoe/                      # Privacy-bounded playback quality events
 ├── queue/                    # RabbitMQ/Broadway integration (optional)
 ├── security/                 # Shared URL and network-boundary validation
@@ -126,11 +124,11 @@ lib/streamix_web/
 ├── live/                     # Home, catalog, admin, auth, watch party, providers
 ├── on_mount/                 # Reusable LiveView lifecycle hooks
 ├── plugs/                    # API key auth, CORS, CSP nonce, rate limiting
-├── stream_token/             # Encrypted stream-token resolution and minting internals
+├── stream_token/             # Signed stream-token resolution and signing internals
 ├── telemetry/                # Web telemetry and request measurements
 ├── presence.ex               # Watch party presence
 ├── router.ex                 # Browser + API routes
-├── stream_token.ex           # Encrypted tokens for stream access
+├── stream_token.ex           # Signed URLs for stream access
 └── user_auth.ex              # Session/auth plumbing
 
 assets/
@@ -150,12 +148,18 @@ assets/
 
 ## Core Contexts
 
+Delivery code (controllers, LiveViews, workers) calls these modules and nothing beneath them.
+
 | Context     | Module                | Responsibility                                                  |
 |-------------|-----------------------|-----------------------------------------------------------------|
 | Accounts    | `Streamix.Accounts`   | Users, password auth, roles, session tokens, settings           |
 | Access      | `Streamix.Access`     | Permissions and role/user grants                                |
-| IPTV        | `Streamix.Iptv`       | Providers, sync, catalog access, EPG                            |
-| Library     | `Streamix.Library`    | Sealed favorites, history, progress; per-user library keys      |
+| Catalog     | `Streamix.Catalog`    | Movies, series, episodes, channels, categories, shelves, assets |
+| Search      | `Streamix.Search`     | Search, autocomplete, semantic discovery, TMDB lookup           |
+| Library     | `Streamix.Library`    | Favorites, watch history, playback progress                     |
+| Playback    | `Streamix.Playback`   | Playability, source selection, failover, stream URLs, proxying  |
+| Providers   | `Streamix.Providers`  | Provider lifecycle, visibility, health, sync                    |
+| Guide       | `Streamix.Guide`      | EPG sync and TV-guide queries                                   |
 | GIndex      | `Streamix.Gindex`     | Drive discovery, quota-aware ingestion, and URL resolution      |
 | Torrent     | `Streamix.Torrent`    | Torrent sources, catalog synchronization, and stream lifecycle  |
 | AI          | `Streamix.AI`         | Embeddings, semantic search, user analytics, Qdrant integration |
@@ -164,6 +168,10 @@ assets/
 | Subtitles   | `Streamix.Subtitles`  | Subtitle discovery, normalization, and conversion               |
 | Watch Party | `Streamix.WatchParty` | Rooms, playback sync, chat, presence                            |
 | Queue       | `Streamix.Queue`      | Optional RabbitMQ + Broadway execution path                     |
+
+The six IPTV boundaries (Catalog through Guide) are implemented under `Streamix.Iptv.*`, which is internal. There is
+no `Streamix.Iptv` module: the old compatibility facade was retired and a test keeps it retired. A public
+function/arity has exactly one owning boundary — see [`docs/application-boundaries.md`](docs/application-boundaries.md).
 
 ## Routes and Surfaces
 
@@ -197,10 +205,12 @@ API surfaces under `/api/v1`:
 | `SyncGlobalProviderWorker`  | every 4h                       | `sync`           |
 | `SyncGindexProviderWorker`  | daily at 03:00                 | `sync`           |
 | `SyncEpgWorker`             | on demand                      | `sync`           |
+| `SyncDueEpgWorker`          | hourly at :40                  | `sync`           |
 | `SyncSeriesDetailsWorker`   | on demand                      | `series_details` |
 | `TmdbDetailsWorker`         | daily at 04:45                 | `tmdb_details`   |
 | `EpisodeDetailsWorker`      | daily at 05:15                 | `tmdb_details`   |
 | `IndexEmbeddingsWorker`     | daily at 05:00                 | `ai`             |
+| `UpdateUserProfileWorker`   | triggered from analytics flows | `ai` / async     |
 
 ## Repo-Specific Conventions
 
@@ -212,14 +222,24 @@ API surfaces under `/api/v1`:
 - Keep one module per file.
 - Bind the result of `if` / `case` / `cond`; rebinding inside the block does not escape.
 - Context entrypoints should take `user_id` or `scope` first when authorization matters.
+- Logging: a constant message plus metadata. Never interpolate a reason, URL or upstream response into the message;
+  pass it as `reason: Streamix.SafeLog.redact_inspect(reason)` (URLs: `SafeLog.redact_url/1`). New metadata keys
+  must be added to the `:default_formatter` list in `config/config.exs` or they are dropped.
+- Configuration: `config/runtime.exs` parses the environment (through `Streamix.RuntimeConfig` for booleans and
+  integers). Each `:streamix` key has one reading module; other code calls that module (for example
+  `Streamix.PublicUrls.stream_proxy/0`) instead of repeating `Application.get_env` with its own default.
+- Workers live in `lib/streamix/workers/` (grouped by source in subfolders) and `use Oban.Worker`.
 
 ### Phoenix / LiveView
 
 - Current user lives at `@current_scope.user`, never `@current_user`.
-- Favorites, history and progress take the user's unlocked library key — `@current_scope.library_key` on the web,
-  `conn.assigns.current_library_key` on the API — never a user id. Personalization derived from them (profile,
-  insights, recommendations, personalized shelves) takes the same key.
-- Use `<Layouts.app flash={@flash} current_scope={@current_scope}>` for standard LiveViews.
+- Layouts come from the router: each `live_session` sets `layout:`. LiveViews do not wrap themselves in
+  `<Layouts.app>`.
+- A `return_to` parameter is only read through `StreamixWeb.ReturnPath.safe/1` and only written with
+  `StreamixWeb.ReturnPath.append/2`; never hand-roll the check.
+- `lib/streamix_web/` root holds only cross-cutting web infrastructure (endpoint, router, user_auth, stream_token,
+  presence, telemetry, gettext, locale, return_path). Everything else goes in `live/`, `controllers/`, `components/`,
+  `plugs/`, `on_mount/`, `telemetry/`, `content/` or `catalog/`.
 - Use `<.link navigate={}>` and `<.link patch={}>`, never `live_redirect` / `live_patch`.
 - Collections in LiveView must use streams, not raw list assigns with append/prepend DOM updates.
 - Use colocated hooks or `assets/js/hooks`; no inline `<script>` tags.
@@ -245,7 +265,8 @@ API surfaces under `/api/v1`:
 
 - Tailwind CSS v4 only. No `@apply`, no `tailwind.config.js`, no daisyUI rollout.
 - Frontend packages come from `assets/package.json`; remember `npm ci`.
-- The web app currently supports dark mode by default and a client-side light mode toggle.
+- The web app is dark-only. Colors come from the tokens in `assets/css/theme.css`.
+- JS conventions (module roles, imports, timers, logging, tests) live in [`assets/README.md`](assets/README.md).
 - PWA sources live in `priv/manifest.json` and `priv/sw.js`; controllers serve both with release-aware cache headers.
 
 ## Testing
@@ -255,30 +276,37 @@ API surfaces under `/api/v1`:
 - Prefer `start_supervised!/1` for processes started in tests.
 - Do not use `Process.sleep/1` when a monitored process or message assertion is possible.
 - Test rendered structure by DOM ids / stable selectors rather than fragile raw HTML text when possible.
-- Run `mix precommit` before considering work complete.
+- Run `mix precommit` before considering work complete; `mix dialyzer` and, for frontend changes,
+  `cd assets && npm run lint && npm test` are also CI gates.
+- API v1 changes: every `/api/v1` route has an OpenAPI operation, errors go through
+  `action_fallback StreamixWeb.Api.V1.FallbackController` and `Api.V1.Response`, and the spec must pass
+  `mix openapi.spec.json --spec StreamixWeb.Api.V1.OpenApi --start-app=false --vendor-extensions=false <file>`
+  followed by `npm --prefix assets run lint:openapi -- <file>` (a CI gate). In OpenAPI 3.0 `nullable` needs a sibling
+  `type`.
+- The test database name must end in `_test` (`TEST_DATABASE_URL`), or the runtime safety guard refuses it.
+- Architecture tests in `test/streamix/architecture/` enforce boundaries, module layout and test mirroring; fix the
+  code, not the test.
+
+## Commits and Changelog
+
+- Commit subjects follow `type(scope): summary` with `type` in `feat`, `fix`, `perf`, `refactor`, `test`, `docs`,
+  `chore`, `ci`, `style`. One theme per commit; the body says why.
+- A change a user, operator or API consumer can notice gets a line under `## [Unreleased]` in `CHANGELOG.md`
+  (Added / Changed / Fixed / Security) in the same commit.
 
 ## Boundaries - Never
 
 - Auth is password-based with bcrypt. Do not document or implement magic links.
 - Provider credentials are stored via `Streamix.Iptv.EncryptedField`; never log or persist plaintext passwords.
-- Never store, cache, log or emit which content a user watched or favorited in a form the operator can read. Viewing
-  data goes through `Streamix.Library` sealed with the user's key; nothing else may pair a user with content: no
-  `user_id` next to a content id in tables, Redis, Qdrant, logs, telemetry or job args, and no per-title view counts.
-  Logs do not name content either (on a personal provider the content names its owner): tag it with
-  `Streamix.SafeLog.content_ref/1`, and keep request lines on route patterns. Cache personalization with
-  `Streamix.Cache.fetch_personal/4` (node memory only). The threat model and its limits are in
-  [`docs/privacy.md`](docs/privacy.md).
 - All Xtream calls go through `Streamix.Iptv.XtreamClient`; all GIndex HTTP calls go through
   `Streamix.Gindex.Client`.
-- **Context boundaries**: `Streamix.Iptv`, `Streamix.Library`, `Streamix.Gindex`, `Streamix.Torrent`, `Streamix.AI`,
-  `Streamix.Billing`, `Streamix.Qoe`, `Streamix.Subtitles`, `Streamix.WatchParty`, `Streamix.Queue`,
-  `Streamix.Accounts`, and `Streamix.Access` are the public entry points. **Never** `alias` a schema
-  or sub-module of another context from web /
-  LiveView / controller code (e.g. `alias Streamix.Iptv.Movie` is wrong — call
-  `Streamix.Iptv.get_movie!/1` instead). Same rule applies between contexts: `Access` does
-  not `alias Streamix.Iptv.Provider` — it goes through `Streamix.Iptv.get_provider/1`.
-  Internals under `Streamix.Iptv.Streaming.*`, `Streamix.Iptv.Sync.*`, `Streamix.Gindex.*`,
-  `Streamix.Torrent.*` may be reorganised at will; only the facade is stable.
+- **Context boundaries**: the modules in the Core Contexts table, plus `Streamix.Gindex`, `Streamix.Torrent`,
+  `Streamix.Embedplay` and `Streamix.Subtitles`, are the public entry points. **Never** `alias` a schema or
+  sub-module of another context from web / LiveView / controller code (e.g. `alias Streamix.Iptv.Movie` is wrong —
+  call `Streamix.Catalog.get_movie!/1` instead). Same rule applies between contexts: `Access` does not
+  `alias Streamix.Iptv.Provider` — it goes through `Streamix.Providers.get_provider/1`. Internals under
+  `Streamix.Iptv.*`, `Streamix.Gindex.*`, `Streamix.Torrent.*` may be reorganised at will; only the boundary is
+  stable. A new public function goes on the boundary that owns it — never on a second boundary.
 - Do not consume single-use IPTV tokens while resolving redirect chains. Use the existing manual redirect approach.
 - RabbitMQ is optional. Respect `RABBITMQ_ENABLED`; the default path is Oban.
 - GIndex is rate-limited hard. Keep sequential behavior where the code expects it.
@@ -303,5 +331,4 @@ API surfaces under `/api/v1`:
 - [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - [`SECURITY.md`](SECURITY.md)
 - [`docs/phoenix-guidelines.md`](docs/phoenix-guidelines.md)
-- [`docs/privacy.md`](docs/privacy.md)
 - [`docs/nginx-stream-proxy.conf`](docs/nginx-stream-proxy.conf)

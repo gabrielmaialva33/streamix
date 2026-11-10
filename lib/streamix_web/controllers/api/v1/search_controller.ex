@@ -19,10 +19,70 @@ defmodule StreamixWeb.Api.V1.SearchController do
   """
   use StreamixWeb, :controller
 
+  use OpenApiSpex.ControllerSpecs
+
+  action_fallback StreamixWeb.Api.V1.FallbackController
+
+  alias StreamixWeb.Api.V1.Operations
+
+  operation :movies,
+            Operations.build(
+              "search.movies",
+              "Search movies with text fallback",
+              "MovieSearchResponse",
+              parameters: [
+                Operations.query(:q),
+                Operations.query(:limit, :integer),
+                Operations.query(:min_score, :number)
+              ],
+              errors: [:service_unavailable]
+            )
+
+  operation :series,
+            Operations.build(
+              "search.series",
+              "Search series with text fallback",
+              "SeriesSearchResponse",
+              parameters: [
+                Operations.query(:q),
+                Operations.query(:limit, :integer),
+                Operations.query(:min_score, :number)
+              ],
+              errors: [:service_unavailable]
+            )
+
+  operation :similar,
+            Operations.build(
+              "search.similar",
+              "Find similar public titles",
+              "SimilarSearchResponse",
+              parameters: [
+                Operations.path(:collection),
+                Operations.path(:id, :integer),
+                Operations.query(:limit, :integer)
+              ],
+              errors: [:not_found, :service_unavailable]
+            )
+
+  operation :status,
+            Operations.build(
+              "search.status",
+              "Get semantic search readiness",
+              "SearchStatusResponse"
+            )
+
+  operation :info,
+            Operations.build(
+              "search.info",
+              "Get semantic search configuration",
+              "SearchInfoResponse"
+            )
+
   import StreamixWeb.Helpers.Params,
     only: [bounded_integer: 4, parse_positive_integer: 1]
 
   alias Streamix.AI
+  alias Streamix.Catalog
   alias Streamix.Helpers
   alias StreamixWeb.Api.V1.Response
 
@@ -200,7 +260,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
   defp enrich_movie_results(results) do
     results = normalize_result_ids(results)
     ids = Enum.map(results, & &1.id)
-    movies = Streamix.Catalog.list_public_movies_by_ids(ids, show_adult: false)
+    movies = Catalog.list_public_movies_by_ids(ids, show_adult: false)
     movies_map = Map.new(movies, &{&1.id, &1})
 
     Enum.flat_map(results, fn result ->
@@ -214,7 +274,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
   defp enrich_series_results(results) do
     results = normalize_result_ids(results)
     ids = Enum.map(results, & &1.id)
-    series = Streamix.Catalog.list_public_series_by_ids(ids, show_adult: false)
+    series = Catalog.list_public_series_by_ids(ids, show_adult: false)
     series_map = Map.new(series, &{&1.id, &1})
 
     Enum.flat_map(results, fn result ->
@@ -232,8 +292,8 @@ defmodule StreamixWeb.Api.V1.SearchController do
   defp parse_collection("series"), do: {:ok, :series}
   defp parse_collection(_), do: :invalid_collection
 
-  defp public_source?(:movies, id), do: Streamix.Catalog.list_public_movies_by_ids([id]) != []
-  defp public_source?(:series, id), do: Streamix.Catalog.list_public_series_by_ids([id]) != []
+  defp public_source?(:movies, id), do: Catalog.list_public_movies_by_ids([id]) != []
+  defp public_source?(:series, id), do: Catalog.list_public_series_by_ids([id]) != []
 
   defp merge_movie(result, movie) do
     %{
@@ -245,7 +305,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
       genre: Helpers.genre_names(movie.genres),
       genres: Helpers.genre_refs(movie.genres),
       poster: proxy_image(movie.stream_icon),
-      backdrop: proxy_image(Streamix.Catalog.backdrop_urls(movie)),
+      backdrop: proxy_image(Catalog.backdrop_urls(movie)),
       plot: movie.plot,
       score: result.score
     }
@@ -261,7 +321,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
       genre: Helpers.genre_names(series.genres),
       genres: Helpers.genre_refs(series.genres),
       poster: proxy_image(series.cover),
-      backdrop: proxy_image(Streamix.Catalog.backdrop_urls(series)),
+      backdrop: proxy_image(Catalog.backdrop_urls(series)),
       plot: series.plot,
       score: result.score
     }

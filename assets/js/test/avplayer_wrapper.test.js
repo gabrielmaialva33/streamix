@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-
+import * as avplayerModule from "../media/avplayer_wrapper.js";
 import { AVPlayerWrapper, isAVPlayerDestroyedError } from "../media/avplayer_wrapper.js";
 
 const deferred = () => {
@@ -35,6 +35,101 @@ const createWrapper = (options = {}) =>
     windowRef: createRuntime(),
     ...options,
   });
+
+test("intent preload fetches scripts and decoders without constructing a player or opening media", async () => {
+  assert.equal(typeof avplayerModule.preloadAVPlayerRuntime, "function");
+  const calls = [];
+  await avplayerModule.preloadAVPlayerRuntime(
+    { stream_type: "mp4", source_type: "xtream" },
+    {
+      configureRuntime: () => calls.push("configure"),
+      getResourcePolicy: () => ({ avoidSpeculativeWork: false }),
+      getScriptUrls: () => ({ polyfill: "/polyfill.js", player: "/player.js" }),
+      loadScript: async (url) => calls.push(url),
+      preloadWasm: async (context) => calls.push(context),
+    },
+  );
+  assert.equal(calls[0], "configure");
+  assert.ok(calls.indexOf("/polyfill.js") < calls.indexOf("/player.js"));
+  assert.ok(calls.some((call) => call?.stream_type === "mp4" && call.source_type === "xtream"));
+});
+
+test("a failed speculative script preload cannot poison the later real activation", async (t) => {
+  const previous = globalThis.document;
+  const scripts = new Map();
+  const attempts = [];
+  let fail = true;
+  globalThis.document = {
+    getElementById: (id) => scripts.get(id),
+    createElement: () => ({
+      remove() {
+        scripts.delete(this.id);
+      },
+    }),
+    head: {
+      appendChild(script) {
+        scripts.set(script.id, script);
+        attempts.push(script.src);
+        queueMicrotask(() => {
+          if (fail) {
+            fail = false;
+            script.onerror();
+          } else script.onload();
+        });
+      },
+    },
+  };
+  t.after(() => {
+    globalThis.document = previous;
+  });
+  const dependencies = {
+    configureRuntime() {},
+    getResourcePolicy: () => ({ avoidSpeculativeWork: false }),
+    getScriptUrls: () => ({ polyfill: "/polyfill.js", player: "/player.js" }),
+    preloadWasm: async () => {},
+  };
+  await assert.rejects(
+    avplayerModule.preloadAVPlayerRuntime({}, dependencies),
+    /Failed to load script/,
+  );
+  await avplayerModule.preloadAVPlayerRuntime({}, dependencies);
+  assert.deepEqual(attempts, ["/polyfill.js", "/polyfill.js", "/player.js"]);
+});
+
+test("intent runtime preload respects the existing data-saver and constrained-device policy", async () => {
+  const calls = [];
+  await avplayerModule.preloadAVPlayerRuntime(
+    {},
+    {
+      getResourcePolicy: () => ({ avoidSpeculativeWork: true }),
+      configureRuntime: () => calls.push("configure"),
+      getScriptUrls: () => ({ polyfill: "/polyfill.js", player: "/player.js" }),
+      loadScript: async () => calls.push("script"),
+      preloadWasm: async () => calls.push("wasm"),
+    },
+  );
+  assert.deepEqual(calls, []);
+});
+
+test("stream URL loads cap worker and main-thread IO retries on any domain while preserving preload", async () => {
+  const loads = [];
+  const wrapper = createWrapper({
+    createPlayer: () =>
+      createPlayer({
+        load: async (_url, options) => loads.push(options),
+      }),
+  });
+  await wrapper.load("https://cdn.test/media.mp4", {
+    ioLoaderOptions: { preload: 4096, retryCount: 20 },
+  });
+  assert.equal(loads[0].ioLoaderOptions.retryCount, 3);
+  assert.equal(loads[0].ioLoaderOptions.retryInterval, 0.2);
+  assert.equal(loads[0].ioLoaderOptions.preload, 4096);
+  await wrapper.load("https://cdn.test/next.mp4");
+  assert.equal(loads[1].ioLoaderOptions.retryCount, 3);
+  assert.equal(loads[1].ioLoaderOptions.retryInterval, 0.2);
+  await wrapper.destroy();
+});
 
 test("concurrent init calls share one initialization promise", async () => {
   const firstScript = deferred();
@@ -346,4 +441,31 @@ test("picking the subtitle libmedia already holds only enables it", async () => 
     ["subtitle", 4],
     ["subtitle-enabled", true],
   ]);
+});
+
+test("preserves the default AVPlayer wrapper export for existing module consumers", () => {
+  assert.equal(avplayerModule.default, AVPlayerWrapper);
+});
+
+test("late play completion after destroy cannot report playback or revive wrapper state", async (t) => {
+  const pending = deferred();
+  const runtime = createRuntime();
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", { configurable: true, value: runtime });
+  t.after(() =>
+    previous ? Object.defineProperty(globalThis, "window", previous) : delete globalThis.window,
+  );
+  let plays = 0;
+  const wrapper = createWrapper({
+    windowRef: runtime,
+    onPlay: () => plays++,
+    createPlayer: () => createPlayer({ play: () => pending.promise }),
+  });
+  await wrapper.init();
+  const play = wrapper.play();
+  await wrapper.destroy();
+  pending.resolve();
+  await assert.rejects(play, isAVPlayerDestroyedError);
+  assert.equal(plays, 0);
+  assert.equal(wrapper.isPlaying(), false);
 });

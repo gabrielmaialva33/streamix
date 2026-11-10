@@ -610,10 +610,23 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   #
   # Strategy: if any hop times out / refuses connection / returns 5xx,
   # we restart the chain from the original URL, hoping the provider
-  # routes to a different IP. Up to @retry_attempts retries.
+  # routes to a different IP. Up to @retry_attempts retries, all inside one
+  # time budget: four attempts with a full timeout each used to add up to
+  # ~53 s, far past the point where the viewer had given up (the player
+  # waits 30 s, a VOD block 25 s), so the retries only held a provider slot.
   @retry_attempts 4
+  @chain_budget_ms 15_000
+  # Below this, another attempt cannot complete even a healthy chain.
+  @min_attempt_ms 1_500
+  @hop_receive_timeout_ms 5_000
+  @hop_connect_timeout_ms 3_000
 
-  defp walk_chain(url, opts), do: walk_chain(url, opts, 1)
+  defp walk_chain(url, opts) do
+    budget = Application.get_env(:streamix, :redirect_chain_budget_ms, @chain_budget_ms)
+    deadline = System.monotonic_time(:millisecond) + budget
+
+    walk_chain(url, Keyword.put(opts, :chain_deadline, deadline), 1)
+  end
 
   defp walk_chain(url, _opts, attempt) when attempt > @retry_attempts do
     Logger.warning(
@@ -629,7 +642,8 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
         ok
 
       {:error, reason} ->
-        if retryable?(reason) and attempt < @retry_attempts do
+        if retryable?(reason) and attempt < @retry_attempts and
+             remaining_ms(opts) >= @min_attempt_ms do
           Logger.info(
             "RedirectResolver: hop failed (#{SafeLog.redact_inspect(reason)}), " <>
               "retrying chain (attempt #{attempt + 1}/#{@retry_attempts})"
@@ -639,6 +653,13 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
         else
           {:error, reason}
         end
+    end
+  end
+
+  defp remaining_ms(opts) do
+    case Keyword.get(opts, :chain_deadline) do
+      nil -> @chain_budget_ms
+      deadline -> deadline - System.monotonic_time(:millisecond)
     end
   end
 
@@ -656,8 +677,16 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
 
   defp do_walk(url, count, opts) do
     case validate_target(url, opts) do
-      :ok -> request_hop(url, count, opts)
-      {:error, reason} -> {:error, reason}
+      :ok when count > 0 ->
+        if remaining_ms(opts) > 0,
+          do: request_hop(url, count, opts),
+          else: {:error, :chain_deadline_exceeded}
+
+      :ok ->
+        request_hop(url, count, opts)
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -748,16 +777,19 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
       headers: [{"user-agent", UpstreamPolicy.user_agent()}],
       decode_body: false,
       # Tight timeouts: a healthy provider responds with a 302 in
-      # under 1s. Anything past 8s receive or 5s connect is almost
+      # under 1s. Anything past 5s receive or 3s connect is almost
       # certainly a dead cluster IP — fail fast so the chain can
-      # restart and roll the dice on a different IP.
-      receive_timeout: 8_000,
-      connect_options: [timeout: 5_000],
+      # restart and roll the dice on a different IP. No hop outlives
+      # what is left of the chain's budget either.
+      receive_timeout: min(@hop_receive_timeout_ms, hop_budget_ms(opts)),
+      connect_options: [timeout: min(@hop_connect_timeout_ms, hop_budget_ms(opts))],
       into: &halt_after_first_chunk/2
     ]
     |> Keyword.merge(Application.get_env(:streamix, :stream_proxy_req_options, []))
     |> Keyword.merge(extra)
   end
+
+  defp hop_budget_ms(opts), do: max(remaining_ms(opts), 1)
 
   defp halt_after_first_chunk({:data, _chunk}, {request, response}) do
     {:halt, {request, response}}

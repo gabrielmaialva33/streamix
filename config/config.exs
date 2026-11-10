@@ -176,7 +176,11 @@ config :logger, :default_formatter,
     :request_id,
     :user_id,
     :context,
+    :content_ref,
+    :group,
     :reason,
+    :bucket,
+    :client,
     :error,
     :exception,
     :movie_name,
@@ -296,6 +300,8 @@ config :streamix, Oban,
        {"0 */6 * * *", Streamix.Workers.SyncAllProvidersWorker},
        # Sync global provider every 4 hours, offset from the all-providers burst
        {"10 */4 * * *", Streamix.Workers.SyncGlobalProviderWorker},
+       # Guides of every active Xtream provider, not only the one a page shows.
+       {"40 * * * *", Streamix.Workers.SyncDueEpgWorker},
        # Sync GIndex providers daily at 3 AM
        {"0 3 * * *", Streamix.Workers.SyncGindexProviderWorker},
        # Reconcile durable GIndex cursors after a release/container replacement.
@@ -345,20 +351,6 @@ config :streamix, Oban,
        {"30 1 * * *", Streamix.Workers.ReconcileStripeSubscriptionsWorker}
      ]}
   ]
-
-# IPTV configuration
-config :streamix, Streamix.Iptv,
-  # Sync configuration
-  sync_batch_size: 500,
-  sync_timeout: :timer.minutes(10),
-  # HTTP client timeouts
-  http_timeout: :timer.seconds(60),
-  http_info_timeout: :timer.seconds(10),
-  # Cache TTL in seconds
-  cache_ttl: 3600,
-  # Default pagination
-  default_page_size: 100,
-  max_page_size: 500
 
 # RabbitMQ configuration (Broadway)
 config :streamix, :rabbitmq,

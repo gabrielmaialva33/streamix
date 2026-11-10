@@ -1,31 +1,12 @@
 defmodule StreamixWeb.Plugs.BearerAuth do
   @moduledoc """
-  Authenticates API requests via a `Authorization: Bearer <session-token>`
-  header and assigns the resolved user to `conn.assigns.current_user`.
+  Authenticates API requests using an `Authorization: Bearer <session-token>` header.
+  Assigns the same `Accounts.Scope` used by the browser to `:current_scope` and
+  the decoded token to `:current_session_token`.
 
-  Centralises the pattern that was previously duplicated across
-  `FavoritesController`, `HistoryController`, `TelemetryController`,
-  `ProvidersController`, `AuthController` and (broken)
-  `RecommendationsController` — each version decoded the Bearer header,
-  URL-base64-decoded the token, and called
-  `Accounts.get_user_by_session_token/1`. The old
-  `RecommendationsController` accidentally relied on
-  `conn.assigns.current_scope.user`, which is only set by the `:browser`
-  pipeline's `fetch_current_scope_for_user`; the `:api_v1` pipeline
-  never sets it, so every recommendation request 401'd even with a
-  valid Bearer token.
-
-  ## Modes
-
-    * `plug StreamixWeb.Plugs.BearerAuth` — **required**. Missing /
-      invalid tokens get a 401 and `halt/1`.
-    * `plug StreamixWeb.Plugs.BearerAuth, optional: true` — **optional**.
-      A missing header keeps the connection going with a nil
-      `:current_user` assign (useful when an endpoint has a
-      "personalized if logged in" branch).
-
-  Downstream code should read `conn.assigns[:current_user]` and treat
-  `nil` as "anonymous".
+  Required mode returns a stable 401 error and halts on missing or invalid tokens.
+  With `optional: true`, anonymous requests continue with both assigns set to nil.
+  Downstream authenticated actions read `conn.assigns.current_scope.user`.
 
   ## Token shape
 
@@ -40,6 +21,7 @@ defmodule StreamixWeb.Plugs.BearerAuth do
   import Plug.Conn
 
   alias Streamix.{Accounts, Library}
+  alias StreamixWeb.Api.V1.Response
 
   @session_token_bytes 32
 
@@ -53,14 +35,14 @@ defmodule StreamixWeb.Plugs.BearerAuth do
     case authenticate(conn) do
       {:ok, user, token, library_key} ->
         conn
-        |> assign(:current_user, user)
+        |> assign(:current_scope, Accounts.scope_for_user(user, library_key))
         |> assign(:current_session_token, token)
         |> assign(:current_library_key, library_key)
 
       :error ->
         if Keyword.get(opts, :optional, false) do
           conn
-          |> assign(:current_user, nil)
+          |> assign(:current_scope, nil)
           |> assign(:current_session_token, nil)
           |> assign(:current_library_key, nil)
         else
@@ -133,10 +115,7 @@ defmodule StreamixWeb.Plugs.BearerAuth do
     )
 
     conn
-    |> put_status(:unauthorized)
-    |> Phoenix.Controller.json(%{
-      error: %{code: "unauthorized", message: "Invalid or missing Bearer token"}
-    })
+    |> Response.error(:unauthorized, "unauthorized", "Invalid or missing Bearer token")
     |> halt()
   end
 end

@@ -12,9 +12,8 @@ import {
   assertActivationHost,
   PLAYBACK_ENGINE_ACTIVATION_HOST_METHODS,
 } from "./playback_engine_activation.js";
-import { isAppleTouchDevice, scheduleLowPriority } from "./playback_environment.js";
+import { scheduleLowPriority } from "./playback_environment.js";
 import { loadAVPlayer } from "./playback_module_loader.js";
-import { recordPlayerSuccess } from "./player_preferences.js";
 
 export const NATIVE_PLAYBACK_MESSAGES = Object.freeze({
   ABORTED: "Reproducao cancelada",
@@ -24,7 +23,6 @@ export const NATIVE_PLAYBACK_MESSAGES = Object.freeze({
 });
 
 export const NATIVE_AUDIO_CHECK_DELAY_MS = 2_000;
-export const NATIVE_SUCCESS_CONFIRM_MS = 5_000;
 export const NATIVE_METADATA_PROBE_TIMEOUT_MS = 5_000;
 
 // HTMLMediaElement error codes. Spelled out so the activation stays usable
@@ -68,11 +66,10 @@ const defaultDependencies = {
   configureNativePlaybackElement,
   createNativeBufferManager: (video, callbacks) => new NativeBufferManager(video, callbacks),
   createNativePlaybackEngine,
-  isAppleTouchDevice,
   loadAVPlayer,
-  recordPlayerSuccess,
   scheduleLowPriority,
   timerApi: globalThis,
+  now: () => performance.now(),
   waitForNativeReady,
   waitForNativeSeek,
 };
@@ -96,9 +93,11 @@ export class NativeEngineActivation {
     this.logger = logger;
 
     this.audioCheckTimer = null;
+    this.audioCheckAbort = null;
     this.errorHandler = null;
+    this.errorVideo = null;
+    this.activationListeners = new Set();
     this.metadataProbeCancel = null;
-    this.successTimer = null;
   }
 
   get id() {
@@ -120,13 +119,17 @@ export class NativeEngineActivation {
 
   activate(request) {
     const { sessionId, url } = request;
+    if (!this.host.isSessionCurrent(sessionId)) return false;
+    this.cancelBackgroundWork();
     const video = this.host.getVideo();
 
     this.host.setNativePlaybackEventsSuppressed(false);
     this.host.syncPiPAvailability();
     const resumeTime = this.host.takeResumeTime();
     this.logger.info("Playing with native video element, url:", url);
-    this.host.setNativeTouchControls(this.deps.isAppleTouchDevice());
+    // Inline playback uses the same gesture chrome on every device. Safari's
+    // native fullscreen remains owned by PlaybackBrowserIntegration.
+    this.host.setNativeTouchControls(false);
     this.deps.configureNativePlaybackElement(video, { resumeTime });
 
     const nativeEngine =
@@ -136,6 +139,8 @@ export class NativeEngineActivation {
       });
     this.host.reportLifecycle("player_engine_selected", {
       engine: ENGINE_ID.NATIVE,
+      reason: request.reason,
+      fallback: request.fallback,
       session_id: sessionId,
     });
     nativeEngine.load(url);
@@ -149,7 +154,6 @@ export class NativeEngineActivation {
       const presentation = this.host.getPresentation();
       presentation?.hideLoading();
       presentation?.hideError();
-      video.removeEventListener("playing", playHandler);
 
       this.ensureBufferManager(video);
 
@@ -159,10 +163,6 @@ export class NativeEngineActivation {
 
       if (this.host.getSourceType() === "gindex") {
         this.scheduleMetadataProbe();
-      }
-
-      if (!this.shouldCheckAudio()) {
-        this.scheduleSuccessConfirmation(sessionId, video);
       }
     };
 
@@ -179,28 +179,26 @@ export class NativeEngineActivation {
       const message = this.resolveMediaError(video.error);
       if (message == null) return;
 
-      this.host.showPlaybackError(message);
+      this.host.showPlaybackError(
+        message,
+        null,
+        video.error?.code === MEDIA_ERR_NETWORK ? "network_error" : "fatal_media_error",
+      );
       video.removeEventListener("error", errorHandler);
     };
 
     this.detachErrorHandler();
     this.errorHandler = errorHandler;
+    this.errorVideo = video;
 
-    video.addEventListener("playing", playHandler);
+    this.listenOnce(video, "playing", playHandler);
     video.addEventListener("error", errorHandler);
-    video.addEventListener(
-      "loadedmetadata",
-      () => {
-        if (!this.host.isSessionCurrent(sessionId)) return;
-        this.trace("native_metadata_loaded", sessionId);
-        this.host.getPresentation()?.hideLoading();
-
-        if (this.host.getSourceType() === "torrent") {
-          this.host.loadNativeExternalSubtitle(sessionId);
-        }
-      },
-      { once: true },
-    );
+    this.listenOnce(video, "loadedmetadata", () => {
+      if (!this.host.isSessionCurrent(sessionId)) return;
+      this.trace("native_metadata_loaded", sessionId);
+      this.host.getPresentation()?.hideLoading();
+      if (this.host.getSourceType() === "torrent") this.host.loadNativeExternalSubtitle(sessionId);
+    });
 
     this.playAfterResume(sessionId, resumeTime).catch((error) => {
       if (error?.name === "AbortError") return;
@@ -219,12 +217,14 @@ export class NativeEngineActivation {
     if (resumeTime > 0) {
       this.logger.debug("Resuming from saved position before play:", resumeTime);
       this.trace("native_resume_prepare", sessionId, { resume_time: resumeTime });
-      await this.deps.waitForNativeReady({ video, isCurrent });
+      const deadline = this.deps.now() + 2_500;
+      await this.deps.waitForNativeReady({ video, isCurrent, timeoutMs: 2_500 });
       if (!isCurrent()) return;
       this.trace("native_resume_ready", sessionId, { resume_time: resumeTime });
       await this.deps.waitForNativeSeek({
         video,
         targetTime: resumeTime,
+        timeoutMs: Math.max(0, deadline - this.deps.now()),
         isCurrent,
         onSeekError: (error) =>
           this.logger.debug("[VideoPlayer] Native seek before play failed:", error.message),
@@ -307,55 +307,76 @@ export class NativeEngineActivation {
 
   checkAudioAndFallback(sessionId) {
     this.cancelAudioCheck();
+    const abort = new AbortController();
+    this.audioCheckAbort = abort;
+    const isCurrent = () => !abort.signal.aborted && this.host.isSessionCurrent(sessionId);
 
     this.audioCheckTimer = this.deps.timerApi.setTimeout(async () => {
       this.audioCheckTimer = null;
 
       try {
-        if (!this.host.isSessionCurrent(sessionId)) return;
+        if (!isCurrent()) return;
 
         this.trace("native_audio_check_start", sessionId);
         const { detectAudioIssue } = await this.deps.loadAVPlayer();
-        if (!this.host.isSessionCurrent(sessionId)) return;
+        if (!isCurrent()) return;
 
-        const hasAudioIssue = await detectAudioIssue(this.host.getVideo());
-        if (!this.host.isSessionCurrent(sessionId)) return;
+        const hasAudioIssue = await detectAudioIssue(this.host.getVideo(), {
+          signal: abort.signal,
+        });
+        if (!isCurrent()) return;
 
         this.trace("native_audio_check_result", sessionId, { has_audio_issue: hasAudioIssue });
 
         if (hasAudioIssue) {
           this.logger.debug("[VideoPlayer] Audio issue detected, auto-switching to AVPlayer");
-          this.host.tryAVPlayerFallback();
+          this.host.tryAVPlayerFallback("fallback_audio");
         } else {
           this.logger.debug("[VideoPlayer] Audio working correctly");
         }
       } catch (error) {
         this.logger.warn("[VideoPlayer] Could not check audio:", error);
+      } finally {
+        if (this.audioCheckAbort === abort) this.audioCheckAbort = null;
       }
     }, NATIVE_AUDIO_CHECK_DELAY_MS);
   }
 
   cancelAudioCheck() {
-    if (this.audioCheckTimer == null) return false;
+    const active = this.audioCheckTimer != null || this.audioCheckAbort != null;
     this.deps.timerApi.clearTimeout(this.audioCheckTimer);
     this.audioCheckTimer = null;
-    return true;
+    this.audioCheckAbort?.abort();
+    this.audioCheckAbort = null;
+    return active;
+  }
+
+  listenOnce(video, event, callback) {
+    const dispose = () => {
+      video.removeEventListener(event, handler);
+      this.activationListeners.delete(dispose);
+    };
+    const handler = () => {
+      dispose();
+      callback();
+    };
+    this.activationListeners.add(dispose);
+    video.addEventListener(event, handler);
   }
 
   cancelBackgroundWork() {
+    for (const dispose of this.activationListeners) dispose();
+    this.detachErrorHandler();
     this.cancelAudioCheck();
     this.metadataProbeCancel?.();
     this.metadataProbeCancel = null;
-    if (this.successTimer != null) {
-      this.deps.timerApi.clearTimeout(this.successTimer);
-      this.successTimer = null;
-    }
   }
 
   detachErrorHandler() {
     if (!this.errorHandler) return false;
-    this.host.getVideo()?.removeEventListener("error", this.errorHandler);
+    this.errorVideo?.removeEventListener("error", this.errorHandler);
     this.errorHandler = null;
+    this.errorVideo = null;
     return true;
   }
 
@@ -410,23 +431,6 @@ export class NativeEngineActivation {
       },
       { timeout: NATIVE_METADATA_PROBE_TIMEOUT_MS },
     );
-  }
-
-  scheduleSuccessConfirmation(sessionId, video) {
-    // Record successful native playback after a short confirmation window so
-    // Device Codec Memory learns that native works for this content type.
-    if (this.successTimer != null) this.deps.timerApi.clearTimeout(this.successTimer);
-    this.successTimer = this.deps.timerApi.setTimeout(() => {
-      this.successTimer = null;
-      if (!this.host.isSessionCurrent(sessionId) || this.host.isUsingAVPlayer() || video.paused) {
-        return;
-      }
-
-      const sourceType = this.host.getSourceType();
-      const streamType = this.host.getStreamType();
-      const contentKey = sourceType === "gindex" ? "gindex" : streamType;
-      this.deps.recordPlayerSuccess(contentKey, "native", { sourceType, streamType });
-    }, NATIVE_SUCCESS_CONFIRM_MS);
   }
 
   resolveMediaError(error) {

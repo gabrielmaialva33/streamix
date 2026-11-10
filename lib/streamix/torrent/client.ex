@@ -25,6 +25,7 @@ defmodule Streamix.Torrent.Client do
 
   require Logger
 
+  alias Streamix.SafeLog
   alias Streamix.Torrent.Config
 
   @default_timeout :timer.seconds(10)
@@ -214,7 +215,7 @@ defmodule Streamix.Torrent.Client do
         {:ok, response}
 
       {:error, %Req.TransportError{reason: reason}} ->
-        Logger.warning("[Torrent.Client] transport error: #{inspect(reason)}")
+        Logger.warning("[Torrent.Client] transport error", reason: SafeLog.redact_inspect(reason))
         {:error, {:transport_error, reason}}
 
       {:error, reason} ->

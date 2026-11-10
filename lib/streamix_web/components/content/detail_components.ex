@@ -12,6 +12,7 @@ defmodule StreamixWeb.Content.DetailComponents do
   import StreamixWeb.Content.HelperComponents
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Helpers.ImageProxy
+  alias StreamixWeb.ReturnPath
 
   @doc """
   Renders a compact gallery image preview.
@@ -397,7 +398,7 @@ defmodule StreamixWeb.Content.DetailComponents do
       <div class="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 sm:gap-4">
         <.link
           :for={item <- @items}
-          navigate={with_return_to(similar_path(@kind, @mode, @provider, item), @return_to)}
+          navigate={ReturnPath.append(similar_path(@kind, @mode, @provider, item), @return_to)}
           class="group block transition-all duration-300"
         >
           <div
@@ -720,13 +721,6 @@ defmodule StreamixWeb.Content.DetailComponents do
 
   defp similar_path(:series, :provider, provider, series),
     do: ~p"/providers/#{provider.id}/series/#{series.id}"
-
-  defp with_return_to(path, return_to) when is_binary(return_to) do
-    separator = if String.contains?(path, "?"), do: "&", else: "?"
-    path <> separator <> "return_to=" <> URI.encode_www_form(return_to)
-  end
-
-  defp with_return_to(path, _return_to), do: path
 
   defp series_path(:browse, _provider, series_id), do: ~p"/browse/series/#{series_id}"
 

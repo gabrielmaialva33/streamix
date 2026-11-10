@@ -4,8 +4,6 @@ defmodule StreamixWeb.Api.V1.HistoryControllerTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
-  alias Streamix.Iptv
-
   setup do
     original_api_keys = Application.get_env(:streamix, :api_keys, [])
     Application.put_env(:streamix, :api_keys, [])
@@ -45,7 +43,9 @@ defmodule StreamixWeb.Api.V1.HistoryControllerTest do
       assert response["content_type"] == "movie"
       assert response["content_id"] == movie.id
       movie_id = movie.id
-      assert [%{content_id: ^movie_id}] = Iptv.list_watch_history(library_key_fixture(user))
+
+      assert [%{content_id: ^movie_id}] =
+               Streamix.Library.list_watch_history(library_key_fixture(user))
     end
 
     test "blocks recording another user's private playable content", %{conn: conn} do
@@ -65,7 +65,7 @@ defmodule StreamixWeb.Api.V1.HistoryControllerTest do
         |> json_response(404)
 
       assert response["error"]["code"] == "content_not_found"
-      assert Iptv.list_watch_history(library_key_fixture(user)) == []
+      assert Streamix.Library.list_watch_history(library_key_fixture(user)) == []
     end
 
     test "rejects negative, partial, and non-boolean progress values", %{conn: conn} do
@@ -93,7 +93,7 @@ defmodule StreamixWeb.Api.V1.HistoryControllerTest do
         assert response["error"]["code"] == "invalid_progress"
       end
 
-      assert Iptv.list_watch_history(library_key_fixture(user)) == []
+      assert Streamix.Library.list_watch_history(library_key_fixture(user)) == []
     end
   end
 
@@ -103,7 +103,7 @@ defmodule StreamixWeb.Api.V1.HistoryControllerTest do
       intruder = user_fixture()
       channel = channel_fixture(provider_fixture(owner))
       owner_key = library_key_fixture(owner)
-      {:ok, entry} = Iptv.add_watch_history(owner_key, "live_channel", channel.id)
+      {:ok, entry} = Streamix.Library.add_watch_history(owner_key, "live_channel", channel.id)
 
       conn =
         conn
@@ -111,7 +111,7 @@ defmodule StreamixWeb.Api.V1.HistoryControllerTest do
         |> delete(~p"/api/v1/history/#{entry.id}")
 
       assert response(conn, 204)
-      assert [%{id: id}] = Iptv.list_watch_history(owner_key)
+      assert [%{id: id}] = Streamix.Library.list_watch_history(owner_key)
       assert id == entry.id
     end
   end

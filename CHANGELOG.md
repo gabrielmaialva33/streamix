@@ -9,6 +9,10 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Added
 
+- A Netflix-style player: chrome, pause screen, episodes panel, gestures and keyboard controls, a startup screen with
+  the title's cover and plain-words loading stages, and "fill screen" as the default framing on desktop and phones.
+- Playback telemetry records why a session ended (`end_reason`), why an engine was chosen (`engine_reason`) and which
+  build the browser ran (`client_revision`).
 - Provider-aware public catalog discovery through `GET /api/v1/catalog/providers`, including safe capabilities and
   synchronized counts without upstream URLs or credentials.
 - `provider_id` and `provider_type` filters across public listings, categories, featured, home, curated shelves,
@@ -45,6 +49,19 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   schemas.
 
 ### Changed
+
+- Production app logs go to journald (`journalctl -t streamix`), so they survive the container being recreated on
+  every deploy.
+- A title whose provider has to probe its sources opens at once on a startup screen and plays when a source is named;
+  a probe that fails, or one slower than its budget while another provider has the title, moves to that provider
+  server-side, so the first try plays.
+- VOD blocks stream to the viewer while they download, a dropped upstream connection resumes from the first missing
+  byte, readahead grows for providers slow to answer, and providers are ranked by how their VOD actually plays.
+- Live HLS reuses its synthetic master playlist and prefetches the first live segment.
+- Confirmed missing VOD files are hidden for seven days, and buffering metrics count rebuffering only.
+- API framework JSON errors under `/api` now use the existing v1 `error.code` / `error.message`
+  envelope instead of `errors.detail`. Endpoint-specific errors and success payloads stay compatible.
+- Stripe webhook rejections return a constant public message; internal reasons are logged with redaction.
 
 - **Breaking:** catalog success responses now use a consistent `data` envelope and put pagination, applied filters,
   totals, and section metadata under `meta`. Error responses retain the stable `error.code` / `error.message` shape.
@@ -150,6 +167,57 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Upgrading ends every session once: web users and TV/mobile apps log in again, and the API bearer token now carries
   the session's library secret (88 characters). Each user's plaintext history is sealed at their next login; run
   `Streamix.Library.purge_legacy_plaintext/0` to delete what is left.
+
+### Fixed
+
+- Include lazy decoder preparation in the AVPlayer startup budget and preserve remaining recovery time across pauses and watch-party holds.
+
+- Remove native playing and metadata listeners on activation replacement, session changes and player teardown.
+
+- Audio diagnostics no longer reroute or silence native playback; cancelled and timed-out probes release their listeners, captures and audio contexts.
+
+- Reevaluate learned AVPlayer choices after three days, stop learning slow startups, and clear AVPlayer evidence after stable native playback.
+
+- Give AVPlayer bootstrap its own bounded startup budget and try native MP4 once on a first-frame timeout, discarding failed engine memory.
+
+- A terminal playback error is recorded as an error, not as a cancelled or restarted session.
+- Playback sessions report the device class (mobile/desktop); it was always `unknown`.
+- A playback session that ends because the viewer closed the tab, reloaded or navigated away is still recorded: the
+  player sends its summary with `sendBeacon` to `POST /api/qoe/beacon` (session cookie, CSRF token in the body), since
+  the LiveView socket is already gone at that point.
+- The VOD block cache survives a deploy: on boot it reindexes the blocks already on disk and trims them to
+  `VOD_CACHE_MAX_BYTES`. Before, each restart left the previous blocks unreachable and uncounted, so the cache never
+  served a block across a deploy and grew past its budget without limit.
+- The admin users page lists every user ("Carregar mais"), not only the first twenty.
+- Favorites and history keep their type filter in the URL, so back, reload and shared links keep it.
+- The PWA install prompt recognizes an iPhone home-screen app as installed (`navigator.standalone`).
+- Player toasts and overlays cancel their timers when replaced or when the player closes.
+- Prices on the plans and billing pages are formatted in the plan's currency instead of always "R$".
+- The first tap on a phone shows the player controls at once.
+- `POST /api/v1/auth/register` with an email already in use answers `422` with `email: has already been taken`;
+  it crashed into a `500` because a validation option was not text.
+- Rate-limit buckets are separate per route group. They all shared one counter per client, so a viewer's HLS
+  segments spent the allowance of the stream proxy, the login and the QoE beacon; and the stream proxy, which
+  answers every range request of a household's devices, now allows 600 requests a minute instead of 60.
+- The Prometheus reporter no longer grows without bound when nothing scrapes `/metrics`: raw distribution samples
+  are folded into their buckets every minute (production held 17.8 million samples, 3.3 GB, after five days).
+- A live channel that answered 404 stays marked through provider syncs for its 24-hour recheck window, and the
+  player says it is off the air instead of retrying it. Every sync used to clear the mark, since panels keep
+  listing channels whose stream is gone, and viewers looped on such a channel.
+- The nightly embeddings run reads the catalog in pages instead of one query that held a database connection past
+  its 15-second limit.
+- Every active Xtream provider's TV guide is refreshed hourly when due. Before, a guide only refreshed when someone
+  opened the channel page filtered to that provider, so a non-global provider's guide ran out and its channels showed
+  no programs.
+- The "play" button shown when the browser blocks autoplay, and the replay button at the end of a title, start the
+  video again; both threw `this.play is not a function` after a player refactor.
+
+### Security
+
+- `return_to` links are followed only when they point to a path on this site. Five pages accepted `/\host`, which
+  browsers treat as `//host`, so a crafted link could send a viewer to another site.
+- Logged failure reasons go through `Streamix.SafeLog`, so upstream URLs and credentials inside a reason no longer
+  reach the logs as written.
 
 ## [v0.0.1] - 2026-04-13
 

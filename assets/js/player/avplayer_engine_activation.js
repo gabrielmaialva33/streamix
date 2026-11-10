@@ -9,7 +9,7 @@ import {
 import { createPlaybackEngineAdapter } from "./playback_engine_adapter.js";
 import { resolvePlaybackResumeTime } from "./playback_engine_lifecycle.js";
 import { loadAVPlayer } from "./playback_module_loader.js";
-import { forgetRecommendedPlayer, recordPlayerSuccess } from "./player_preferences.js";
+import { forgetRecommendedPlayer, playerRecommendationKey } from "./player_preferences.js";
 
 export const AVPLAYER_FALLBACK_BLOCKED_MESSAGE =
   "Formato de audio nao suportado. Tente novamente mais tarde.";
@@ -36,6 +36,7 @@ export const AVPLAYER_ENGINE_ACTIVATION_HOST_METHODS = Object.freeze([
   "getPresentation",
   "getProxyUrl",
   "getSourceType",
+  "getProviderId",
   "getStreamType",
   "getStreamUrl",
   "getSubtitleOffsetMs",
@@ -90,7 +91,6 @@ const defaultDependencies = {
   },
   getFileExtension,
   loadAVPlayer,
-  recordPlayerSuccess,
   resolvePlaybackResumeTime,
   timerApi: globalThis,
 };
@@ -151,13 +151,11 @@ export class AvPlayerEngineActivation {
     return this.transition({
       key: "startup-avplayer",
       sessionId,
-      initializeEngine: true,
-      recordSuccess: true,
       capture: () => this.captureNativePlayback(),
     });
   }
 
-  async tryFallback() {
+  async tryFallback(reason = "fallback_codec") {
     const controller = this.host.getTransitionController();
     if (this.host.isSwitchingToAVPlayer() || controller?.active) {
       this.logger.debug("[VideoPlayer] Already switching to AVPlayer, skipping fallback");
@@ -193,6 +191,7 @@ export class AvPlayerEngineActivation {
     return this.transition({
       key: "native-to-avplayer-fallback",
       fallback: true,
+      reason,
       capture: () => this.captureNativePlayback(),
     });
   }
@@ -213,7 +212,6 @@ export class AvPlayerEngineActivation {
         resumeTime: Number(seekTime) || 0,
         shouldPlay: shouldPlay === true,
       }),
-      initializeEngine: true,
       showLoading: true,
       trackIndex,
       trackType,
@@ -223,9 +221,9 @@ export class AvPlayerEngineActivation {
   transition({
     capture,
     fallback = false,
-    initializeEngine = false,
+    reason,
+
     key,
-    recordSuccess = fallback,
     sessionId = null,
     showLoading = false,
     trackIndex = null,
@@ -239,6 +237,7 @@ export class AvPlayerEngineActivation {
       capture,
       sessionId,
       prepare: ({ capture: playback, sessionId }) => {
+        this.host.beginEngineBootstrap?.();
         const presentation = this.host.getPresentation();
         if (showLoading) presentation?.showLoading();
         else presentation?.hideError();
@@ -246,6 +245,7 @@ export class AvPlayerEngineActivation {
         this.host.reportLifecycle("player_engine_selected", {
           engine: "avplayer",
           fallback,
+          reason,
           session_id: sessionId,
         });
 
@@ -271,11 +271,10 @@ export class AvPlayerEngineActivation {
       },
       createEngine: (context) =>
         this.createEngine(context, {
-          recordSuccess,
           resumeTime: context.capture?.resumeTime ?? 0,
           trackSwitch: Boolean(trackType),
         }),
-      initializeEngine: initializeEngine ? ({ engine }) => engine.init() : null,
+      initializeEngine: ({ engine }) => engine.init(),
       loadEngine: async ({ engine }) => {
         const streamUrl = this.host.getStreamUrl();
         const proxyUrl = this.host.getProxyUrl();
@@ -310,7 +309,7 @@ export class AvPlayerEngineActivation {
           }
         }
       },
-      activateEngine: async ({ capture: playback, engine }) => {
+      activateEngine: async ({ capture: playback, engine, sessionId }) => {
         this.host.setUsingAVPlayer(true);
         this.host.getVideo()?.classList.add("hidden");
 
@@ -318,6 +317,7 @@ export class AvPlayerEngineActivation {
           try {
             await engine.play();
           } catch (error) {
+            if (!this.host.isSessionCurrent(sessionId)) return;
             if (error?.name === "NotAllowedError" || error?.message?.includes?.("user gesture")) {
               this.host.getPresentation()?.hideLoading();
               this.host.getPresentation()?.showAutoplayBlocked?.();
@@ -329,6 +329,8 @@ export class AvPlayerEngineActivation {
         } else {
           this.host.handlePlaybackPaused();
         }
+        // libmedia downloads/compiles decoder WASM inside load/play, not wrapper.init().
+        if (this.host.isSessionCurrent(sessionId)) this.host.awaitEngineFrame?.();
       },
       complete: ({ capture: playback, engine, sessionId }) => {
         this.startTimeUpdates();
@@ -368,8 +370,10 @@ export class AvPlayerEngineActivation {
     });
   }
 
-  async createEngine(context, { recordSuccess = false, resumeTime = 0, trackSwitch = false } = {}) {
+  async createEngine(context, { resumeTime = 0, trackSwitch = false } = {}) {
     const { AVPlayerWrapper } = await this.deps.loadAVPlayer();
+    // A timed-out import must never construct a wrapper or touch the replacement player.
+    if (!this.host.isSessionCurrent(context.sessionId)) return null;
     const mount = this.host.getAVPlayerMount();
     if (!mount) throw new Error("AVPlayer mount element (#avplayer-mount) not found in template");
 
@@ -401,12 +405,6 @@ export class AvPlayerEngineActivation {
       this.host.handlePlaybackStarted();
       this.host.markPlaying();
       this.host.emitPlaybackEvent("play");
-
-      if (recordSuccess) {
-        const sourceType = this.host.getSourceType();
-        const streamType = this.host.getStreamType();
-        this.deps.recordPlayerSuccess(this.contentKey(), "avplayer", { sourceType, streamType });
-      }
     });
     avPlayer.on(ENGINE_EVENT.PAUSED, () => {
       if (!isCurrent()) return;
@@ -536,10 +534,9 @@ export class AvPlayerEngineActivation {
   buildLoadOptions(ext, isLive) {
     // GIndex 4K MKV is the only path that genuinely needs the heavier
     // load profile: large `moov`, MKV cluster probe, and the BEAM-side
-    // proxy adds latency on top of upstream redirects. 2-min ceiling +
-    // 8 MB preload + aggressive retry keeps the player alive on flaky
-    // links. Everything else — including Xtream VOD MP4 — keeps the
-    // libmedia defaults: a single blocking prefetch sits in TCP
+    // proxy adds latency on top of upstream redirects. Its internal load
+    // profile permits 2 minutes and 8 MB preload, but the shared preparation
+    // deadline remains the outer ceiling. Other sources keep small reads: a single blocking prefetch sits in TCP
     // slow-start while the upstream throttles, so playback waits for the
     // whole prefetch before the first frame. libmedia's natural small
     // range walk is faster end-to-end.
@@ -553,13 +550,12 @@ export class AvPlayerEngineActivation {
         maxProbeDuration: 10,
         ioLoaderOptions: {
           preload: 8 * 1024 * 1024,
-          retryCount: 8,
-          retryInterval: 1,
         },
       };
     }
 
-    return { ext, isLive };
+    // The global guard owns the 60s preparation ceiling; an inner 30s load timer must not preempt it.
+    return { ext, isLive, loadTimeoutMs: 60_000 };
   }
 
   startTimeUpdates() {
@@ -632,8 +628,16 @@ export class AvPlayerEngineActivation {
     };
   }
 
+  forgetFailedRecommendation() {
+    const key = this.contentKey();
+    if (key) this.deps.forgetRecommendedPlayer(key);
+  }
+
   contentKey() {
-    return this.host.getSourceType() === "gindex" ? "gindex" : this.host.getStreamType();
+    return playerRecommendationKey({
+      providerId: this.host.getProviderId(),
+      streamType: this.host.getStreamType(),
+    });
   }
 }
 

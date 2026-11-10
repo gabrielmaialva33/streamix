@@ -10,6 +10,8 @@ defmodule Streamix.Queue.Connection do
 
   require Logger
 
+  alias Streamix.SafeLog
+
   @reconnect_interval 5_000
 
   def start_link(opts) do
@@ -76,7 +78,7 @@ defmodule Streamix.Queue.Connection do
       {:ok, %{connection: connection, channel: channel}}
     else
       {:error, reason} ->
-        Logger.error("[RabbitMQ] Connection failed: #{inspect(reason)}")
+        Logger.error("[RabbitMQ] Connection failed", reason: SafeLog.redact_inspect(reason))
         {:error, reason}
     end
   end
@@ -105,7 +107,7 @@ defmodule Streamix.Queue.Connection do
 
   @impl true
   def handle_info({:DOWN, _ref, :process, _pid, reason}, state) do
-    Logger.warning("[RabbitMQ] Connection lost: #{inspect(reason)}")
+    Logger.warning("[RabbitMQ] Connection lost", reason: SafeLog.redact_inspect(reason))
     schedule_reconnect()
     {:noreply, %{state | connection: nil, channel: nil}}
   end

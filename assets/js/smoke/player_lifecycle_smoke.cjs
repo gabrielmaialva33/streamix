@@ -252,7 +252,7 @@ async function main() {
   });
 
   assertAdjustedAudio(adjustedAudio);
-  console.log(JSON.stringify({ ok: true, url: target.url, snapshot, adjustedAudio }, null, 2));
+  console.log(JSON.stringify({ ok: true, snapshot, adjustedAudio }, null, 2));
 
   await browser.close();
 }

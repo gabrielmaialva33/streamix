@@ -27,6 +27,7 @@ defmodule Streamix.AI.Qdrant do
   require Logger
 
   alias Streamix.AI.{Embeddings, ScoreThresholds}
+  alias Streamix.SafeLog
 
   @default_url "http://localhost:6333"
   @collections ~w(movies series animes)
@@ -392,7 +393,10 @@ defmodule Streamix.AI.Qdrant do
         {:error, {:check_failed, status}}
 
       {:error, reason} ->
-        Logger.error("[Qdrant] Failed to check collection #{name}: #{inspect(reason)}")
+        Logger.error("[Qdrant] Failed to check collection #{name}",
+          reason: SafeLog.redact_inspect(reason)
+        )
+
         {:error, reason}
     end
   end
@@ -421,7 +425,10 @@ defmodule Streamix.AI.Qdrant do
         {:error, {:create_failed, status}}
 
       {:error, reason} ->
-        Logger.error("[Qdrant] Failed to create collection #{name}: #{inspect(reason)}")
+        Logger.error("[Qdrant] Failed to create collection #{name}",
+          reason: SafeLog.redact_inspect(reason)
+        )
+
         {:error, reason}
     end
   end

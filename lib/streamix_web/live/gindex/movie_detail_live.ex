@@ -3,10 +3,12 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
   LiveView for displaying GIndex movie details.
   """
   use StreamixWeb, :live_view
+  alias Streamix.Catalog
   alias Streamix.Library
   alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.Content.SourceBadges
   alias StreamixWeb.Gindex.DetailHelpers, as: DH
+  alias StreamixWeb.ReturnPath
 
   import StreamixWeb.CoreComponents, only: [badge: 1, icon: 1]
 
@@ -18,20 +20,25 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
   import StreamixWeb.Content.DetailComponents.Badges,
     only: [extension_badge: 1, rating_badge: 1, year_badge: 1]
 
-  def mount(%{"id" => movie_id} = params, _session, socket) do
-    user_id = socket.assigns.current_scope.user.id
-    return_to = safe_return_path(params["return_to"])
+  @impl true
+  def mount(_params, _session, socket) do
+    {:ok, assign(socket, user_id: socket.assigns.current_scope.user.id)}
+  end
 
-    case Streamix.Catalog.get_movie(movie_id) do
+  @impl true
+  def handle_params(%{"id" => movie_id} = params, _uri, socket) do
+    return_to = ReturnPath.safe(params["return_to"])
+
+    case Catalog.get_movie(movie_id) do
       nil ->
-        {:ok,
+        {:noreply,
          socket
          |> put_flash(:error, "Filme não encontrado")
          |> push_navigate(to: ~p"/gindex/movies")}
 
       movie ->
         if is_nil(movie.gindex_path) do
-          {:ok,
+          {:noreply,
            socket
            |> put_flash(:error, "Filme não pertence ao GIndex")
            |> push_navigate(to: ~p"/gindex/movies")}
@@ -46,7 +53,7 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
             socket
             |> assign(page_title: display_title)
             |> assign(
-              current_path: with_return_to(~p"/gindex/movies/#{movie.id}", return_to),
+              current_path: ReturnPath.append(~p"/gindex/movies/#{movie.id}", return_to),
               return_to: return_to
             )
             |> assign(movie: movie)
@@ -54,18 +61,18 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
             |> assign(display_title: display_title)
             |> assign(source_badges: SourceBadges.badges(movie))
             |> assign(is_favorite: is_favorite)
-            |> assign(user_id: user_id)
 
-          {:ok, socket}
+          {:noreply, socket}
         end
     end
   end
 
+  @impl true
   def handle_event("play_movie", _, socket) do
     {:noreply,
      redirect(socket,
        to:
-         with_return_to(
+         ReturnPath.append(
            ~p"/watch/gindex/#{socket.assigns.movie.id}",
            socket.assigns.current_path
          )
@@ -86,6 +93,7 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
     {:noreply, assign(socket, is_favorite: FavoriteState.preserve_boolean(is_favorite, result))}
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-background">
@@ -153,17 +161,4 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
     </div>
     """
   end
-
-  defp with_return_to(path, return_to) when is_binary(return_to) do
-    separator = if String.contains?(path, "?"), do: "&", else: "?"
-    path <> separator <> "return_to=" <> URI.encode_www_form(return_to)
-  end
-
-  defp with_return_to(path, _return_to), do: path
-
-  defp safe_return_path(path) when is_binary(path) do
-    if String.starts_with?(path, "/") and not String.starts_with?(path, "//"), do: path
-  end
-
-  defp safe_return_path(_path), do: nil
 end

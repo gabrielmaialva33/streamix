@@ -16,8 +16,15 @@ defmodule Streamix.Workers.SyncGamesWorker do
     case Providers.get_provider(id) do
       %{games_enabled: true, is_active: true, provider_type: :xtream} = provider ->
         case Providers.sync_games(provider) do
-          {:ok, _count} -> :ok
-          {:error, _reason} -> {:error, :games_unavailable}
+          {:ok, _count} ->
+            :ok
+
+          # The next dispatch is ten minutes away. Retrying sooner only
+          # repeats the same timeouts (a feed walks every provider URL, up to
+          # 20 s each) while holding a slot of the `sync` queue that provider
+          # syncs need.
+          {:error, _reason} ->
+            {:cancel, :games_unavailable}
         end
 
       _ ->

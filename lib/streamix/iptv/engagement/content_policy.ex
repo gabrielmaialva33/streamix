@@ -1,4 +1,6 @@
 defmodule Streamix.Iptv.Engagement.ContentPolicy do
+  alias Streamix.Iptv.Content.VodAvailability
+
   @moduledoc false
 
   import Ecto.Query, warn: false
@@ -16,6 +18,8 @@ defmodule Streamix.Iptv.Engagement.ContentPolicy do
   """
   @spec visible_to_user(Ecto.Queryable.t(), integer()) :: Ecto.Query.t()
   def visible_to_user(query, user_id) do
+    query = VodAvailability.exclude_dead_catalog(query)
+
     where(
       query,
       [catalog_item: catalog_item],

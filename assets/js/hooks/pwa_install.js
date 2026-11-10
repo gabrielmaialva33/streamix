@@ -1,3 +1,5 @@
+import { isStandalone } from "../core/browser_environment.js";
+
 const INSTALL_STATE_EVENT = "streamix:pwa-install-state";
 
 const PwaInstall = {
@@ -137,9 +139,7 @@ const PwaInstall = {
       batch_id: batchId,
       kind: "pwa",
       event,
-      display_mode: window.matchMedia?.("(display-mode: standalone)")?.matches
-        ? "standalone"
-        : "browser",
+      display_mode: isStandalone() ? "standalone" : "browser",
       ...extra,
     });
   },

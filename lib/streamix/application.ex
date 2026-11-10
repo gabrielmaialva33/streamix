@@ -5,6 +5,7 @@ defmodule Streamix.Application do
 
   use Application
 
+  alias Streamix.SafeLog
   alias Streamix.Torrent
   alias Streamix.Torrent.{Reaper, StreamRegistry, StreamSessionSupervisor}
 
@@ -269,7 +270,7 @@ defmodule Streamix.Application do
     # If inet_db operations fail, log warning but don't crash
     error ->
       require Logger
-      Logger.warning("[DNS] Failed to configure resolver: #{inspect(error)}")
+      Logger.warning("[DNS] Failed to configure resolver", reason: SafeLog.redact_inspect(error))
       :ok
   end
 end

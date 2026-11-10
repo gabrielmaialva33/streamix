@@ -28,7 +28,7 @@ defmodule Streamix.Search do
 
   # Search document and TMDB matching support
 
-  defdelegate list_search_documents(kind, ids, opts),
+  defdelegate list_search_documents(kind, ids \\ nil, opts \\ []),
     to: Streamix.Iptv.SearchDocuments,
     as: :list
 

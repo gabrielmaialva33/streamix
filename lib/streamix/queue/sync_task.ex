@@ -9,7 +9,7 @@ defmodule Streamix.Queue.SyncTask do
   """
 
   alias Streamix.Gindex
-  alias Streamix.Iptv
+  alias Streamix.Providers
 
   @type task_type :: String.t()
   @type failure_action :: :discard | :retry
@@ -81,7 +81,7 @@ defmodule Streamix.Queue.SyncTask do
     do: {:error, nil, {:invalid_task, :expected_object}, :discard}
 
   defp run_task("gindex_full_sync", task, opts) do
-    iptv = Keyword.get(opts, :iptv, Iptv)
+    iptv = Keyword.get(opts, :iptv, Providers)
     gindex = Keyword.get(opts, :gindex, Gindex)
 
     with {:ok, provider} <- fetch_provider(task, iptv) do
@@ -98,7 +98,7 @@ defmodule Streamix.Queue.SyncTask do
   end
 
   defp run_gindex_path(type, task, opts) do
-    iptv = Keyword.get(opts, :iptv, Iptv)
+    iptv = Keyword.get(opts, :iptv, Providers)
     gindex = Keyword.get(opts, :gindex, Gindex)
     kind = Map.fetch!(@gindex_tasks, type)
 
@@ -109,7 +109,7 @@ defmodule Streamix.Queue.SyncTask do
   end
 
   defp run_iptv_section(type, task, opts) do
-    iptv = Keyword.get(opts, :iptv, Iptv)
+    iptv = Keyword.get(opts, :iptv, Providers)
     {section, result_key} = Map.fetch!(@iptv_tasks, type)
 
     with {:ok, provider} <- fetch_provider(task, iptv),

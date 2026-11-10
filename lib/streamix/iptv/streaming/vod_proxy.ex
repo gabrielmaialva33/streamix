@@ -134,7 +134,8 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
     StreamErrors.halt(conn, StreamErrors.code_from_reason(reason))
   end
 
-  defp rotate_head_or_halt(rest, conn, _reason), do: head_chain(rest, conn)
+  defp rotate_head_or_halt(rest, conn, reason),
+    do: head_chain(rest, remember_failure(conn, reason))
 
   defp do_head(conn, final_url) do
     headers =
@@ -178,6 +179,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
     state =
       Map.merge(Observability.context_from_conn(conn), %{
         original_url: url,
+        remaining_urls: rest,
         bytes_sent: 0,
         retry_count: 0,
         retry_window_started_at: nil,
@@ -219,13 +221,25 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
 
   defp maybe_rotate_after_pipe(conn, rest) do
     Logger.info("[VodProxy] primary URL exhausted before headers; trying #{length(rest)} alt(s)")
-    pipe_chain(conn, rest)
+    pipe_chain(remember_failure(conn, :stream_resolution_failed), rest)
   end
 
   defp rotate_or_fallback(conn, [], reason, state),
     do: serve_fallback_or_halt(conn, reason, state)
 
-  defp rotate_or_fallback(conn, rest, _reason, _state), do: pipe_chain(conn, rest)
+  defp rotate_or_fallback(conn, rest, reason, _state),
+    do: pipe_chain(remember_failure(conn, reason), rest)
+
+  # Before sending any bytes, a missing VOD source must exhaust its alternate
+  # hosts before we can conclude that the item itself is absent.
+  defp serve_fallback_or_halt(conn, {:unexpected_status, status} = reason, %{
+         dimension: :vod,
+         bytes_sent: 0,
+         remaining_urls: [_ | _] = rest
+       })
+       when status in [404, 410] do
+    pipe_chain(remember_failure(conn, reason), rest)
+  end
 
   defp serve_fallback_or_halt(conn, reason, state) do
     Observability.record_failure(state, reason)
@@ -238,6 +252,20 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
       %Conn{state: :chunked} = served -> served
       _ -> StreamErrors.halt(conn, code)
     end
+  end
+
+  defp remember_failure(conn, reason) do
+    context = Observability.context_from_conn(conn)
+    missing? = StreamErrors.code_from_reason(reason) == :upstream_not_found
+
+    context =
+      Map.put(
+        context,
+        :all_sources_missing?,
+        Map.get(context, :all_sources_missing?, true) and missing?
+      )
+
+    Conn.put_private(conn, :streamix_proxy_context, context)
   end
 
   defp resolve_chain(url, context) do

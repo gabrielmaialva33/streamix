@@ -22,6 +22,7 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
   alias Streamix.Gindex
   alias Streamix.Providers
   alias Streamix.Repo
+  alias Streamix.SafeLog
 
   require Logger
 
@@ -503,7 +504,9 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
         :ok
 
       {:error, reason} ->
-        Logger.error("[GIndex ScanRoot] status update failed: #{inspect(reason)}")
+        Logger.error("[GIndex ScanRoot] status update failed",
+          reason: SafeLog.redact_inspect(reason)
+        )
     end
   end
 end

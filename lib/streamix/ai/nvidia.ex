@@ -21,6 +21,8 @@ defmodule Streamix.AI.Nvidia do
 
   require Logger
 
+  alias Streamix.SafeLog
+
   # 2026-06: NVIDIA migrated their embedding endpoints from the legacy
   # `ai.api.nvidia.com/v1/retrieval/nvidia/*` path (which returned a 404
   # "function not found for account" after the cutover) to the new
@@ -204,7 +206,7 @@ defmodule Streamix.AI.Nvidia do
         {:error, {:api_error, status, body}}
 
       {:error, reason} ->
-        Logger.error("[NVIDIA] Request failed: #{inspect(reason)}")
+        Logger.error("[NVIDIA] Request failed", reason: SafeLog.redact_inspect(reason))
         {:error, {:request_failed, reason}}
     end
   end

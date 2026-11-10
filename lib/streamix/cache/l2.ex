@@ -9,6 +9,8 @@ defmodule Streamix.Cache.L2 do
 
   require Logger
 
+  alias Streamix.SafeLog
+
   @redis :streamix_redis
   @namespace "cache:"
   @scan_count 100
@@ -136,6 +138,8 @@ defmodule Streamix.Cache.L2 do
   end
 
   defp log_error(operation, key, reason) do
-    Logger.warning("Cache.L2 #{operation} failed for #{key}: #{inspect(reason)}")
+    Logger.warning("Cache.L2 #{operation} failed for #{key}",
+      reason: SafeLog.redact_inspect(reason)
+    )
   end
 end

@@ -7,7 +7,49 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
   """
   use StreamixWeb, :controller
 
+  use OpenApiSpex.ControllerSpecs
+
+  action_fallback StreamixWeb.Api.V1.FallbackController
+
+  alias StreamixWeb.Api.V1.Operations
+
+  operation :index,
+            Operations.build(
+              "providers.index",
+              "List personal providers",
+              "PersonalProvidersResponse",
+              security: Operations.authenticated()
+            )
+
+  operation :create,
+            Operations.build("providers.create", "Create a personal provider", "PersonalProvider",
+              status: :created,
+              body: "ProviderRequest",
+              security: Operations.authenticated(),
+              errors: [:unprocessable_entity]
+            )
+
+  operation :delete,
+            Operations.build("providers.delete", "Delete a personal provider", nil,
+              status: :no_content,
+              parameters: [Operations.path(:id, :integer)],
+              security: Operations.authenticated(),
+              errors: [:not_found, :unprocessable_entity]
+            )
+
+  operation :sync,
+            Operations.build(
+              "providers.sync",
+              "Schedule provider synchronization",
+              "ProviderSyncResponse",
+              status: :accepted,
+              parameters: [Operations.path(:id, :integer)],
+              security: Operations.authenticated(),
+              errors: [:not_found, :internal_server_error]
+            )
+
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
+  alias Streamix.Providers
   alias StreamixWeb.Api.V1.Response
 
   plug StreamixWeb.Plugs.BearerAuth
@@ -17,8 +59,8 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
   Lists user's private providers (excludes system providers).
   """
   def index(conn, _params) do
-    user = conn.assigns.current_user
-    providers = Streamix.Providers.list_providers(user.id)
+    user = conn.assigns.current_scope.user
+    providers = Providers.list_providers(user.id)
 
     json(conn, %{
       providers: Enum.map(providers, &serialize/1)
@@ -31,7 +73,7 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
   Body: { "name": "My IPTV", "url": "http://...", "username": "...", "password": "..." }
   """
   def create(conn, %{"name" => _, "url" => _, "username" => _, "password" => _} = params) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
 
     attrs = %{
       name: params["name"],
@@ -42,7 +84,7 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
       visibility: :private
     }
 
-    case Streamix.Providers.create_provider(user.id, attrs) do
+    case Providers.create_provider(user.id, attrs) do
       {:ok, provider} ->
         conn
         |> put_status(:created)
@@ -72,14 +114,14 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
   Deletes a user's private provider.
   """
   def delete(conn, %{"id" => id}) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
 
     with {:ok, provider_id} <- parse_positive_integer(id),
          provider when not is_nil(provider) <-
-           Streamix.Providers.get_user_provider(user.id, provider_id) do
-      case Streamix.Providers.delete_provider(provider) do
+           Providers.get_user_provider(user.id, provider_id) do
+      case Providers.delete_provider(provider) do
         {:ok, _} ->
-          send_resp(conn, 204, "")
+          send_resp(conn, :no_content, "")
 
         {:error, _} ->
           Response.error(
@@ -91,7 +133,7 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
       end
     else
       :error ->
-        invalid_id(conn)
+        {:error, :invalid_id, "Invalid provider id"}
 
       nil ->
         Response.error(conn, :not_found, "not_found", "Provider not found")
@@ -103,12 +145,12 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
   Triggers async sync for a user's provider.
   """
   def sync(conn, %{"id" => id}) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
 
     with {:ok, provider_id} <- parse_positive_integer(id),
          provider when not is_nil(provider) <-
-           Streamix.Providers.get_user_provider(user.id, provider_id) do
-      case Streamix.Providers.async_sync_provider(provider) do
+           Providers.get_user_provider(user.id, provider_id) do
+      case Providers.async_sync_provider(provider) do
         {:ok, _job} ->
           conn
           |> put_status(:accepted)
@@ -125,15 +167,11 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
       end
     else
       :error ->
-        invalid_id(conn)
+        {:error, :invalid_id, "Invalid provider id"}
 
       nil ->
         Response.error(conn, :not_found, "not_found", "Provider not found")
     end
-  end
-
-  defp invalid_id(conn) do
-    Response.error(conn, :bad_request, "invalid_id", "Invalid provider id")
   end
 
   # Serializer — never exposes credentials

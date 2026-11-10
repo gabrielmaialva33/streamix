@@ -1,6 +1,8 @@
 defmodule StreamixWeb.PlayerComponents.Metadata do
   @moduledoc false
 
+  alias Streamix.PublicUrls
+
   @fourk_hevc_pattern ~r/(2160p|\b4k\b|uhd|hevc|x265|h265|hvc1|hev1)/i
 
   # Streamix's own gateways are already CORS-safe origins. Wrapping the HLS
@@ -20,10 +22,7 @@ defmodule StreamixWeb.PlayerComponents.Metadata do
     if String.contains?(stream_url, @own_stream_routes) do
       stream_url
     else
-      proxy_base =
-        Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.fun")
-
-      "#{proxy_base}/proxy?url=#{URI.encode_www_form(stream_url)}"
+      "#{PublicUrls.stream_proxy()}/proxy?url=#{URI.encode_www_form(stream_url)}"
     end
   end
 
@@ -79,6 +78,16 @@ defmodule StreamixWeb.PlayerComponents.Metadata do
 
   def stream_type_hint(_content_type, _content, _source_type), do: nil
 
+  # Only persisted catalog facts belong in the capability dataset. The cached
+  # track metadata contains audio/subtitle labels, not RFC 6381 video codecs,
+  # resolution or bitrate; title/TMDB hints must not invent those properties.
+  @spec media_container(map()) :: String.t() | nil
+  def media_container(%{container_extension: value}) when is_binary(value) do
+    value |> String.trim() |> String.trim_leading(".") |> bare_extension()
+  end
+
+  def media_container(_content), do: nil
+
   @spec title(map(), atom()) :: String.t() | nil
   def title(content, type) when type in [:live, :live_channel] do
     Map.get(content, :name)
@@ -116,6 +125,29 @@ defmodule StreamixWeb.PlayerComponents.Metadata do
     episode_num = Map.get(content, :episode_num, "?")
     "T#{season_num}:E#{episode_num}"
   end
+
+  @doc """
+  The picture shown while the stream starts: a wide backdrop when the
+  catalog has one, otherwise the episode still or the cover. `nil` for live
+  channels, whose logo would only be stretched across the screen.
+  """
+  @spec poster(map(), atom()) :: String.t() | nil
+  def poster(_content, type) when type in [:live, :live_channel], do: nil
+
+  def poster(content, _type) when is_map(content) do
+    [backdrop(content), Map.get(content, :still_path), Map.get(content, :cover)]
+    |> Enum.concat([Map.get(content, :stream_icon)])
+    |> Enum.find(&(is_binary(&1) and &1 != ""))
+  end
+
+  defp backdrop(%{assets: assets}) when is_list(assets) do
+    assets
+    |> Enum.filter(&(Map.get(&1, :asset_type) == "backdrop"))
+    |> Enum.sort_by(&Map.get(&1, :position))
+    |> Enum.find_value(&Map.get(&1, :url))
+  end
+
+  defp backdrop(_content), do: nil
 
   @spec uhd_hevc?(map()) :: boolean()
   def uhd_hevc?(content) when is_map(content) do

@@ -54,7 +54,7 @@ test("maps aspect modes to media element styles", () => {
 
 test("keeps working without storage and removes option listeners on destroy", () => {
   const button = new EventTarget();
-  button.dataset = { aspectMode: "cover" };
+  button.dataset = { aspectMode: "native" };
   const video = fakeElement();
   const avplayerCanvas = fakeElement();
   const h265webCanvas = fakeElement();
@@ -68,7 +68,7 @@ test("keeps working without storage and removes option listeners on destroy", ()
         check.hidden = hidden;
       },
     },
-    dataset: { aspectCheck: "cover" },
+    dataset: { aspectCheck: "native" },
   };
   const root = {
     querySelector: (selector) => mounts[selector] ?? null,
@@ -105,7 +105,8 @@ test("keeps working without storage and removes option listeners on destroy", ()
     MutationObserverImpl: MutationObserverStub,
   });
 
-  assert.equal(video.style.objectFit, "");
+  // A new player fills the screen.
+  assert.equal(video.style.objectFit, "cover");
   assert.equal(check.hidden, true);
   assert.deepEqual(storageCalls, [["remove", "streamix:player:aspect"]]);
 
@@ -115,16 +116,16 @@ test("keeps working without storage and removes option listeners on destroy", ()
     callback();
   }
 
-  assert.equal(video.style.objectFit, "cover");
-  assert.equal(avplayerCanvas.style.objectFit, "cover");
-  assert.equal(h265webCanvas.style.objectFit, "cover");
+  assert.equal(video.style.objectFit, "none");
+  assert.equal(avplayerCanvas.style.objectFit, "none");
+  assert.equal(h265webCanvas.style.objectFit, "none");
   assert.equal(check.hidden, false);
   assert.deepEqual(storageCalls, [["remove", "streamix:player:aspect"]]);
 
   controller.destroy();
-  button.dataset.aspectMode = "native";
+  button.dataset.aspectMode = "cover";
   button.dispatchEvent(new Event("click"));
-  assert.equal(video.style.objectFit, "cover");
+  assert.equal(video.style.objectFit, "none");
 });
 
 test("drives canvas players through custom properties and frees the box for forced ratios", () => {
@@ -157,7 +158,7 @@ test("drives canvas players through custom properties and frees the box for forc
   assert.equal(avplayerCanvas.style.maxWidth, "100%");
 });
 
-test("starts every mounted player in auto and keeps manual choices session-scoped", () => {
+test("starts every mounted player filling the screen and keeps manual choices session-scoped", () => {
   const storedValues = [];
   const removedValues = [];
   const storage = {
@@ -172,7 +173,7 @@ test("starts every mounted player in auto and keeps manual choices session-scope
     },
   };
   const button = new EventTarget();
-  button.dataset = { aspectMode: "cover" };
+  button.dataset = { aspectMode: "auto" };
 
   const buildController = () => {
     const video = fakeElement();
@@ -200,18 +201,63 @@ test("starts every mounted player in auto and keeps manual choices session-scope
   };
 
   const first = buildController();
-  assert.equal(first.controller.mode, "auto");
-  assert.equal(first.video.style.objectFit, "");
-
-  button.dispatchEvent(new Event("click"));
   assert.equal(first.controller.mode, "cover");
   assert.equal(first.video.style.objectFit, "cover");
+
+  button.dispatchEvent(new Event("click"));
+  assert.equal(first.controller.mode, "auto");
+  assert.equal(first.video.style.objectFit, "");
   first.controller.destroy();
 
   const second = buildController();
-  assert.equal(second.controller.mode, "auto");
-  assert.equal(second.video.style.objectFit, "");
+  assert.equal(second.controller.mode, "cover");
+  assert.equal(second.video.style.objectFit, "cover");
   assert.deepEqual(storedValues, []);
   assert.deepEqual(removedValues, ["streamix:player:aspect", "streamix:player:aspect"]);
   second.controller.destroy();
+});
+
+test("fit attribute overrides manual ratios on video and canvas, then returns to contain", () => {
+  const video = fakeElement();
+  const canvas = fakeElement();
+  const root = {
+    dataset: {},
+    querySelector: (selector) =>
+      selector === "#avplayer-mount" ? { querySelectorAll: () => [canvas] } : null,
+    querySelectorAll: () => [],
+  };
+  let onFit;
+  class Observer {
+    constructor(callback) {
+      this.callback = callback;
+    }
+    observe(target) {
+      if (target === root) onFit = this.callback;
+    }
+    disconnect() {}
+  }
+  const controller = createAspectRatioController({
+    root,
+    video,
+    storage: null,
+    MutationObserverImpl: Observer,
+  });
+  controller.apply("16-9");
+  root.dataset.playerFit = "fill";
+  assert.equal(typeof onFit, "function");
+  onFit();
+  assert.equal(video.style.objectFit, "cover");
+  assert.equal(video.style.aspectRatio, "");
+  assert.equal(canvas.properties["--streamix-player-fit"], "cover");
+  delete root.dataset.playerFit;
+  onFit();
+  assert.equal(video.style.objectFit, "");
+  assert.equal(canvas.properties["--streamix-player-fit"], "contain");
+  controller.apply("cover");
+  assert.equal(root.dataset.playerFit, "fill");
+  controller.apply("native");
+  assert.equal(root.dataset.playerFit, undefined);
+  onFit();
+  assert.equal(video.style.objectFit, "none");
+  controller.destroy();
 });

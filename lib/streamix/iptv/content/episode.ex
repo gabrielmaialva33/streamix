@@ -19,6 +19,7 @@ defmodule Streamix.Iptv.Episode do
     field :still_path, :string
     field :duration_secs, :integer
     field :container_extension, :string
+    field :dead_since, :utc_datetime
 
     # Ids of the item's upstream `sources` (selected with `?source=N`), in
     # the provider's order. Written by the sync; read by the delivery probe.

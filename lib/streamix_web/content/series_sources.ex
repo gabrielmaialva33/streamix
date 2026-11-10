@@ -8,6 +8,7 @@ defmodule StreamixWeb.Content.SeriesSources do
   so the web and TV clients always offer the same copies in the same order.
   """
 
+  alias Streamix.Providers
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.Content.SourceBadges
 
@@ -54,7 +55,7 @@ defmodule StreamixWeb.Content.SeriesSources do
 
   @doc "Presentation options for the authorized source list."
   def options(sources, user) do
-    statuses = Streamix.Providers.provider_health_statuses(Enum.map(sources, & &1.provider))
+    statuses = Providers.provider_health_statuses(Enum.map(sources, & &1.provider))
     fullest = Enum.max_by(sources, &elem(counts(&1), 1), fn -> nil end)
 
     sources

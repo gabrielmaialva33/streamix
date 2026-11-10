@@ -7,6 +7,7 @@ defmodule StreamixWeb.Catalog.Reels do
   with a page cursor; the bounds match `StreamixWeb.Api.V1.Schemas.Reels`.
   """
 
+  alias Streamix.Catalog
   alias StreamixWeb.Catalog.Serializer
 
   @default_per_page 24
@@ -22,13 +23,13 @@ defmodule StreamixWeb.Catalog.Reels do
     category = category(params["category"])
 
     reels =
-      Streamix.Catalog.list_public_reel_series(
+      Catalog.list_public_reel_series(
         category: category,
         limit: per_page,
         offset: (page - 1) * per_page
       )
 
-    total = Streamix.Catalog.count_public_reel_series(category: category)
+    total = Catalog.count_public_reel_series(category: category)
     has_more = page < @max_page and page * per_page < total
 
     %{
@@ -49,7 +50,7 @@ defmodule StreamixWeb.Catalog.Reels do
   @doc "Public reel categories merged across providers, largest first."
   @spec categories() :: map()
   def categories do
-    categories = Streamix.Catalog.list_public_reel_categories()
+    categories = Catalog.list_public_reel_categories()
 
     %{data: categories, meta: %{total: length(categories)}}
   end

@@ -1,3 +1,4 @@
+import { memoizeImport } from "../core/async_primitives.js";
 import { playerLogger as log } from "../core/logger.js";
 
 export function createLazyModuleLoader({ label, load, select = (module) => module, logger = log }) {
@@ -5,37 +6,24 @@ export function createLazyModuleLoader({ label, load, select = (module) => modul
     throw new TypeError("Lazy module loader requires a load function");
   }
 
-  let loaded = false;
-  let value;
-  let pending;
-
-  return () => {
-    if (loaded) return Promise.resolve(value);
-
-    pending ||= Promise.resolve()
-      .then(() => {
-        logger.debug(`Lazy loading ${label} module...`);
-        return load();
-      })
-      .then((module) => {
-        value = select(module);
-        loaded = true;
-        logger.debug(`${label} module loaded`);
-        return value;
-      })
-      .catch((error) => {
-        pending = null;
-        throw error;
-      });
-
-    return pending;
-  };
+  return memoizeImport(() => {
+    logger.debug(`Lazy loading ${label} module...`);
+    return Promise.resolve(load()).then((module) => {
+      const value = select(module);
+      logger.debug(`${label} module loaded`);
+      return value;
+    });
+  });
 }
 
 export const loadAVPlayer = createLazyModuleLoader({
   label: "AVPlayer",
   load: () => import("../media/avplayer_wrapper.js"),
-  select: ({ AVPlayerWrapper, detectAudioIssue }) => ({ AVPlayerWrapper, detectAudioIssue }),
+  select: ({ AVPlayerWrapper, detectAudioIssue, preloadAVPlayerRuntime }) => ({
+    AVPlayerWrapper,
+    detectAudioIssue,
+    preloadAVPlayerRuntime,
+  }),
 });
 
 export const loadAvbridge = createLazyModuleLoader({

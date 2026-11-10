@@ -3,9 +3,15 @@ defmodule StreamixWeb.Plugs.RateLimit do
   Rate limiting plug using Hammer.
 
   Usage in router:
-    plug StreamixWeb.Plugs.RateLimit, limit: 10, period: 60_000  # 10 requests per minute
+    plug StreamixWeb.Plugs.RateLimit, name: :login, limit: 10, period: 60_000
 
-  Rate limits by IP address. Returns 429 Too Many Requests when limit is exceeded.
+  Rate limits by IP address (or by user with `by: :user`). Returns 429 Too
+  Many Requests when the limit is exceeded.
+
+  `name` is required and names the bucket. Hammer counts per bucket and
+  window, not per limit, so two pipelines sharing a bucket would share one
+  counter: HLS segments once spent the login and stream-proxy allowance of
+  the same viewer.
   """
 
   import Plug.Conn
@@ -19,6 +25,7 @@ defmodule StreamixWeb.Plugs.RateLimit do
 
   def init(opts) do
     %{
+      name: Keyword.fetch!(opts, :name),
       limit: Keyword.get(opts, :limit, @default_limit),
       period: Keyword.get(opts, :period, @default_period),
       by: Keyword.get(opts, :by, :ip)
@@ -35,7 +42,7 @@ defmodule StreamixWeb.Plugs.RateLimit do
 
   defp enforce(conn, opts) do
     key = build_key(conn, opts.by)
-    bucket = "rate_limit:#{key}"
+    bucket = "rate_limit:#{opts.name}:#{key}"
 
     case Streamix.RateLimit.hit(bucket, opts.period, opts.limit) do
       {:allow, count} ->
@@ -43,7 +50,7 @@ defmodule StreamixWeb.Plugs.RateLimit do
         |> put_rate_limit_headers(opts.limit, opts.limit - count, opts.period)
 
       {:deny, retry_after} ->
-        Logger.warning("Rate limit exceeded for #{key}")
+        Logger.warning("Rate limit exceeded", bucket: opts.name, client: key)
 
         conn
         |> put_rate_limit_headers(opts.limit, 0, opts.period)

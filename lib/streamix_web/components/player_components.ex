@@ -29,7 +29,12 @@ defmodule StreamixWeb.PlayerComponents do
   attr :on_close, :string, default: nil
   attr :show_controls, :boolean, default: true
   attr :provider_type, :string, default: nil
+  # Lets the player remember which engine a provider's files need (AC3 audio
+  # in MP4 means AVPlayer), so the next title of that provider starts on it.
+  attr :provider_id, :integer, default: nil
   attr :next_episode, :map, default: nil
+  attr :season_episodes, :list, default: []
+  attr :synopsis, :string, default: nil
   attr :expected_duration, :integer, default: 0
   attr :subtitles_enabled, :boolean, default: true
   attr :subtitle_language, :string, default: "pt-BR"
@@ -68,6 +73,7 @@ defmodule StreamixWeb.PlayerComponents do
       |> assign(:media_subtitle, Metadata.subtitle(assigns.content, assigns.content_type))
       |> assign(:episode_subtitle, Metadata.episode_subtitle(assigns.content))
       |> assign(:party_transport_locked, assigns.party_mode and assigns.party_role == :viewer)
+      |> assign(:vod?, assigns.content_type not in [:live, :live_channel])
       |> assign(
         :player_lifecycle_logs,
         Application.get_env(:streamix, :player_lifecycle_logs, false) |> to_string()
@@ -85,6 +91,7 @@ defmodule StreamixWeb.PlayerComponents do
       # plays just fine on AVPlayer (libmedia) and we keep the bundle
       # off the critical path.
       |> assign(:uhd_hevc, Metadata.uhd_hevc?(assigns.content) |> to_string())
+      |> assign(:poster, poster_url(assigns.content, assigns.content_type))
 
     ~H"""
     <div
@@ -101,6 +108,9 @@ defmodule StreamixWeb.PlayerComponents do
       data-next-episode={@next_episode_json}
       data-expected-duration={@expected_duration}
       data-stream-type={@stream_type}
+      data-container={Metadata.media_container(@content)}
+      data-player-poster={@poster}
+      data-provider-id={@provider_id}
       data-player-lifecycle-logs={@player_lifecycle_logs}
       data-feature-avbridge={@feature_avbridge}
       data-feature-h265web={@feature_h265web}
@@ -136,7 +146,7 @@ defmodule StreamixWeb.PlayerComponents do
       >
         <div class="flex flex-col items-center gap-4 text-center p-6">
           <.icon name="hero-exclamation-triangle" class="size-16 text-error" />
-          <p class="error-message text-white text-lg">Erro ao carregar</p>
+          <p class="error-message text-white text-lg">Não conseguimos carregar o vídeo</p>
           <p class="error-hint hidden max-w-sm text-sm text-white/65"></p>
           <div class="flex items-center gap-3">
             <button
@@ -170,7 +180,7 @@ defmodule StreamixWeb.PlayerComponents do
       <%!-- Centered buffer spinner (agy-05) --%>
       <div
         id="loading-indicator"
-        class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center hidden"
+        class="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 hidden"
         role="status"
         aria-live="polite"
         aria-label="Carregando vídeo"
@@ -311,12 +321,12 @@ defmodule StreamixWeb.PlayerComponents do
                 id="player-close-btn"
                 type="button"
                 phx-click={@on_close}
-                aria-label="Fechar player"
-                class="player-control-btn flex size-12 min-h-11 min-w-11 shrink-0 touch-manipulation items-center justify-center rounded-full bg-black/35 text-white/90 backdrop-blur-xs transition-all hover:bg-black/50 hover:text-white active:scale-95 active:bg-black/60 sm:size-11 sm:min-h-0 sm:min-w-0 sm:bg-transparent sm:backdrop-blur-none sm:hover:bg-white/10 sm:active:scale-100 sm:active:bg-white/20"
+                aria-label="Voltar"
+                class="player-control-btn flex size-12 min-h-12 min-w-12 shrink-0 touch-manipulation items-center justify-center rounded-full bg-black/35 text-white/90 backdrop-blur-xs transition-all hover:bg-black/50 hover:text-white active:scale-95 active:bg-black/60 sm:size-11 sm:min-h-0 sm:min-w-0 sm:bg-transparent sm:backdrop-blur-none sm:hover:bg-white/10 sm:active:scale-100 sm:active:bg-white/20"
               >
-                <.icon name="hero-x-mark" class="size-6" aria-hidden="true" />
+                <.icon name="hero-arrow-left" class="size-7" aria-hidden="true" />
               </button>
-              <div class="player-title min-w-0 flex-1 transition-opacity">
+              <div class="player-title min-w-0 flex-1 transition-opacity sm:hidden">
                 <h2 class="text-base sm:text-xl font-semibold text-white drop-shadow-lg truncate">
                   {@media_title}
                 </h2>
@@ -331,10 +341,18 @@ defmodule StreamixWeb.PlayerComponents do
                 </p>
               </div>
             </div>
+            <div class="flex shrink-0 items-center gap-1">
+              <.fit_button />
+              <.lock_button />
+            </div>
           </div>
         </div>
 
-        <div class="flex-1 pointer-events-none" aria-hidden="true" />
+        <%!-- Middle: on touch layouts Netflix puts back / play / forward here;
+             elsewhere the space stays clear so a click lands on the video. --%>
+        <div class="flex flex-1 items-center justify-center pointer-events-none">
+          <.center_controls :if={@vod?} disabled={@party_transport_locked} />
+        </div>
 
         <%!-- Bottom bar --%>
         <div
@@ -354,14 +372,39 @@ defmodule StreamixWeb.PlayerComponents do
             <%!-- Left --%>
             <div id="player-primary-controls" class="flex min-w-0 items-center gap-1 sm:gap-3">
               <.play_pause_button disabled={@party_transport_locked} />
+              <.seek_button
+                :if={@vod?}
+                direction={:backward}
+                disabled={@party_transport_locked}
+                class="max-sm:hidden"
+              />
+              <.seek_button
+                :if={@vod?}
+                direction={:forward}
+                disabled={@party_transport_locked}
+                class="max-sm:hidden"
+              />
               <.volume_control />
               <.live_badge :if={@content_type in [:live, :live_channel]} />
             </div>
 
-            <.time_display :if={@content_type not in [:live, :live_channel]} />
+            <.time_display :if={@vod?} />
+
+            <%!-- Centre, larger screens: what is playing, as Netflix shows it --%>
+            <div
+              id="player-bottom-title"
+              class="hidden min-w-0 flex-1 truncate px-4 text-center text-sm text-white/90 sm:block lg:text-base"
+            >
+              <span class="font-semibold text-white">{@media_title}</span>
+              <span :if={@content_type == :episode && @episode_subtitle} class="ml-2 text-white/70">
+                {@episode_subtitle}
+              </span>
+            </div>
 
             <%!-- Right --%>
-            <div class="ml-auto flex items-center gap-1 sm:gap-2">
+            <div class="ml-auto flex items-center gap-1 sm:ml-0 sm:gap-2">
+              <.next_episode_button :if={@next_episode} />
+              <.episodes_button :if={@season_episodes != []} />
               <.speed_button
                 :if={@content_type not in [:live, :live_channel]}
                 disabled={@party_transport_locked}
@@ -373,6 +416,112 @@ defmodule StreamixWeb.PlayerComponents do
             </div>
           </div>
         </div>
+      </div>
+
+      <%!-- Pause screen: after a while paused, Netflix dims the picture and
+           reminds you what you are watching. JS sets
+           data-player-idle-paused on the root; CSS shows this. --%>
+      <div
+        id="player-pause-info"
+        class="pointer-events-none absolute inset-0 z-20 flex items-center bg-gradient-to-r from-black/85 via-black/55 to-transparent px-6 sm:px-16"
+        aria-hidden="true"
+      >
+        <div class="max-w-xl space-y-3">
+          <p class="text-sm font-medium text-white/70 sm:text-base">Você está assistindo</p>
+          <h2 class="text-3xl font-bold leading-tight text-white sm:text-5xl">{@media_title}</h2>
+          <p
+            :if={@content_type == :episode && @episode_subtitle}
+            class="text-lg font-semibold text-white/90 sm:text-xl"
+          >
+            {@episode_subtitle}
+          </p>
+          <p :if={@synopsis} class="line-clamp-4 text-sm leading-relaxed text-white/80 sm:text-base">
+            {@synopsis}
+          </p>
+          <p class="pt-2 text-xs text-white/60 sm:text-sm">Pausado</p>
+        </div>
+      </div>
+
+      <%!-- Screen lock (touch): everything else is hidden until unlocked --%>
+      <div
+        id="player-lock-overlay"
+        class="absolute inset-x-0 top-[max(1.5rem,env(safe-area-inset-top))] z-50 flex justify-center"
+      >
+        <button
+          type="button"
+          id="player-unlock-btn"
+          data-player-action="unlock"
+          class="flex min-h-12 items-center gap-2 rounded-full bg-black/70 px-5 text-sm font-medium text-white shadow-xl backdrop-blur-md active:scale-95"
+        >
+          <.icon name="hero-lock-closed" class="size-5" aria-hidden="true" />
+          <span>Tela travada · toque para destravar</span>
+        </button>
+      </div>
+
+      <%!-- Episodes panel (Netflix "Episódios"): the current season, with
+           the user's progress; each item opens that episode. --%>
+      <div :if={@season_episodes != []} id="player-episodes-layer" class="absolute inset-0 z-40">
+        <div class="absolute inset-0 bg-black/50" data-player-action="close-panel" aria-hidden="true" />
+        <aside
+          id="player-episodes-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="player-episodes-title"
+          class="absolute inset-y-0 right-0 flex w-full max-w-md flex-col bg-neutral-950/95 shadow-2xl backdrop-blur-md"
+        >
+          <header class="player-safe-top flex items-center justify-between gap-3 border-b border-white/10 pb-3">
+            <h2 id="player-episodes-title" class="text-lg font-bold text-white sm:text-xl">
+              Episódios
+            </h2>
+            <button
+              type="button"
+              data-player-action="close-panel"
+              aria-label="Fechar episódios"
+              class="flex size-12 items-center justify-center rounded-full text-white/80 hover:bg-white/10 hover:text-white"
+            >
+              <.icon name="hero-x-mark" class="size-6" aria-hidden="true" />
+            </button>
+          </header>
+          <ol class="flex-1 space-y-1 overflow-y-auto overscroll-contain p-3">
+            <li :for={episode <- @season_episodes}>
+              <.link
+                navigate={episode.path}
+                aria-current={episode.current && "true"}
+                class={[
+                  "flex gap-3 rounded-lg p-2 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-brand",
+                  episode.current && "bg-white/10 ring-1 ring-white/20"
+                ]}
+              >
+                <div class="relative aspect-video w-32 shrink-0 overflow-hidden rounded-md bg-white/10 sm:w-36">
+                  <img
+                    :if={episode.image}
+                    src={ImageProxy.proxy(episode.image)}
+                    alt=""
+                    class="size-full object-cover"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                  <div
+                    :if={episode.progress > 0}
+                    class="absolute inset-x-0 bottom-0 h-1 bg-white/30"
+                    aria-hidden="true"
+                  >
+                    <div class="h-full bg-brand" style={"width: #{round(episode.progress * 100)}%"} />
+                  </div>
+                </div>
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-semibold text-white">
+                    <span class="text-white/60">{episode.number}.</span> {episode.title}
+                  </p>
+                  <p :if={episode.current} class="text-xs font-medium text-brand">Assistindo agora</p>
+                  <p :if={episode.plot} class="mt-1 line-clamp-2 text-xs text-white/60">
+                    {episode.plot}
+                  </p>
+                </div>
+              </.link>
+            </li>
+          </ol>
+        </aside>
       </div>
 
       <%!-- Next episode overlay (shows when near end) --%>
@@ -427,7 +576,7 @@ defmodule StreamixWeb.PlayerComponents do
               id="cancel-next-btn"
               class="min-h-11 px-4 py-2.5 sm:py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded transition-colors touch-manipulation"
             >
-              Cancelar
+              Assistir créditos
             </button>
           </div>
           <%!-- Countdown bar --%>
@@ -511,4 +660,61 @@ defmodule StreamixWeb.PlayerComponents do
     </div>
     """
   end
+
+  @doc """
+  The player's first frame while its source is still being chosen: the
+  title's picture, dimmed, the same spinner and stage line the player shows
+  while it starts, and a way back. It stands in for `video_player/1` until a
+  provider that probes each item has named a URL, so the page never sits
+  blank on that decision.
+  """
+  attr :content, :map, required: true
+  attr :content_type, :atom, required: true
+  attr :on_close, :string, default: nil
+
+  def player_startup_screen(assigns) do
+    assigns =
+      assigns
+      |> assign(:poster, poster_url(assigns.content, assigns.content_type))
+      |> assign(:media_title, Metadata.title(assigns.content, assigns.content_type))
+
+    ~H"""
+    <div
+      id="player-startup-screen"
+      class="relative h-full w-full overflow-hidden bg-black"
+      data-player-stage="connecting"
+    >
+      <img
+        :if={@poster}
+        src={@poster}
+        alt=""
+        aria-hidden="true"
+        data-player-startup-cover
+        class="absolute inset-0 size-full object-cover blur-lg brightness-40"
+      />
+      <button
+        :if={@on_close}
+        id="player-startup-close-btn"
+        type="button"
+        phx-click={@on_close}
+        aria-label="Voltar"
+        class="absolute left-3 top-3 z-20 flex size-12 items-center justify-center rounded-full bg-black/35 text-white/90 backdrop-blur-xs transition hover:bg-black/50 hover:text-white active:scale-95 sm:left-5 sm:top-5"
+      >
+        <.icon name="hero-arrow-left" class="size-7" aria-hidden="true" />
+      </button>
+      <div
+        class="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 px-6 text-center"
+        role="status"
+        aria-live="polite"
+      >
+        <div class="size-12 animate-spin rounded-full border-4 border-white/20 border-t-brand drop-shadow-md sm:size-14" />
+        <span data-player-stage-text>Conectando…</span>
+        <p class="max-w-md truncate text-sm text-white/60">{@media_title}</p>
+      </div>
+    </div>
+    """
+  end
+
+  defp poster_url(content, content_type),
+    do: content |> Metadata.poster(content_type) |> ImageProxy.proxy()
 end

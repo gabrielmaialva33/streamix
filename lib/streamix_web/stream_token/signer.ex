@@ -14,7 +14,7 @@ defmodule StreamixWeb.StreamToken.Signer do
   `StreamixWeb.StreamToken.Resolver`.
   """
 
-  alias StreamixWeb.UrlValidator
+  alias Streamix.Security.UrlValidator
 
   @doc "Sign a movie stream token. See `StreamixWeb.StreamToken` for opts."
   def sign_movie(movie_id, user_id, opts \\ []) when is_integer(movie_id) do

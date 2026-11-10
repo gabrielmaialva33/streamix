@@ -40,12 +40,27 @@ defmodule Streamix.Iptv.Streaming.VodProxy.Observability do
       when is_integer(provider_id) do
     if content_missing?(reason) do
       maybe_mark_channel_dead(state)
+
+      maybe_mark_vod_dead(state, provider_id, reason)
     else
       ProviderRuntime.record_failure(provider_id, dimension, reason)
     end
   end
 
   def record_failure(_state, _reason), do: :ok
+
+  defp maybe_mark_vod_dead(state, provider_id, reason) do
+    if Map.get(state, :bytes_sent, 0) == 0 and Map.get(state, :all_sources_missing?, true) do
+      Streamix.Playback.record_vod_failure(
+        state.media_type,
+        state.content_id,
+        provider_id,
+        reason
+      )
+    end
+
+    :ok
+  end
 
   @spec emit(atom(), map(), keyword()) :: :ok
   def emit(event, state, metadata \\ []) do

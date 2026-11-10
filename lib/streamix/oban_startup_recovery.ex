@@ -17,6 +17,7 @@ defmodule Streamix.ObanStartupRecovery do
   import Ecto.Query
 
   alias Streamix.Repo
+  alias Streamix.SafeLog
 
   require Logger
 
@@ -34,7 +35,9 @@ defmodule Streamix.ObanStartupRecovery do
         Logger.warning("[ObanStartupRecovery] recovered #{recovered} interrupted jobs")
 
       {:error, reason} ->
-        Logger.error("[ObanStartupRecovery] recovery failed: #{inspect(reason)}")
+        Logger.error("[ObanStartupRecovery] recovery failed",
+          reason: SafeLog.redact_inspect(reason)
+        )
     end
 
     :ignore

@@ -3,9 +3,11 @@ defmodule StreamixWeb.Admin.PlansLive do
 
   import StreamixWeb.AdminComponents
 
-  alias Streamix.Billing
-  alias StreamixWeb.Helpers.Money
+  import StreamixWeb.Billing.Formatting, only: [format_price: 3]
 
+  alias Streamix.Billing
+
+  @impl true
   def mount(_params, _session, socket) do
     plans = Billing.list_plans()
 
@@ -17,6 +19,7 @@ defmodule StreamixWeb.Admin.PlansLive do
     {:ok, socket}
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div id="admin-plans" class="space-y-6">
@@ -57,7 +60,7 @@ defmodule StreamixWeb.Admin.PlansLive do
                 <td class="px-4 py-3 font-medium text-text-primary">{plan.name}</td>
                 <td class="px-4 py-3 font-mono text-xs text-text-secondary">{plan.slug}</td>
                 <td class="px-4 py-3 text-text-primary">
-                  {format_price(plan.price_cents, plan.currency)}
+                  {format_price(plan.price_cents, plan.currency, missing: "-")}
                 </td>
                 <td class="px-4 py-3 text-text-secondary">
                   {format_interval(plan.billing_interval)}
@@ -118,9 +121,6 @@ defmodule StreamixWeb.Admin.PlansLive do
     </div>
     """
   end
-
-  defp format_price(cents, currency) when is_integer(cents), do: Money.format(cents, currency)
-  defp format_price(_, _), do: "-"
 
   defp format_interval("day"), do: "Diário"
   defp format_interval("week"), do: "Semanal"

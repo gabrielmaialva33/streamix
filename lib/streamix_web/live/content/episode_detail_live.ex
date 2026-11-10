@@ -6,10 +6,13 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   """
   use StreamixWeb, :live_view
 
+  alias Streamix.Catalog
+  alias Streamix.Providers
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Content.SourceBadges
   alias StreamixWeb.PlayerHelpers
+  alias StreamixWeb.ReturnPath
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
@@ -33,33 +36,26 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
       synopsis_section: 1
     ]
 
-  # Mount for /providers/:provider_id/series/:series_id/episode/:id (user
-  # provider). Must come first: the browse clause's pattern also matches
-  # these params.
-  def mount(
-        %{"provider_id" => _, "series_id" => series_id, "id" => episode_id} = params,
-        _session,
-        socket
-      ) do
-    user_id = socket.assigns.current_scope.user.id
-    return_to = safe_return_path(params["return_to"])
-
-    Detail.with_provider(socket, :provider, params, fn provider ->
-      mount_with_provider(socket, provider, series_id, episode_id, user_id, :provider, return_to)
-    end)
+  @impl true
+  def mount(_params, _session, socket) do
+    {:ok, assign(socket, user_id: socket.assigns.current_scope.user.id)}
   end
 
-  # Mount for /browse/series/:series_id/episode/:id (global provider)
-  def mount(%{"series_id" => series_id, "id" => episode_id} = params, _session, socket) do
-    user_id = socket.assigns.current_scope.user.id
-    return_to = safe_return_path(params["return_to"])
+  @impl true
+  def handle_params(%{"series_id" => series_id, "id" => episode_id} = params, _uri, socket) do
+    mode = if Map.has_key?(params, "provider_id"), do: :provider, else: :browse
+    return_to = ReturnPath.safe(params["return_to"])
+    user_id = socket.assigns.user_id
 
-    Detail.with_provider(socket, :browse, %{}, fn provider ->
-      mount_with_provider(socket, provider, series_id, episode_id, user_id, :browse, return_to)
-    end)
+    {:ok, socket} =
+      Detail.with_provider(socket, mode, params, fn provider ->
+        load_with_provider(socket, provider, series_id, episode_id, user_id, mode, return_to)
+      end)
+
+    {:noreply, socket}
   end
 
-  defp mount_with_provider(socket, provider, series_id, episode_id, user_id, mode, return_to) do
+  defp load_with_provider(socket, provider, series_id, episode_id, user_id, mode, return_to) do
     episode = Detail.get_episode_with_context!(episode_id)
     series = episode.season.series
 
@@ -70,7 +66,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
        |> put_flash(:error, "Episódio não encontrado")
        |> push_navigate(to: back_path(return_to, mode, provider, series_id))}
     else
-      mount_episode_found(socket, provider, episode, series, user_id, mode, return_to)
+      load_episode_found(socket, provider, episode, series, user_id, mode, return_to)
     end
   rescue
     Ecto.NoResultsError ->
@@ -80,7 +76,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
        |> redirect(to: ~p"/")}
   end
 
-  defp mount_episode_found(socket, provider, episode, series, user_id, mode, return_to) do
+  defp load_episode_found(socket, provider, episode, series, user_id, mode, return_to) do
     user = socket.assigns.current_scope.user
     is_favorite = Detail.favorite?(socket.assigns.current_scope.library_key, "series", series.id)
 
@@ -97,7 +93,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
     current_path =
       mode
       |> base_episode_path(provider, series.id, episode.id)
-      |> with_return_to(return_to)
+      |> ReturnPath.append(return_to)
 
     socket =
       socket
@@ -135,6 +131,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   # Event Handlers
   # ============================================
 
+  @impl true
   def handle_event("play_episode", _, socket) do
     {:noreply, redirect(socket, to: ~p"/watch/episode/#{socket.assigns.episode.id}")}
   end
@@ -145,7 +142,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
            Enum.find(socket.assigns.episode_sources, &(&1.episode_id == target_id)) do
       target_path =
         "/browse/series/#{series_id}/episode/#{episode_id}"
-        |> with_return_to(socket.assigns.return_to)
+        |> ReturnPath.append(socket.assigns.return_to)
 
       {:noreply, push_navigate(socket, to: target_path)}
     else
@@ -173,6 +170,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   # Render
   # ============================================
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-background">
@@ -336,7 +334,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
             id="episode-prev-link"
             navigate={
               base_episode_path(@mode, @provider, @series.id, @prev_episode.id)
-              |> with_return_to(@return_to)
+              |> ReturnPath.append(@return_to)
             }
             class="inline-flex items-center gap-2 sm:gap-3 p-2.5 sm:p-4 rounded-lg sm:rounded-xl bg-surface hover:bg-surface-hover transition-colors group"
           >
@@ -369,7 +367,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
             id="episode-next-link"
             navigate={
               base_episode_path(@mode, @provider, @series.id, @next_episode.id)
-              |> with_return_to(@return_to)
+              |> ReturnPath.append(@return_to)
             }
             class="inline-flex items-center gap-2 sm:gap-3 p-2.5 sm:p-4 rounded-lg sm:rounded-xl bg-surface hover:bg-surface-hover transition-colors group"
           >
@@ -422,7 +420,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
       |> Enum.reject(&is_nil/1)
       |> Enum.uniq_by(& &1.id)
 
-    statuses = Streamix.Providers.provider_health_statuses(providers)
+    statuses = Providers.provider_health_statuses(providers)
 
     episode_sources =
       Enum.map(candidates, fn candidate ->
@@ -487,21 +485,6 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   defp base_episode_path(:provider, provider, series_id, episode_id),
     do: ~p"/providers/#{provider.id}/series/#{series_id}/episode/#{episode_id}"
 
-  defp with_return_to(path, return_to) when is_binary(return_to) do
-    separator = if String.contains?(path, "?"), do: "&", else: "?"
-    path <> separator <> "return_to=" <> URI.encode_www_form(return_to)
-  end
-
-  defp with_return_to(path, _return_to), do: path
-
-  defp safe_return_path(path) when is_binary(path) do
-    if String.starts_with?(path, "/") and not String.starts_with?(path, "//") do
-      path
-    end
-  end
-
-  defp safe_return_path(_), do: nil
-
   defp episode_title(episode, series) do
     base = DisplayTitle.title(series)
     "#{episode_item_title(episode, episode.season.season_number)} - #{base}"
@@ -514,7 +497,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   defp present?(value), do: is_binary(value) and value != ""
 
   defp get_series_backdrop(series) do
-    case Streamix.Catalog.backdrop_urls(series) do
+    case Catalog.backdrop_urls(series) do
       [url | _] -> ImageProxy.proxy(url)
       _ -> get_series_backdrop_fallback(series)
     end

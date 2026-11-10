@@ -3,12 +3,22 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
   Single-flight download of one fixed-size VOD block.
 
   One process owns each in-flight `{content_key, block_index}`. Viewers that
-  ask for a block already being fetched wait on that same process instead of
+  ask for a block already being fetched share that same process instead of
   opening their own upstream connection, so a hundred viewers of one movie
   cost the provider exactly one request per block.
 
-  The download runs in `handle_continue/2`, so concurrent `await/2` calls
-  queue in the mailbox and are all answered from the single result.
+  Readers can consume a block two ways:
+
+    * `subscribe/2` streams it: the resource length as soon as the upstream
+      answers, then every chunk as it arrives. The viewer's first frame then
+      waits for the provider's first bytes, not for a whole block — with
+      4 MiB blocks and a provider doing 2–3 Mbit/s that is the difference
+      between well under a second and 10–15 s of black screen.
+    * `await/2` returns the finished block in one piece.
+
+  A connection that drops mid-block is resumed from the first missing byte,
+  so a provider that closes sockets under load costs a reconnect instead of
+  the viewer's stream.
   """
 
   use GenServer, restart: :temporary
@@ -42,8 +52,16 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
   # queued in the mailbox. Holding the failure any longer would make every
   # later reader inherit it instead of getting a fresh attempt.
   @error_linger_ms 50
+  # Reconnects after the upstream drops the socket mid-block. Each one asks
+  # only for the bytes still missing, and all of them share the deadline.
+  @max_resumes 2
 
   @type key :: BlockStore.key()
+  @type event ::
+          {:head, pos_integer() | nil}
+          | {:data, binary()}
+          | {:done, pos_integer() | nil}
+          | {:error, term()}
 
   @doc """
   Downloads `key` once and returns its bytes to every concurrent caller.
@@ -65,6 +83,61 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
     # The fetcher stops as soon as it has answered everyone, so a caller can
     # legitimately find a dead process between lookup and call.
     :exit, {:noproc, _} -> {:error, :fetcher_gone}
+  end
+
+  @doc """
+  Streams `key` to the calling process as it downloads.
+
+  Returns `{:streaming, ref, snapshot}` while the download is in flight:
+  `snapshot` holds the length (if the upstream already sent it) and every
+  byte received so far, and the rest arrives as `{:vod_block, ref, event}`
+  messages — `{:head, total_size}`, then `{:data, binary}` chunks, ending in
+  `{:done, total_size}` or `{:error, reason}`.
+
+  A fetcher that already finished answers with `{:finished, result}`, in the
+  same shape `await/2` returns.
+
+  Call `unsubscribe/1` with the ref to stop early; the download itself goes
+  on for the other readers and for the cache.
+  """
+  @spec subscribe(key(), keyword()) ::
+          {:streaming, reference(), %{total_size: pos_integer() | nil, data: binary()}}
+          | {:finished, {:ok, map()} | {:error, term()}}
+          | {:error, term()}
+  def subscribe(key, opts) do
+    with {:ok, pid} <- start_or_lookup(key, opts) do
+      case GenServer.call(pid, {:subscribe, self()}, @await_timeout) do
+        {:streaming, ref, _snapshot} = streaming ->
+          Process.put({__MODULE__, ref}, pid)
+          streaming
+
+        other ->
+          other
+      end
+    end
+  catch
+    :exit, {:timeout, _} -> {:error, :block_timeout}
+    :exit, {:noproc, _} -> {:error, :fetcher_gone}
+  end
+
+  @doc "Stops the messages of a `subscribe/2` and drops any still queued."
+  @spec unsubscribe(reference()) :: :ok
+  def unsubscribe(ref) when is_reference(ref) do
+    case Process.get({__MODULE__, ref}) do
+      pid when is_pid(pid) -> GenServer.cast(pid, {:unsubscribe, ref})
+      nil -> :ok
+    end
+
+    Process.delete({__MODULE__, ref})
+    flush(ref)
+  end
+
+  defp flush(ref) do
+    receive do
+      {:vod_block, ^ref, _event} -> flush(ref)
+    after
+      0 -> :ok
+    end
   end
 
   @doc """
@@ -127,28 +200,34 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
       range_start: Keyword.fetch!(args, :range_start),
       range_end: Keyword.fetch!(args, :range_end),
       result: nil,
-      pending: []
+      pending: [],
+      subscribers: %{},
+      total_size: nil,
+      chunks: [],
+      task: nil,
+      deadline: nil,
+      started_at: nil
     }
 
     {:ok, state, {:continue, :download}}
   end
 
+  # The download runs in a task purely so it can be killed. Finch's timeouts
+  # bound each receive, not the request as a whole, and a provider that
+  # trickles bytes keeps the request inside `prim_inet:recv0` for as long as
+  # it likes — which strands the lease acquired in `download/2`, because the
+  # `after` that releases it never runs. Killing the task closes the socket
+  # and the lease comes back through the owner's `:DOWN`.
   @impl true
   def handle_continue(:download, state) do
-    result = download_within_deadline(state)
+    fetcher = self()
+    job = Map.take(state, [:key, :url, :domain_policy, :provider_id, :range_start, :range_end])
+    task = Task.Supervisor.async_nolink(Streamix.TaskSupervisor, fn -> download(job, fetcher) end)
+    deadline = Process.send_after(self(), :deadline, download_deadline_ms())
 
-    Enum.each(state.pending, &GenServer.reply(&1, result))
-
-    # `handle_continue/2` runs before any queued `:await`, so callers that
-    # arrived while the download was in flight are still sitting in the
-    # mailbox. Linger instead of stopping, otherwise they would all exit with
-    # `:normal` on a call to a dead process. The idle timeout reaps us once
-    # the last late subscriber has been answered.
-    {:noreply, %{state | result: result, pending: []}, linger_for(result)}
+    {:noreply,
+     %{state | task: task, deadline: deadline, started_at: System.monotonic_time(:millisecond)}}
   end
-
-  defp linger_for({:ok, _payload}), do: @linger_ms
-  defp linger_for(_error), do: @error_linger_ms
 
   @impl true
   def handle_call(:await, from, %{result: nil} = state) do
@@ -158,47 +237,143 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
   def handle_call(:await, _from, state),
     do: {:reply, state.result, state, linger_for(state.result)}
 
-  @impl true
-  def handle_info(:timeout, state), do: {:stop, :normal, state}
-  def handle_info(_message, state), do: {:noreply, state, @linger_ms}
+  def handle_call({:subscribe, pid}, _from, %{result: nil} = state) do
+    ref = Process.monitor(pid)
+    snapshot = %{total_size: state.total_size, data: received(state)}
 
-  # The download runs in a task purely so it can be killed. Finch's timeouts
-  # bound each receive, not the request as a whole, and a provider that
-  # trickles bytes keeps `Finch.request/3` inside `prim_inet:recv0` for as
-  # long as it likes — which strands the lease acquired below, because the
-  # `after` that releases it never runs. Killing the task closes the socket
-  # and the lease comes back through the owner's `:DOWN`.
-  defp download_within_deadline(state) do
-    task = Task.Supervisor.async_nolink(Streamix.TaskSupervisor, fn -> download(state) end)
-    deadline = download_deadline_ms()
-
-    case Task.yield(task, deadline) || Task.shutdown(task, :brutal_kill) do
-      {:ok, result} ->
-        result
-
-      {:exit, reason} ->
-        Logger.warning("[VodMux] block download crashed: #{SafeLog.redact_inspect(reason)}")
-        {:error, :block_download_crashed}
-
-      nil ->
-        Logger.warning(
-          "[VodMux] abandoning block download after #{deadline}ms; releasing the provider slot"
-        )
-
-        {:error, :block_deadline_exceeded}
-    end
+    {:reply, {:streaming, ref, snapshot}, put_in(state.subscribers[ref], pid)}
   end
+
+  def handle_call({:subscribe, _pid}, _from, state),
+    do: {:reply, {:finished, state.result}, state, linger_for(state.result)}
+
+  @impl true
+  def handle_cast({:unsubscribe, ref}, state) do
+    Process.demonitor(ref, [:flush])
+    {:noreply, %{state | subscribers: Map.delete(state.subscribers, ref)}, idle_timeout(state)}
+  end
+
+  @impl true
+  def handle_info({:block_head, total_size}, %{result: nil} = state) do
+    record_success(state)
+    broadcast(state, {:head, total_size})
+    {:noreply, %{state | total_size: total_size}}
+  end
+
+  def handle_info({:block_data, data}, %{result: nil} = state) do
+    broadcast(state, {:data, data})
+    {:noreply, %{state | chunks: [data | state.chunks]}}
+  end
+
+  def handle_info({ref, outcome}, %{task: %Task{ref: ref}} = state) do
+    Process.demonitor(ref, [:flush])
+    finish(state, outcome)
+  end
+
+  def handle_info({:DOWN, ref, :process, _pid, reason}, %{task: %Task{ref: ref}} = state) do
+    Logger.warning("[VodMux] block download crashed: #{SafeLog.redact_inspect(reason)}")
+    finish(state, {:error, :block_download_crashed})
+  end
+
+  def handle_info(:deadline, %{result: nil, task: task} = state) do
+    Task.shutdown(task, :brutal_kill)
+
+    Logger.warning(
+      "[VodMux] abandoning block download after #{download_deadline_ms()}ms; releasing the provider slot"
+    )
+
+    finish(state, {:error, :block_deadline_exceeded})
+  end
+
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
+    {:noreply, %{state | subscribers: Map.delete(state.subscribers, ref)}, idle_timeout(state)}
+  end
+
+  def handle_info(:timeout, state), do: {:stop, :normal, state}
+  def handle_info(_message, state), do: {:noreply, state, idle_timeout(state)}
+
+  defp finish(state, outcome) do
+    if state.deadline, do: Process.cancel_timer(state.deadline)
+
+    result = result_for(state, outcome)
+    record_failure(state, result)
+    Enum.each(state.pending, &GenServer.reply(&1, result))
+
+    case result do
+      {:ok, %{total_size: total_size}} -> broadcast(state, {:done, total_size})
+      {:error, reason} -> broadcast(state, {:error, reason})
+    end
+
+    Enum.each(state.subscribers, fn {ref, _pid} -> Process.demonitor(ref, [:flush]) end)
+
+    # Callers that arrived while the download was in flight may still be
+    # sitting in the mailbox. Linger instead of stopping, otherwise they would
+    # all exit with `:normal` on a call to a dead process. The idle timeout
+    # reaps us once the last late subscriber has been answered.
+    state = %{state | result: result, pending: [], subscribers: %{}, chunks: [], task: nil}
+    {:noreply, state, linger_for(result)}
+  end
+
+  defp result_for(state, {:ok, status}) do
+    body = received(state)
+    store(state, status, body)
+    maybe_store_total_size(state, state.total_size)
+
+    {:ok, %{body: body, total_size: state.total_size}}
+  end
+
+  defp result_for(_state, {:error, reason}), do: {:error, reason}
+
+  # Source selection ranks equivalent providers by this evidence. Without it
+  # the VOD dimension of every provider stayed `:unknown` — this is the path
+  # that serves VOD — so the fastest provider of a title never won on speed.
+  # The latency is the provider's time to answer, which is what a viewer
+  # waits for before the first frame.
+  defp record_success(%{provider_id: provider_id, started_at: started_at})
+       when is_integer(provider_id) and is_integer(started_at) do
+    latency_ms = System.monotonic_time(:millisecond) - started_at
+    ProviderRuntime.record_success(provider_id, :vod, latency_ms)
+  end
+
+  defp record_success(_state), do: :ok
+
+  # A title the provider no longer has says nothing about the provider, and
+  # running out of our own slots says nothing about the upstream at all.
+  defp record_failure(%{provider_id: provider_id}, {:error, reason})
+       when is_integer(provider_id) do
+    if provider_fault?(reason),
+      do: ProviderRuntime.record_failure(provider_id, :vod, reason),
+      else: :ok
+  end
+
+  defp record_failure(_state, _result), do: :ok
+
+  defp provider_fault?({:unexpected_status, status}) when status in [404, 410], do: false
+  defp provider_fault?(:capacity_exhausted), do: false
+  defp provider_fault?(_reason), do: true
+
+  defp received(state), do: state.chunks |> Enum.reverse() |> IO.iodata_to_binary()
+
+  defp broadcast(state, event) do
+    Enum.each(state.subscribers, fn {ref, pid} -> send(pid, {:vod_block, ref, event}) end)
+  end
+
+  defp idle_timeout(%{result: nil}), do: :infinity
+  defp idle_timeout(state), do: linger_for(state.result)
+
+  defp linger_for({:ok, _payload}), do: @linger_ms
+  defp linger_for(_error), do: @error_linger_ms
 
   # Configurable so tests can exercise the deadline without burning 25 s.
   defp download_deadline_ms do
     Application.get_env(:streamix, :vod_block_deadline_ms, @download_deadline_ms)
   end
 
-  defp download(state) do
-    case UpstreamLease.acquire(state.provider_id, :vod, self()) do
+  defp download(job, fetcher) do
+    case UpstreamLease.acquire(job.provider_id, :vod, self()) do
       {:ok, lease} ->
         try do
-          request(state)
+          request(job, fetcher)
         after
           ProviderRuntime.release(lease)
         end
@@ -208,10 +383,14 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
     end
   end
 
-  defp request(state) do
-    case resolve(state.url, state.domain_policy) do
-      {:ok, final_url} -> fetch_range(state, final_url)
-      {:error, reason} -> {:error, reason}
+  defp request(job, fetcher) do
+    case resolve(job.url, job.domain_policy) do
+      {:ok, final_url} ->
+        progress = %{fetcher: fetcher, offset: job.range_start, head_sent?: false, status: nil}
+        fetch_range(job, final_url, progress, @max_resumes)
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -223,56 +402,148 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
     RedirectResolver.resolve(url, domain_policy: policy)
   end
 
-  defp fetch_range(state, final_url) do
-    range = "bytes=#{state.range_start}-#{state.range_end}"
-
+  defp fetch_range(job, final_url, progress, resumes_left) do
     headers =
       UpstreamPolicy.headers(
         final_url,
-        [{"range", range}, {"connection", "close"}],
-        state.domain_policy
+        [{"range", "bytes=#{progress.offset}-#{job.range_end}"}, {"connection", "close"}],
+        job.domain_policy
       )
 
     request = Finch.build(:get, final_url, headers)
+    acc = Map.merge(progress, %{job: job, outcome: nil})
 
-    case Finch.request(request, Streamix.StreamFinch,
+    case Finch.stream_while(request, Streamix.StreamFinch, acc, &on_chunk/2,
            receive_timeout: @receive_timeout,
            pool_timeout: 5_000
          ) do
-      {:ok, %{status: status, body: body, headers: headers}} when status in [200, 206] ->
-        total_size = total_size(headers, status, body)
-        store(state, body)
-        maybe_store_total_size(state, total_size)
+      {:ok, %{outcome: nil, status: status}} when status in [200, 206] ->
+        {:ok, status}
 
-        {:ok, %{body: body, total_size: total_size}}
+      {:ok, %{outcome: outcome}} ->
+        outcome
 
-      {:ok, %{status: 416}} ->
-        # Past end of file — a legitimate answer for the last block.
-        {:ok, %{body: "", total_size: BlockStore.total_size(elem(state.key, 0))}}
-
-      {:ok, %{status: status}} ->
-        {:error, {:unexpected_status, status}}
-
-      {:error, reason} ->
-        Logger.warning("[VodMux] block fetch failed: #{SafeLog.redact_inspect(reason)}")
-        {:error, reason}
+      {:error, reason, acc} ->
+        resume_or_fail(job, final_url, acc, resumes_left, reason)
     end
   end
 
+  # A drop before the upstream said anything useful is retried like any
+  # other; one after some bytes arrived asks only for what is still missing.
+  # A failure that is not a transport error (a bad status, a refused range)
+  # is final.
+  defp resume_or_fail(job, final_url, %{outcome: nil} = acc, resumes_left, reason)
+       when resumes_left > 0 and acc.offset <= job.range_end do
+    if transport_error?(reason) do
+      Logger.info(
+        "[VodMux] upstream dropped the block at byte #{acc.offset}; resuming (#{resumes_left} left)"
+      )
+
+      progress = Map.take(acc, [:fetcher, :offset, :head_sent?, :status])
+      fetch_range(job, final_url, progress, resumes_left - 1)
+    else
+      fail(reason)
+    end
+  end
+
+  defp resume_or_fail(_job, _final_url, %{outcome: nil}, _resumes_left, reason), do: fail(reason)
+  defp resume_or_fail(_job, _final_url, %{outcome: outcome}, _resumes_left, _reason), do: outcome
+
+  defp fail(reason) do
+    Logger.warning("[VodMux] block fetch failed: #{SafeLog.redact_inspect(reason)}")
+    {:error, reason}
+  end
+
+  # Finch wraps every socket failure (`:closed`, `:timeout`, a reset) in
+  # `Finch.TransportError`; an HTTP-level error is a real answer, not a drop.
+  defp transport_error?(%Finch.TransportError{}), do: true
+  defp transport_error?(_reason), do: false
+
+  defp on_chunk({:status, status}, acc), do: {:cont, %{acc | status: status}}
+
+  defp on_chunk({:headers, headers}, %{status: status} = acc) when status in [200, 206] do
+    accept(acc, headers)
+  end
+
+  # Past end of file — a legitimate answer for the last block.
+  defp on_chunk({:headers, _headers}, %{status: 416} = acc) do
+    total_size = BlockStore.total_size(elem(acc.job.key, 0))
+    acc = send_head(acc, total_size)
+    {:halt, %{acc | outcome: {:ok, 416}}}
+  end
+
+  defp on_chunk({:headers, _headers}, %{status: status} = acc) do
+    {:halt, %{acc | outcome: {:error, {:unexpected_status, status}}}}
+  end
+
+  defp on_chunk({:data, data}, acc) do
+    # Never more than the block holds: an upstream that ignored the Range
+    # would otherwise send the rest of the movie.
+    wanted = acc.job.range_end - acc.offset + 1
+    data = binary_part(data, 0, min(byte_size(data), max(wanted, 0)))
+
+    if data != "", do: send(acc.fetcher, {:block_data, data})
+
+    acc = %{acc | offset: acc.offset + byte_size(data)}
+
+    if acc.offset > acc.job.range_end, do: {:halt, acc}, else: {:cont, acc}
+  end
+
+  defp on_chunk(_other, acc), do: {:cont, acc}
+
   # `Content-Range: bytes 0-4194303/1234567890` is the only place the upstream
-  # tells us how long the movie is. A plain 200 means it ignored the Range, so
-  # the body itself is the whole resource.
-  defp total_size(headers, 206, _body) do
-    with {_name, value} <- List.keyfind(headers, "content-range", 0, nil),
-         [_, total] <- String.split(value, "/", parts: 2),
-         {total_size, ""} <- Integer.parse(total) do
-      total_size
+  # tells us how long the movie is. A plain 200 means it ignored the Range and
+  # is sending the whole resource from byte zero, which is only usable when
+  # that is where this block — or this resume — starts.
+  defp accept(%{status: 206} = acc, headers) do
+    case content_range(headers) do
+      {:ok, range_start, total_size} when range_start == acc.offset ->
+        {:cont, send_head(acc, total_size)}
+
+      {:ok, _other_start, _total_size} ->
+        {:halt, %{acc | outcome: {:error, :range_mismatch}}}
+
+      :error ->
+        {:cont, send_head(acc, nil)}
+    end
+  end
+
+  defp accept(%{status: 200, offset: 0} = acc, headers) do
+    {:cont, send_head(acc, content_length(headers))}
+  end
+
+  defp accept(%{status: 200} = acc, _headers) do
+    {:halt, %{acc | outcome: {:error, :range_ignored}}}
+  end
+
+  defp send_head(%{head_sent?: true} = acc, _total_size), do: acc
+
+  defp send_head(acc, total_size) do
+    send(acc.fetcher, {:block_head, total_size})
+    %{acc | head_sent?: true}
+  end
+
+  defp content_range(headers) do
+    with {_name, value} <- List.keyfind(headers, "content-range", 0),
+         ["bytes " <> span, total] <- String.split(value, "/", parts: 2),
+         [first, _last] <- String.split(span, "-", parts: 2),
+         {range_start, ""} <- Integer.parse(String.trim(first)),
+         {total_size, ""} <- Integer.parse(String.trim(total)) do
+      {:ok, range_start, total_size}
+    else
+      _ -> :error
+    end
+  end
+
+  defp content_length(headers) do
+    with {_name, value} <- List.keyfind(headers, "content-length", 0),
+         {length, ""} <- Integer.parse(String.trim(value)),
+         true <- length > 0 do
+      length
     else
       _ -> nil
     end
   end
-
-  defp total_size(_headers, 200, body), do: byte_size(body)
 
   defp maybe_store_total_size(_state, nil), do: :ok
 
@@ -280,12 +551,21 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
     BlockStore.put_total_size(elem(state.key, 0), total_size)
   end
 
-  # A 200 means the upstream ignored our Range and is sending the whole file;
-  # caching that under a block key would corrupt every later read.
-  defp store(%{range_start: range_start, range_end: range_end} = state, body)
-       when byte_size(body) <= range_end - range_start + 1 do
-    BlockStore.put(state.key, body)
+  # Only a complete block is cached: a short one (the last block of the file
+  # is the exception, and it ends exactly at the resource length) would make
+  # every later reader see a truncated movie.
+  defp store(state, status, body) when status in [200, 206] and body != "" do
+    expected = state.range_end - state.range_start + 1
+
+    last_block? =
+      is_integer(state.total_size) and state.range_start + byte_size(body) == state.total_size
+
+    if byte_size(body) == expected or last_block? do
+      BlockStore.put(state.key, body)
+    else
+      :ok
+    end
   end
 
-  defp store(_state, _body), do: :ok
+  defp store(_state, _status, _body), do: :ok
 end

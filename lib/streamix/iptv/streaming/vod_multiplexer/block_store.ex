@@ -9,11 +9,19 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockStore do
 
   The process only owns the index. Callers do their own file I/O so a slow
   disk never serializes behind a single GenServer.
+
+  The blocks live on a volume that outlives deploys, while the index lives in
+  ETS. On boot the store therefore rebuilds the index from the files on disk
+  (oldest modification first in line for eviction) and trims it to the
+  budget; without that, every restart left the previous blocks both
+  unreachable and uncounted, and the cache grew past its budget forever.
   """
 
   use GenServer
 
   require Logger
+
+  alias Streamix.SafeLog
 
   @table __MODULE__.Index
   @meta_table __MODULE__.Meta
@@ -33,9 +41,11 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockStore do
   """
   @spec lookup(key()) :: {:ok, Path.t()} | :miss
   def lookup(key) do
-    case :ets.lookup(@table, key) do
-      [{^key, path, _size, _accessed_at}] ->
-        GenServer.cast(__MODULE__, {:touch, key})
+    path = path_for(key)
+
+    case :ets.lookup(@table, path) do
+      [{^path, _size, _accessed_at}] ->
+        GenServer.cast(__MODULE__, {:touch, path})
         {:ok, path}
 
       [] ->
@@ -69,13 +79,28 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockStore do
     with :ok <- File.mkdir_p(Path.dirname(path)),
          :ok <- File.write(temporary_path, data),
          :ok <- File.rename(temporary_path, path) do
-      GenServer.call(__MODULE__, {:register, key, path, byte_size(data)})
+      register(path, byte_size(data))
     else
       {:error, reason} = error ->
         File.rm(temporary_path)
-        Logger.warning("[VodMux] could not cache block: #{inspect(reason)}")
+        Logger.warning("[VodMux] could not cache block", reason: SafeLog.redact_inspect(reason))
         error
     end
+  end
+
+  # The writer indexes its own block, so a read right after `put/2` hits, and
+  # only hands the size change to the process, which owns accounting and
+  # eviction. A writer never waits behind the index, not even while the
+  # boot-time reindex is still trimming a large backlog.
+  defp register(path, size) do
+    previous_size =
+      case :ets.lookup(@table, path) do
+        [{^path, previous_size, _accessed_at}] -> previous_size
+        [] -> 0
+      end
+
+    :ets.insert(@table, {path, size, monotonic_now()})
+    GenServer.cast(__MODULE__, {:account, size - previous_size})
   end
 
   @doc "Total bytes currently held on disk."
@@ -122,7 +147,10 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockStore do
         :ok
 
       {:error, reason} ->
-        Logger.warning("[VodMux] could not persist total size: #{inspect(reason)}")
+        Logger.warning("[VodMux] could not persist total size",
+          reason: SafeLog.redact_inspect(reason)
+        )
+
         :ok
     end
   end
@@ -153,6 +181,15 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockStore do
 
   @doc false
   def reset, do: GenServer.call(__MODULE__, :reset)
+
+  @doc """
+  Rebuilds the index from the blocks on disk and trims it to the budget.
+
+  Runs once after boot. Blocks already indexed keep their place; files left
+  half-written by a crash are removed.
+  """
+  @spec reindex() :: :ok
+  def reindex, do: GenServer.call(__MODULE__, :reindex, :infinity)
 
   @doc "Absolute path a block would occupy."
   @spec path_for(key()) :: Path.t()
@@ -192,25 +229,14 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockStore do
     :ets.new(@meta_table, [:named_table, :public, :set, read_concurrency: true])
     File.mkdir_p(cache_dir())
 
-    {:ok, %{total_bytes: 0}}
+    {:ok, %{total_bytes: 0}, {:continue, :reindex}}
   end
 
   @impl true
-  def handle_call({:register, key, path, size}, _from, state) do
-    previous_size =
-      case :ets.lookup(@table, key) do
-        [{^key, _path, size, _accessed_at}] -> size
-        [] -> 0
-      end
+  def handle_continue(:reindex, state), do: {:noreply, adopt_disk_blocks(state)}
 
-    :ets.insert(@table, {key, path, size, monotonic_now()})
-
-    state =
-      %{state | total_bytes: state.total_bytes - previous_size + size}
-      |> evict_until_within_budget()
-
-    {:reply, :ok, state}
-  end
+  @impl true
+  def handle_call(:reindex, _from, state), do: {:reply, :ok, adopt_disk_blocks(state)}
 
   def handle_call(:size_bytes, _from, state), do: {:reply, state.total_bytes, state}
 
@@ -224,10 +250,18 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockStore do
   end
 
   @impl true
-  def handle_cast({:touch, key}, state) do
-    case :ets.lookup(@table, key) do
-      [{^key, path, size, _accessed_at}] ->
-        :ets.insert(@table, {key, path, size, monotonic_now()})
+  def handle_cast({:account, delta}, state) do
+    state =
+      %{state | total_bytes: max(state.total_bytes + delta, 0)}
+      |> evict_until_within_budget()
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:touch, path}, state) do
+    case :ets.lookup(@table, path) do
+      [{^path, size, _accessed_at}] ->
+        :ets.insert(@table, {path, size, monotonic_now()})
 
       [] ->
         :ok
@@ -246,8 +280,8 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockStore do
         nil ->
           state
 
-        {key, path, size, _accessed_at} ->
-          :ets.delete(@table, key)
+        {path, size, _accessed_at} ->
+          :ets.delete(@table, path)
           File.rm(path)
 
           evict_until_within_budget(%{state | total_bytes: max(state.total_bytes - size, 0)})
@@ -257,16 +291,84 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockStore do
 
   defp oldest_entry do
     :ets.foldl(
-      fn {_key, _path, _size, accessed_at} = entry, oldest ->
+      fn {_path, _size, accessed_at} = entry, oldest ->
         case oldest do
           nil -> entry
-          {_, _, _, oldest_at} when accessed_at < oldest_at -> entry
+          {_, _, oldest_at} when accessed_at < oldest_at -> entry
           _ -> oldest
         end
       end,
       nil,
       @table
     )
+  end
+
+  # Indexes every block file not indexed yet, ranked by modification time so
+  # the oldest go first, then drops the oldest in one pass until the store
+  # fits its budget. One sorted pass instead of evict_until_within_budget/1,
+  # which scans the whole index per eviction and would crawl through a large
+  # backlog.
+  defp adopt_disk_blocks(state) do
+    now = monotonic_now()
+    now_unix = System.os_time(:second)
+
+    adopted =
+      for path <- Path.wildcard(Path.join(cache_dir(), "*/*/*")),
+          block_file?(path, now_unix),
+          {:ok, %File.Stat{type: :regular, size: size, mtime: mtime}} <-
+            [File.stat(path, time: :posix)],
+          :ets.insert_new(@table, {path, size, now - (now_unix - mtime) * 1_000_000}),
+          do: size
+
+    total = trim_to_budget(state.total_bytes + Enum.sum(adopted), max_bytes())
+
+    if adopted != [] do
+      Logger.info(
+        "[VodMux] block cache reindexed: #{length(adopted)} blocks, #{total} bytes kept"
+      )
+    end
+
+    %{state | total_bytes: total}
+  end
+
+  defp trim_to_budget(total, budget) when total <= budget, do: total
+
+  defp trim_to_budget(total, budget) do
+    @table
+    |> :ets.tab2list()
+    |> Enum.sort_by(fn {_path, _size, accessed_at} -> accessed_at end)
+    |> Enum.reduce_while(total, fn
+      _entry, remaining when remaining <= budget ->
+        {:halt, remaining}
+
+      {path, size, _accessed_at}, remaining ->
+        :ets.delete(@table, path)
+        File.rm(path)
+        {:cont, remaining - size}
+    end)
+  end
+
+  # Block files are "<digest>.<index>". Sidecars ("<digest>.size") stay; a
+  # ".partial" older than a minute was left by a crash mid-write.
+  defp block_file?(path, now_unix) do
+    case Path.extname(path) do
+      ".size" ->
+        false
+
+      ".partial" ->
+        with {:ok, %File.Stat{mtime: mtime}} when now_unix - mtime > 60 <-
+               File.stat(path, time: :posix) do
+          File.rm(path)
+        end
+
+        false
+
+      "." <> index ->
+        match?({_, ""}, Integer.parse(index))
+
+      _other ->
+        false
+    end
   end
 
   defp monotonic_now, do: System.monotonic_time(:microsecond)

@@ -1,3 +1,4 @@
+import { createEventEmitter } from "../core/event_emitter.js";
 // h265web_wrapper.js
 //
 // Adapter for numberwolf/h265web.js (https://github.com/numberwolf/h265web.js)
@@ -90,6 +91,10 @@ export class H265webWrapper {
     this.preferCore = options.core || "webcodec_hevc";
     this.player = null;
     this.events = new Map();
+    this.emitter = createEventEmitter({
+      events: this.events,
+      onError: (event, error) => log.warn(`[h265web] handler for ${event} threw`, error),
+    });
     this._lastPts = 0;
     this._duration = 0;
     this._mediaInfo = null;
@@ -164,7 +169,7 @@ export class H265webWrapper {
     this.video.style.display = "none";
     this.mountEl.classList.remove("hidden");
 
-    log.debug("[h265web] load_media", { url, core: this.preferCore });
+    log.debug("[h265web] load_media", { core: this.preferCore });
     player.load_media(url);
 
     if (options.startTime && options.startTime > 0) {
@@ -268,28 +273,13 @@ export class H265webWrapper {
   }
 
   on(event, handler) {
-    const list = this.events.get(event) || [];
-    list.push(handler);
-    this.events.set(event, list);
+    this.emitter.on(event, handler);
   }
-
   off(event, handler) {
-    const list = this.events.get(event);
-    if (!list) return;
-    this.events.set(
-      event,
-      list.filter((h) => h !== handler),
-    );
+    this.emitter.off(event, handler);
   }
-
   _emit(event, ...args) {
-    for (const h of this.events.get(event) || []) {
-      try {
-        h(...args);
-      } catch (err) {
-        log.warn(`[h265web] handler for ${event} threw`, err);
-      }
-    }
+    this.emitter.emit(event, ...args);
   }
 }
 

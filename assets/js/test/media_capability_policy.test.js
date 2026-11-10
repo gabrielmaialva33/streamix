@@ -101,9 +101,9 @@ test("derives codec and resolution hints from the player element", () => {
       dataset: {
         videoCodec: "av01.0.08M.08",
         audioCodec: "mp4a.40.2",
-        videoWidth: "2560",
-        videoHeight: "1440",
-        videoBitrate: "12000000",
+        width: "2560",
+        height: "1440",
+        bitrate: "12000000",
         framerate: "60",
       },
     },
@@ -114,4 +114,40 @@ test("derives codec and resolution hints from the player element", () => {
   assert.equal(configuration.video.width, 2560);
   assert.equal(configuration.video.height, 1440);
   assert.equal(configuration.video.bitrate, 12_000_000);
+});
+
+test("a completed capability probe releases its deadline immediately", async (t) => {
+  const pending = new Set();
+  t.mock.method(globalThis, "setTimeout", () => {
+    const id = {};
+    pending.add(id);
+    return id;
+  });
+  t.mock.method(globalThis, "clearTimeout", (id) => pending.delete(id));
+  const result = await probeMediaCapability({ decodingInfo: async () => ({ supported: true }) });
+  assert.equal(result.supported, true);
+  assert.equal(pending.size, 0);
+});
+
+test("canonical capability keys cannot be overridden by obsolete aliases", () => {
+  const configuration = configurationFromPlayerElement({
+    dataset: {
+      width: "640",
+      height: "360",
+      bitrate: "500000",
+      framerate: "24",
+      videoWidth: "3840",
+      videoHeight: "2160",
+      videoBitrate: "20000000",
+      frameRate: "60",
+      codec: "obsolete",
+      audioChannels: "8",
+    },
+  });
+  assert.equal(configuration.video.width, 640);
+  assert.equal(configuration.video.height, 360);
+  assert.equal(configuration.video.bitrate, 500000);
+  assert.equal(configuration.video.framerate, 24);
+  assert.doesNotMatch(configuration.video.contentType, /obsolete/);
+  assert.equal(configuration.audio.channels, "2");
 });

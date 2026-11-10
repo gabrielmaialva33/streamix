@@ -129,6 +129,32 @@ defmodule Streamix.Iptv.Streaming.RedirectResolverTest do
       assert final == "#{base}/real-media"
     end
 
+    test "gives up within the chain's time budget instead of retrying a dead host", %{
+      base: base,
+      counter: counter
+    } do
+      previous = Application.get_env(:streamix, :redirect_chain_budget_ms)
+      Application.put_env(:streamix, :redirect_chain_budget_ms, 800)
+
+      on_exit(fn ->
+        if previous,
+          do: Application.put_env(:streamix, :redirect_chain_budget_ms, previous),
+          else: Application.delete_env(:streamix, :redirect_chain_budget_ms)
+      end)
+
+      started = System.monotonic_time(:millisecond)
+
+      capture_log(fn ->
+        assert {:error, %Req.TransportError{reason: :timeout}} =
+                 RedirectResolver.resolve("#{base}/hang")
+      end)
+
+      # Four attempts at a full hop timeout each used to keep the viewer
+      # waiting long after the player had given up.
+      assert System.monotonic_time(:millisecond) - started < 2_000
+      assert Agent.get(counter, &Map.get(&1, "/hang")) == 1
+    end
+
     test "missing Location header on redirect returns :missing_location", %{base: base} do
       assert {:error, :missing_location} = RedirectResolver.resolve("#{base}/headless-redirect")
     end
@@ -305,6 +331,15 @@ defmodule Streamix.Iptv.Streaming.RedirectResolverTest do
         :release_slow_request -> send_resp(conn, 200, "ok")
       after
         2_000 -> send_resp(conn, 504, "test request timed out")
+      end
+    end
+
+    # /hang answers only after any sane hop timeout has expired.
+    defp handle(conn, "/hang") do
+      receive do
+        :never -> conn
+      after
+        3_000 -> send_resp(conn, 504, "too late")
       end
     end
 

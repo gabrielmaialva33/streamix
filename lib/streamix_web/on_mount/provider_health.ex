@@ -17,11 +17,13 @@ defmodule StreamixWeb.OnMount.ProviderHealth do
 
   import Phoenix.Component, only: [assign: 3]
 
+  alias Streamix.Providers
+
   def on_mount(:default, _params, _session, socket) do
     # Read from the monitor's ETS cache — microsecond lookup, never
     # blocks the mount on an upstream probe. The monitor refreshes
     # itself every 30s in its own process, so this path is pure I/O
     # overhead from the LiveView's point of view.
-    {:cont, assign(socket, :provider_health, Streamix.Providers.cached_provider_health_summary())}
+    {:cont, assign(socket, :provider_health, Providers.cached_provider_health_summary())}
   end
 end

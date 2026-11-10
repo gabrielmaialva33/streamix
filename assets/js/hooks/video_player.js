@@ -1,103 +1,49 @@
-import { playerLogger as log, setErrorReporter } from "../core/logger";
-import { getCapabilitySummary, getMediaDecodingInfo } from "../media/codec_detector";
-import { CodecAwareABR } from "../media/codec_priority";
-import { NetworkMonitor } from "../media/network_monitor";
-import { isHlsJsSupported, isMpegtsSupported } from "../media/player_libs";
+import { playerLogger as log, setErrorReporter } from "../core/logger.js";
+import { getMediaDecodingInfo } from "../media/codec_detector.js";
+import { CodecAwareABR } from "../media/codec_priority.js";
+import { isHlsJsSupported, isMpegtsSupported } from "../media/player_libs.js";
 import {
   buildQualityProbeCandidates,
   detectQualityCodec,
   qualityVideoCodec,
-} from "../media/quality_probe";
-import { resolveStreamType } from "../media/stream_loader";
+} from "../media/quality_probe.js";
+import { FeatureFlags, getStreamingConfig } from "../media/streaming_config.js";
+import { createAspectRatioController } from "../player/aspect_ratio_controller.js";
+import { usesNativeAudioControls } from "../player/audio_controller.js";
 import {
-  ContentType,
-  FeatureFlags,
-  getStreamingConfig,
-  selectStreamingMode,
-} from "../media/streaming_config";
-import { isWebCodecsSupported } from "../media/webcodecs_decoder";
-import { isMSEInWorkersSupported } from "../media/worker_mse";
-import { createAspectRatioController } from "../player/aspect_ratio_controller";
-import { createAudioController } from "../player/audio_controller";
-import { audioOutputVolume } from "../player/audio_state";
-import { createAvbridgeEngineActivation } from "../player/avbridge_engine_activation.js";
-import { createAvPlayerEngineActivation } from "../player/avplayer_engine_activation.js";
-import {
-  assertEngineSelection,
   ENGINE_ID,
   ENGINE_SELECTION,
   engineIdFromRuntime,
   PLAYBACK_STATE,
 } from "../player/engine_contract.js";
-import { createEngineRecoveryPolicy } from "../player/engine_recovery_policy.js";
-import { selectEngine } from "../player/engine_selector";
-import {
-  createErrorReport,
-  detectErrorPatterns,
-  formatErrorForLog,
-} from "../player/error_telemetry";
-import { evaluateFallbackAttempt } from "../player/fallback_policy";
-import { createH265webEngineActivation } from "../player/h265web_engine_activation.js";
-import { createHlsEngineActivation } from "../player/hls_engine_activation.js";
-import { createHlsRecoveryCoordinator } from "../player/hls_recovery_coordinator.js";
-import { createIosPwaPlaybackController } from "../player/ios_pwa_playback_controller.js";
-import { LifecycleScope } from "../player/lifecycle_scope";
+import { evaluateFallbackAttempt } from "../player/fallback_policy.js";
 import {
   configurationFromPlayerElement,
   probeMediaCapability,
-} from "../player/media_capability_policy";
-import { createMediaEventBindings } from "../player/media_event_bindings.js";
-import { createMobileControls } from "../player/mobile_controls";
-import {
-  createMpegtsEngineActivation,
-  FLV_UNSUPPORTED_MESSAGE,
-} from "../player/mpegts_engine_activation.js";
-import { createMpegtsRecoveryCoordinator } from "../player/mpegts_recovery_coordinator.js";
-import { NativeBufferingController } from "../player/native_buffering_controller";
-import { createNativeEngineActivation } from "../player/native_engine_activation.js";
-import { configureNativePlaybackElement as configureNativeElement } from "../player/native_playback_controller";
-import { createNativeSubtitleController } from "../player/native_subtitle_controller.js";
-import { NextEpisodeController } from "../player/next_episode_controller";
-import { emitPlaybackEvent, installPlaybackBridge } from "../player/playback_bridge";
-import { createPlaybackBrowserIntegration } from "../player/playback_browser_integration.js";
-import { createPlaybackCommandController } from "../player/playback_command_controller";
-import { createPlaybackEngineActivation } from "../player/playback_engine_activation.js";
+} from "../player/media_capability_policy.js";
+import { configureNativePlaybackElement as configureNativeElement } from "../player/native_playback_controller.js";
+import { installPlaybackBridge } from "../player/playback_bridge.js";
 import { createPlaybackEngineAdapter } from "../player/playback_engine_adapter.js";
-import { PlaybackEngineTeardownQueue } from "../player/playback_engine_lifecycle";
-import { createPlaybackEngineTransitionController } from "../player/playback_engine_transition_controller.js";
 import {
   getPlaybackResourcePolicy,
   hasWebCodecsHevcSupport,
   isAppleWebKitBrowser,
   isDirectStreamUrlAllowed,
   isFirefoxBrowser,
-  isStandalonePwa,
   scheduleLowPriority,
-} from "../player/playback_environment";
-import { createPlaybackOrchestrator } from "../player/playback_orchestrator.js";
-import { createPlayerDiagnosticsController } from "../player/player_diagnostics_controller.js";
+} from "../player/playback_environment.js";
+import { consumePlaybackIntent } from "../player/playback_intent.js";
+import { PlaybackRecoveryGuard } from "../player/playback_recovery_guard.js";
+import { PlaybackStartupController } from "../player/playback_startup_controller.js";
+import { playerComposition } from "../player/player_composition.js";
 import {
-  getPlaybackPosition,
-  getPreferences,
-  getRecommendedPlayer,
-  saveAudioTrack,
-  saveMuted,
+  recordPlayerSuccess,
   savePlaybackPosition,
   savePreferAVPlayer,
-  saveSubtitleTrack,
-  saveVolume,
-} from "../player/player_preferences";
-import { createInitialPlayerState } from "../player/player_state";
-import { createPlayerTrackController } from "../player/player_track_controller.js";
-import { createPlayerTrackPresentationController } from "../player/player_track_presentation_controller.js";
-import { PlayerUI } from "../player/player_ui";
-import { createPlayerUiController } from "../player/player_ui_controller.js";
-import { createSourceFailoverController } from "../player/source_failover_controller.js";
-import { createStreamTransport } from "../player/stream_transport.js";
-import { createSubtitleSourceResolver } from "../player/subtitle_source_resolver.js";
-import { createTrackOperations } from "../player/track_operations.js";
-import { createTrackProbeController } from "../player/track_probe_controller.js";
-import { createWatchPartyPlayerPolicy } from "../watch_party/player_policy.js";
+} from "../player/player_preferences.js";
+import { playerSessionLifecycle } from "../player/player_session_lifecycle.js";
+import { ProviderEngineMemory } from "../player/provider_engine_memory.js";
+import { sendQoeBeacon } from "../telemetry/qoe_beacon.js";
 
 /**
  * Enhanced VideoPlayer Hook for Streamix
@@ -111,14 +57,18 @@ import { createWatchPartyPlayerPolicy } from "../watch_party/player_policy.js";
  * - Network monitoring with automatic adaptation
  * - Progress tracking for VOD content
  * - Preferences persistence (volume, tracks)
- * - Keyboard shortcuts (YouTube-style)
+ * - Keyboard shortcuts (Netflix-style)
  * - Circuit breaker for fallback loops
  */
 const VideoPlayer = {
+  ...playerSessionLifecycle,
+  ...playerComposition,
   mounted() {
     this.initializeState();
+    this.initRecoveryGuard();
     this.loadPreferences();
     this.initUI();
+    this.initStartupPresentation();
     this.initPlaybackCommandController();
     this.initPlaybackBrowserIntegration();
     this.updateVolumeUI();
@@ -161,6 +111,58 @@ const VideoPlayer = {
     });
   },
 
+  initStartupPresentation() {
+    const intent = consumePlaybackIntent({ contentId: this.contentId });
+    this.providerId = this.el.dataset.providerId || intent?.providerId || null;
+    this.providerEngineMemory = new ProviderEngineMemory({
+      getPlayback: () => ({
+        playing: !this.isPaused() && !this.video?.seeking && !this._memorySeekTokens?.size,
+        currentTime: this.getCurrentTime(),
+        playbackRate: this.getPlaybackRate(),
+      }),
+      record: recordPlayerSuccess,
+    });
+    this._playbackMountedAt = intent?.startedAt ?? this._playbackMountedAt ?? performance.now();
+    this.startupPresentation = new PlaybackStartupController({
+      root: this.el,
+      video: this.video,
+      cover: intent?.cover,
+      onMark: (mark) => {
+        this.playbackMetrics?.markStage(mark);
+        if (mark === "play") this.recoveryGuard?.resume();
+      },
+      onFrame: () => {
+        this.playbackMetrics?.markFirstFrame();
+        this.providerEngineMemory?.frame();
+        this.recoveryGuard?.playing();
+        if (this.isPaused()) this.recoveryGuard?.pause();
+        this.playerUIController?.hideLoading();
+      },
+    });
+    this.startupPresentation.begin();
+  },
+
+  initRecoveryGuard() {
+    this.recoveryGuard = new PlaybackRecoveryGuard({
+      onStable: () => {
+        this.hlsRecoveryCoordinator?.reset();
+        this.mpegtsRecoveryCoordinator?.reset();
+        this.retryCount = 0;
+        this.fallbackAttempts = 0;
+      },
+      onStartupDeadline: () => this.recoverStartupDeadline(),
+      onExhausted: (reason) => {
+        this.cleanup();
+        this.presentTerminalPlaybackError(
+          "Não foi possível iniciar o vídeo. Tente novamente.",
+          null,
+          reason,
+        );
+      },
+    });
+    this.recoveryGuard.begin();
+  },
+
   updated() {
     this.applyPartyControlPolicy();
   },
@@ -191,542 +193,13 @@ const VideoPlayer = {
     log.debug("[VideoPlayer] Codec-aware ABR initialized with", recommendation.codec);
   },
 
-  initializeState() {
-    this.lifecycle = new LifecycleScope({
-      onDisposeError: (error) => log.warn("[VideoPlayer] Lifecycle cleanup failed:", error),
-    });
-
-    this.video = this.el.querySelector("video");
-    this.configureNativePlaybackElement();
-    Object.assign(this, createInitialPlayerState(this.el));
-    this.streamTransport = createStreamTransport({ host: this.buildStreamTransportHost() });
-    this._definePlayerAccessors();
-    this.watchPartyPolicy = createWatchPartyPlayerPolicy({
-      enabled: this.partyMode === true,
-      role: this.partyRole,
-      root: this.el,
-      getVideo: () => this.video,
-      getManagedEngine: () => this.getManagedPlaybackEngine(),
-      getNativeBufferManager: () => this.nativeBufferManager,
-      setPlaybackSystemState: (state) => this.setPlaybackSystemState(state),
-      showNotice: (message) => this.playerUI?.showNotice?.(message),
-    });
-    this.diagnosticsController = createPlayerDiagnosticsController({
-      getResourcePolicy: () => this.getPlaybackResourcePolicy(),
-      getErrorContext: () => ({
-        contentType: this.contentType,
-        streamType: this.currentStreamType,
-        sourceType: this.sourceType,
-      }),
-      getDebugContext: () => ({
-        current_stream_type: this.currentStreamType,
-        content_type: this.contentType,
-        source_type: this.sourceType,
-        use_proxy: this.useProxy,
-        current_url_present: Boolean(this.currentUrl),
-        stream_url_present: Boolean(this.streamUrl),
-        proxy_url_present: Boolean(this.proxyUrl),
-        prefer_avplayer: this.preferAVPlayer,
-        using_avplayer: this.usingAVPlayer,
-        avplayer_attempted: this.avPlayerAttempted,
-        should_prefer_avplayer_for_live_ts: this.shouldPreferAVPlayerForLiveTs(),
-        hls_supported: isHlsJsSupported(),
-        mpegts_supported: isMpegtsSupported(),
-        user_agent: globalThis.navigator?.userAgent ?? null,
-      }),
-      initCodecAwareABR: (recommendation) => this.initCodecAwareABR(recommendation),
-      pushEvent: (event, payload) => this.pushEventSafe(event, payload),
-      showPlaybackError: (message) => this.showPlaybackError(message),
-    });
-    this.hlsRecoveryCoordinator = createHlsRecoveryCoordinator({
-      onFailure: (error) => this.engineRecoveryPolicy?.reportHlsRecoveryFailure(error),
-      onRecovering: (decision) =>
-        this.observePlaybackState(PLAYBACK_STATE.RECOVERING, "hls_recovery", {
-          recovery_attempt: decision.nextAttempts,
-          recovery_operation: decision.operation,
-          recovery_reason: decision.reason,
-        }),
-    });
-    this.mpegtsRecoveryCoordinator = createMpegtsRecoveryCoordinator({
-      maxNetworkAttempts: this.maxRetries,
-      onDecision: (decision, data, snapshot) =>
-        this.reportPlayerDebug("mpegts_recovery_decision", {
-          action: decision.action,
-          error_type: data?.errorType,
-          error_detail: data?.errorDetail,
-          network_attempts: snapshot.networkAttempts,
-          recreate_attempts: snapshot.recreateAttempts,
-        }),
-      onRecovering: (decision, _data, snapshot) =>
-        this.observePlaybackState(PLAYBACK_STATE.RECOVERING, "mpegts_recovery", {
-          recovery_action: decision.action,
-          recovery_reason: decision.reason,
-          network_attempts: snapshot.networkAttempts,
-          recreate_attempts: snapshot.recreateAttempts,
-        }),
-    });
-    this.engineRecoveryPolicy = createEngineRecoveryPolicy({
-      dependencies: { createErrorReport, detectErrorPatterns, formatErrorForLog },
-      host: this.buildEngineRecoveryHost(),
-    });
-    this.avPlayerTeardownQueue = new PlaybackEngineTeardownQueue({
-      onError: (error) => log.debug("[VideoPlayer] AVPlayer teardown failed:", error),
-    });
-    this.playbackEngineTransitionController = createPlaybackEngineTransitionController({
-      beginSession: () => this.beginPlaybackSession(),
-      isSessionCurrent: (sessionId) => this.isCurrentPlaybackSession(sessionId),
-      drainTeardown: () => this.avPlayerTeardownQueue.drain(),
-      destroyEngine: (engine) => this.teardownAVPlayer(engine),
-      onError: (operation, error, context) =>
-        log.debug(`[VideoPlayer] Engine transition ${operation} failed:`, {
-          error,
-          key: context?.key,
-          sessionId: context?.sessionId,
-        }),
-      onStateChange: (snapshot) => {
-        this._switchingToAVPlayer = snapshot.active;
-      },
-    });
-
-    // One canonical audio state feeds every playback engine and the UI. It
-    // remains independent from temporary native <video> resets during engine
-    // switches, so muted/output state cannot drift across fallbacks.
-    this.audioController = createAudioController({
-      applyOutput: (snapshot) => this.applyAudioOutput(snapshot),
-      render: ({ volume, muted }) => this.playerUI?.updateVolumeUI(volume, muted),
-      saveVolume,
-      saveMuted,
-    });
-    this.iosPwaPlaybackController = createIosPwaPlaybackController({
-      isEnabled: () => this.iosPwaMode,
-      getContentType: () => this.contentType,
-      getContentId: () => this.contentId,
-      getVideo: () => this.video,
-      getCurrentTime: () => this.getCurrentTime(),
-      getDuration: () => this.getDuration(),
-      isPaused: () => this.isPaused(),
-      getAudioState: () => this.canonicalAudioState(),
-      setAudioState: (state) => this.setCanonicalAudioState(state),
-      applyAudioState: () => this.applyAudioState(),
-      savePlaybackPosition,
-      onStorageUnavailable: () => log.debug("[VideoPlayer] iOS PWA state storage unavailable"),
-      onSeekError: (error) =>
-        log.debug("[VideoPlayer] iOS PWA restore seek failed:", error.message),
-      onPlayError: (error) => log.debug("[VideoPlayer] iOS PWA resume play failed:", error.message),
-    });
-
-    if (this.nextEpisodeParseFailed) {
-      log.warn("[VideoPlayer] Failed to parse next episode data");
-    }
-    this.nextEpisodeController = new NextEpisodeController({
-      episode: this.nextEpisode,
-      onPlay: this.watchPartyPolicy?.isHost
-        ? (episode) =>
-            this.pushEventSafe("wp_next_episode", {
-              id: episode.id,
-              type: episode.type,
-            })
-        : null,
-      root: this.el,
-    });
-  },
-
-  loadPreferences() {
-    const prefs = getPreferences(this.contentId);
-
-    // Apply volume (prefs.volume is UI value, convert to perceived for backends)
-    this.setCanonicalAudioState(prefs);
-    this.applyAudioState();
-
-    // Store track preferences to apply after manifest loads
-    this._preferredAudioTrack = prefs.audioTrack;
-    this._preferredSubtitleTrack = prefs.subtitleTrack;
-    this._lastActiveSubtitleTrack =
-      Number.isInteger(prefs.subtitleTrack) && prefs.subtitleTrack >= 0
-        ? prefs.subtitleTrack
-        : null;
-
-    // Playback rate
-    if (this.video && prefs.playbackRate !== 1) {
-      this.video.playbackRate = prefs.playbackRate;
-    }
-
-    // Manual AVPlayer preference
-    this.preferAVPlayer = prefs.preferAVPlayer;
-
-    // Load saved playback position for VOD content
-    if (this.contentType === "vod" && this.contentId) {
-      this._savedPosition = getPlaybackPosition(this.contentId);
-      if (this._savedPosition) {
-        log.debug("Found saved position:", this._savedPosition.time, "seconds");
-      }
-    }
-  },
-
-  initUI() {
-    this.playerUI = new PlayerUI(this.el);
-    this.playerUIController = createPlayerUiController({
-      emit: (event, payload) => this.pushEventSafe(event, payload),
-      getBufferState: () => ({
-        buffered: this.video?.buffered ?? null,
-        currentTime: this.video?.currentTime ?? 0,
-        duration: this.video?.duration ?? 0,
-      }),
-      getCurrentTime: () => this.getCurrentTime(),
-      getDuration: () => this.getDuration(),
-      initialPiPActive: this.pipActive,
-      isPiPSupported: () => this.isPiPSupported(),
-      isPlaying: () => !this.isPaused(),
-      onError: (operation, error) =>
-        log.debug(`[VideoPlayer] UI ${operation} failed:`, error?.message || error),
-      onPiPStateChange: (active) => {
-        this.pipActive = active;
-      },
-      ui: this.playerUI,
-      updateMediaSessionPosition: () => this.updateMediaSessionPosition(),
-    });
-    this.subtitleSourceResolver = createSubtitleSourceResolver({
-      isSessionCurrent: (sessionId) => this.isCurrentPlaybackSession(sessionId),
-      onError: (operation, error) =>
-        log.debug(`[VideoPlayer] Subtitle source ${operation} failed:`, error),
-    });
-    this.nativeSubtitleController = createNativeSubtitleController({
-      video: this.video,
-      isSessionCurrent: (sessionId) => this.isCurrentPlaybackSession(sessionId),
-      resolveSource: ({ sessionId, offsetMs, force, language }) =>
-        this.subtitleSourceResolver?.resolve({
-          sessionId,
-          imdbId: this.imdbId,
-          language: language || this.subtitleLang,
-          offsetMs,
-          force,
-        }),
-      onError: (operation, error) =>
-        log.debug(`[VideoPlayer] Native subtitle ${operation} failed:`, error),
-    });
-    this.playerTrackPresentationController = createPlayerTrackPresentationController({
-      emit: (event, payload) => this.pushEventSafe(event, payload),
-      getContentId: () => this.contentId,
-      initialState: {
-        audioTracks: this.audioTracks,
-        selectedAudioTrack: this.selectedAudioTrack,
-        selectedSubtitleTrack: this.selectedSubtitleTrack,
-        subtitleOffsetMs: this.subtitleOffsetMs,
-        subtitleTracks: this.subtitleTracks,
-      },
-      isSessionCurrent: (sessionId) => this.isCurrentPlaybackSession(sessionId),
-      onError: (operation, error) =>
-        log.debug(`[VideoPlayer] Track presentation ${operation} failed:`, error),
-      onStateChange: (snapshot) => {
-        this.audioTracks = [...snapshot.audioTracks];
-        this.subtitleTracks = [...snapshot.subtitleTracks];
-        this.selectedAudioTrack = snapshot.selectedAudioTrack;
-        this.selectedSubtitleTrack = snapshot.selectedSubtitleTrack;
-        if (snapshot.selectedSubtitleTrack >= 0) {
-          this._lastActiveSubtitleTrack = snapshot.selectedSubtitleTrack;
-        }
-        this.subtitleOffsetMs = snapshot.subtitleOffsetMs;
-      },
-      renderAudioOptions: (tracks, currentTrack, onSelect) =>
-        this.playerUI?.updateAudioOptions(tracks, currentTrack, onSelect),
-      renderSubtitleOptions: (tracks, currentTrack, onSelect) =>
-        this.playerUI?.updateSubtitleOptions(tracks, currentTrack, onSelect),
-      renderSubtitleOffset: (label) => this.playerUI?.updateSubtitleOffsetLabel(label),
-      saveAudioPreference: saveAudioTrack,
-      saveSubtitlePreference: saveSubtitleTrack,
-    });
-    this.playerTrackPresentationController.presentSubtitleOffset(this.subtitleOffsetMs);
-
-    this.trackOperations = createTrackOperations({ host: this.buildTrackOperationsHost() });
-    this.playerTrackController = createPlayerTrackController({
-      refreshAudioTracks: () => this.trackOperations.refreshAudioTracks(),
-      refreshSubtitleTracks: () => this.trackOperations.refreshSubtitleTracks(),
-      selectAudioTrack: (trackIndex) => this.trackOperations.selectAudioTrack(trackIndex),
-      selectSubtitleTrack: (trackIndex) => this.trackOperations.selectSubtitleTrack(trackIndex),
-      setSubtitleOffset: (offsetMs) => this.trackOperations.setSubtitleOffset(offsetMs),
-      loadExternalSubtitle: (...args) => this.trackOperations.loadExternalSubtitle(...args),
-      loadNativeExternalSubtitle: (...args) =>
-        this.trackOperations.loadNativeExternalSubtitle(...args),
-      reloadNativeExternalSubtitle: (...args) =>
-        this.trackOperations.reloadNativeExternalSubtitle(...args),
-      onError: (operation, error) =>
-        log.debug(`[VideoPlayer] Track operation ${operation} failed:`, error),
-    });
-    this.trackProbeController = createTrackProbeController({
-      host: {
-        getContentId: () => this.el?.dataset?.contentId,
-        getContentType: () => this.contentType,
-        getResourcePolicy: () => this.getPlaybackResourcePolicy(),
-        getSessionId: () => this.playbackSessionId,
-        getVideo: () => this.video,
-        hasAVPlayer: () => this.avPlayer != null,
-        isDestroyed: () => this._destroyed === true,
-        isSessionCurrent: (sessionId) => this.isCurrentPlaybackSession(sessionId),
-        isSwitchingToAVPlayer: () => this._switchingToAVPlayer === true,
-        isUsingAVPlayer: () => this.usingAVPlayer === true,
-        prefersAVPlayer: () => this.preferAVPlayer === true,
-        presentProbedTracks: (options) =>
-          this.playerTrackPresentationController?.presentProbedTracks(options),
-        setAudioTrack: (trackIndex) => this.setAudioTrack(trackIndex),
-        setSubtitleTrack: (trackIndex) => this.setSubtitleTrack(trackIndex),
-        switchToAVPlayerWithTrack: (trackType, trackIndex, seekTime, shouldPlay) =>
-          this.switchToAVPlayerWithTrack(trackType, trackIndex, seekTime, shouldPlay),
-        updateAudioTracks: () => this.updateAudioTracks(),
-        updateSubtitleTracks: () => this.updateSubtitleTracks(),
-      },
-    });
-
-    this.nativeBufferingController = new NativeBufferingController({
-      contentType: this.contentType,
-      emit: (event, payload) => this.pushEventSafe(event, payload),
-      metrics: this.playbackMetrics,
-      playerUI: this.playerUIController,
-      video: this.video,
-    });
-  },
-
   // ============================================
   // Network Monitoring
   // ============================================
 
-  initPlaybackCommandController() {
-    this.playbackCommandController?.destroy();
-    this.playbackCommandController = createPlaybackCommandController({
-      getRoot: () => this.el,
-      getVideo: () => this.video,
-      getContentType: () => this.contentType,
-      getExpectedDuration: () => this.expectedDuration,
-      getManagedPlaybackEngine: () => this.getManagedPlaybackEngine(),
-      getNativePlaybackEngine: () => this.getNativePlaybackEngine(),
-      rejectViewerTransportControl: (options) => this.rejectViewerTransportControl(options),
-      isWatchPartySyncHeld: () => this.watchPartyPolicy?.held === true,
-      supportsPlaybackRateControl: () => this.supportsPlaybackRateControl(),
-      isPartyMode: () => this.watchPartyPolicy?.enabled === true,
-      getAudioController: () => this.audioController,
-      getNativeBufferManager: () => this.nativeBufferManager,
-      getNativeBufferingController: () => this.nativeBufferingController,
-      getPlayerUiController: () => this.playerUIController,
-      getPlayerUi: () => this.playerUI,
-      setPlaybackSystemState: (state) => this.setPlaybackSystemState(state),
-      updateMediaSessionPosition: (options) => this.updateMediaSessionPosition(options),
-      pushEvent: (event, payload) => this.pushEventSafe(event, payload),
-      emitPlaybackEvent,
-      onDebug: (...args) => log.debug(...args),
-      onError: (...args) => log.error(...args),
-    });
-  },
-
-  initPlaybackBrowserIntegration() {
-    this.playbackBrowserIntegration?.destroy();
-    this.playbackBrowserIntegration = createPlaybackBrowserIntegration({
-      root: this.el,
-      video: this.video,
-      commands: this.playbackCommandController,
-      presentation: this.playerUIController,
-      getCanvasPlaybackActive: () => this.isCanvasPlaybackActive(),
-      getContentType: () => this.contentType,
-      getMuted: () => this.canonicalAudioState().muted,
-      isPlayerDestroyed: () => this._destroyed,
-      metadata: {
-        title: this.mediaTitle,
-        artist: this.mediaSubtitle,
-        album: "Streamix",
-      },
-      emit: (event, payload) => this.pushEventSafe(event, payload),
-      onError: (operation, error) =>
-        log.debug(
-          `[VideoPlayer] Browser integration ${operation} skipped:`,
-          error?.message || error,
-        ),
-    });
-    this.playbackBrowserIntegration.start();
-  },
-
   // The activation host is the only surface engine activations may touch.
   // Every member is an explicit callback so activations stay independent
   // from the hook object and can be exercised with fakes.
-  buildPlaybackEngineActivationHost() {
-    return {
-      applyAudioState: () => this.applyAudioState(),
-      canAttemptFallback: () => this.canAttemptFallback(),
-      cancelNativeAudioCheck: () => this.nativeEngineActivation?.cancelAudioCheck(),
-      clearStreamLoader: (loader) => this.streamTransport?.release(loader),
-      detachNativeErrorHandler: () => this.nativeEngineActivation?.detachErrorHandler(),
-      disablePiPForCanvasPlayback: () => this.disablePiPForCanvasPlayback(),
-      emitPlaybackEvent: (event) => emitPlaybackEvent(this.el, event),
-      ensureStreamLoader: () => this.ensureStreamLoader(),
-      flushPlaybackMetrics: (outcome) => this.flushPlaybackMetrics(outcome),
-      getAVPlayer: () => this.avPlayer,
-      getAVPlayerMount: () => this.el?.querySelector("#avplayer-mount") ?? null,
-      getAvbridge: () => this.avbridge,
-      getContentType: () => this.contentType,
-      getCurrentUrl: () => this.currentUrl,
-      getFallbackAttempts: () => this.fallbackAttempts,
-      getH265web: () => this.h265web,
-      getH265webBaseUrl: () => this.el?.dataset?.h265webBaseUrl || null,
-      getH265webMount: () => this.el?.querySelector("#h265web-mount") ?? null,
-      getNativeBufferManager: () => this.nativeBufferManager,
-      getNativeBufferingController: () => this.nativeBufferingController,
-      getNativeHlsSupport: () => this.getNativeHlsSupport(),
-      getNativePlaybackEngine: () => this.getNativePlaybackEngine(),
-      getOutputVolume: () => audioOutputVolume(this.canonicalAudioState()),
-      getPresentation: () => this.playerUIController,
-      getProxyUrl: () => this.proxyUrl,
-      getSessionId: () => this.playbackSessionId,
-      getSourceType: () => this.sourceType,
-      getStreamLoader: () => this.streamTransport?.current ?? null,
-      getStreamType: () => this.currentStreamType,
-      getStreamUrl: () => this.streamUrl,
-      getSubtitleOffsetMs: () => this.subtitleOffsetMs,
-      getTransitionController: () => this.playbackEngineTransitionController,
-      getVideo: () => this.video,
-      handlePlaybackEnded: () => this.handlePlaybackEnded(),
-      handlePlaybackPaused: () => this.handlePlaybackPaused(),
-      handlePlaybackStarted: () => this.handlePlaybackStarted(),
-      hasProbedAudioTrack: (trackIndex) =>
-        this.trackProbeController?.hasProbedAudioTrack(trackIndex) === true,
-      initPlayer: (options) => this.initPlayer(options),
-      isAVPlayerAttempted: () => this.avPlayerAttempted === true,
-      isDestroyed: () => this._destroyed === true,
-      isSessionCurrent: (sessionId) => this.isCurrentPlaybackSession(sessionId),
-      isSwitchingToAVPlayer: () => this._switchingToAVPlayer === true,
-      isUsingAVPlayer: () => this.usingAVPlayer === true,
-      lifecycleLogsEnabled: () => this.playerLifecycleLogs === true,
-      loadExternalSubtitle: (sessionId) => this.loadExternalSubtitleIfAvailable(sessionId),
-      loadNativeExternalSubtitle: (sessionId) =>
-        this.loadNativeExternalSubtitleIfAvailable(sessionId),
-      markAVPlayerAttempted: () => {
-        this.avPlayerAttempted = true;
-      },
-      markAvbridgeAttempted: () => {
-        this.avbridgeAttempted = true;
-      },
-      markH265webAttempted: () => {
-        this.h265webAttempted = true;
-      },
-      markMpegtsRecovered: () => this.mpegtsRecoveryCoordinator?.markRecovered(),
-      markPlaying: () => this.playbackMetrics?.markPlaying(),
-      playNativeAfterResume: (sessionId) => this.playNativeAfterResume(sessionId),
-      probeMetadataInBackground: () => this.probeMetadataInBackground(),
-      recordFallbackAttempt: () => {
-        this.fallbackAttempts++;
-        this.lastFallbackTime = Date.now();
-      },
-      recordPlaybackError: () => this.playbackMetrics?.recordError(),
-      recoverFromMpegtsError: (data) => this.recoverFromMpegtsError(data),
-      registerMediaElementEngine: (engineId, engine, options) =>
-        this.setMediaElementEngine(engineId, engine, options),
-      releaseEngine: (engineId) => this.playbackOrchestrator?.releaseEngine(engineId),
-      reportDebug: (stage, extra) => this.reportPlayerDebug(stage, extra),
-      reportLifecycle: (stage, extra) => this.reportPlayerLifecycle(stage, extra),
-      reportProgress: () => this.reportProgress(),
-      resetNativeMediaElement: () => this.resetNativeMediaElement(),
-      resetNativeSubtitles: () => {
-        this.nativeSubtitleController?.reset();
-        this.subtitleTracks = [];
-      },
-      savePlaybackPosition: (time) => {
-        this._savedPosition = { time };
-      },
-      setAVPlayer: (engine) => {
-        this.avPlayer = engine;
-      },
-      setAvbridge: (engine) => {
-        this.avbridge = engine;
-      },
-      setH265web: (engine) => {
-        this.h265web = engine;
-      },
-      setAudioTrack: (trackIndex) => this.setAudioTrack(trackIndex),
-      setNativeBufferManager: (manager) => {
-        this.nativeBufferManager = manager;
-      },
-      setNativePlaybackEventsSuppressed: (suppressed) => {
-        this._suppressNativePlaybackEvents = suppressed === true;
-      },
-      setNativeTouchControls: (enabled) => this.setNativeTouchControls(enabled),
-      setPlaybackSystemState: (state) => this.setPlaybackSystemState(state),
-      setSubtitleDelay: (delayMs) => this.playbackOrchestrator?.setSubtitleDelay(delayMs),
-      setSubtitleTrack: (trackIndex) => this.setSubtitleTrack(trackIndex),
-      setUsingAVPlayer: (using) => {
-        this.usingAVPlayer = using === true;
-      },
-      setUsingAvbridge: (using) => {
-        this.usingAvbridge = using === true;
-      },
-      setUsingH265web: (using) => {
-        this.usingH265web = using === true;
-      },
-      showPlaybackError: (message, hint = null) => this.showPlaybackError(message, hint),
-      syncPiPAvailability: () => this.syncPiPAvailability(),
-      takeResumeTime: (fallback) => this.takeResumeTime(fallback),
-      teardownAVPlayer: (player) => this.teardownAVPlayer(player),
-      teardownStreamLoaderForTransition: (sessionId) =>
-        this.teardownStreamLoaderForTransition(sessionId),
-      toAbsoluteUrl: (url) => this.toAbsoluteUrl(url),
-      trackManagedEngine: (engineId, engine) => this.trackManagedEngine(engineId, engine),
-      tryAVPlayerFallback: () => this.tryAVPlayerFallback(),
-      updateAudioTracks: () => this.updateAudioTracks(),
-      updateMediaSessionPosition: (options) => this.updateMediaSessionPosition(options),
-      updateSubtitleTracks: () => this.updateSubtitleTracks(),
-      updateTimeUI: () => this.updateTimeUI(),
-      updateVolumeUI: () => this.updateVolumeUI(),
-    };
-  },
-
-  initPlaybackEngineActivation() {
-    this.playbackEngineActivation?.destroy();
-    const host = this.buildPlaybackEngineActivationHost();
-    const mpegtsActivation = createMpegtsEngineActivation({ host });
-    this.nativeEngineActivation?.destroy();
-    this.nativeEngineActivation = createNativeEngineActivation({ host });
-    this.avPlayerEngineActivation?.destroy();
-    this.avPlayerEngineActivation = createAvPlayerEngineActivation({ host });
-    this.avbridgeEngineActivation = createAvbridgeEngineActivation({ host });
-    this.h265webEngineActivation = createH265webEngineActivation({ host });
-
-    this.playbackEngineActivation = createPlaybackEngineActivation({
-      host,
-      activations: {
-        [ENGINE_SELECTION.HLS_JS]: createHlsEngineActivation({ host }),
-        [ENGINE_SELECTION.MPEGTS]: mpegtsActivation,
-        [ENGINE_SELECTION.MPEGTS_FLV]: mpegtsActivation,
-        [ENGINE_SELECTION.NATIVE]: this.nativeEngineActivation,
-        [ENGINE_SELECTION.AVPLAYER]: this.avPlayerEngineActivation,
-        [ENGINE_SELECTION.AVBRIDGE]: this.avbridgeEngineActivation,
-        [ENGINE_SELECTION.H265WEB]: this.h265webEngineActivation,
-        [ENGINE_SELECTION.FLV_UNSUPPORTED]: () => {
-          this.showPlaybackError(FLV_UNSUPPORTED_MESSAGE);
-          return false;
-        },
-      },
-      onUnknownSelection: (selection) =>
-        log.warn("[VideoPlayer] Unknown engine decision:", selection),
-      onError: (operation, error, request) =>
-        log.error(`[VideoPlayer] Engine activation ${operation} failed:`, {
-          error,
-          selection: request?.selection,
-          sessionId: request?.sessionId,
-        }),
-    });
-  },
-
-  setupNetworkMonitor() {
-    this.networkMonitor = new NetworkMonitor({
-      onQualityChange: (newQuality, oldQuality, stats) => {
-        log.debug(`Network quality changed: ${oldQuality} -> ${newQuality}`, stats);
-
-        if (this.manualQuality === null && this.contentType === "live") {
-          const newMode = selectStreamingMode(ContentType.LIVE, newQuality);
-          if (newMode !== this.streamingMode) {
-            this.switchStreamingMode(newMode);
-          }
-        }
-      },
-    });
-
-    this.networkMonitor.start();
-  },
 
   // ============================================
   // Streaming Mode Management
@@ -843,33 +316,6 @@ const VideoPlayer = {
   // ============================================
   // Audio Track Selection
   // ============================================
-
-  buildTrackOperationsHost() {
-    return {
-      getNativeSubtitleController: () => this.nativeSubtitleController,
-      getOrchestrator: () => this.playbackOrchestrator,
-      getPresentation: () => this.playerTrackPresentationController,
-      getSessionId: () => this.playbackSessionId,
-      getStreamTransport: () => this.streamTransport,
-      getSubtitleSourceResolver: () => this.subtitleSourceResolver,
-      getTrackState: () => ({
-        imdbId: this.imdbId,
-        preferredAudioTrack: this._preferredAudioTrack,
-        preferredSubtitleTrack: this._preferredSubtitleTrack,
-        selectedSubtitleTrack: this.selectedSubtitleTrack,
-        sourceType: this.sourceType,
-        subtitleLang: this.subtitleLang,
-        subtitleOffsetMs: this.subtitleOffsetMs,
-        subtitleTracks: this.subtitleTracks,
-        subtitlesEnabled: this.subtitlesEnabled,
-      }),
-      hasActiveAVPlayer: () => Boolean(this.usingAVPlayer && this.avPlayer),
-      isSessionCurrent: (sessionId) => this.isCurrentPlaybackSession(sessionId),
-      setAudioTrack: (trackIndex) => this.setAudioTrack(trackIndex),
-      setSubtitleTrack: (trackIndex) => this.setSubtitleTrack(trackIndex),
-      updateSubtitleTracks: () => this.updateSubtitleTracks(),
-    };
-  },
 
   setAudioTrack(trackIndex) {
     if (this.playerTrackController) {
@@ -1026,17 +472,14 @@ const VideoPlayer = {
   },
 
   handlePlaybackStarted() {
+    this.providerEngineMemory?.progress();
     if (this._terminalPlaybackError) {
       this.setPlaybackSystemState("none");
       return;
     }
 
-    if (this.mediaElementEngine?.id === ENGINE_ID.HLS) {
-      this.hlsRecoveryCoordinator?.markRecovered();
-    }
-    if (this.mediaElementEngine?.id === ENGINE_ID.MPEGTS) {
-      this.mpegtsRecoveryCoordinator?.markRecovered();
-    }
+    if (this.startupPresentation?.hasFrame && !this.startupPresentation.awaitingFrame)
+      this.recoveryGuard?.playing();
 
     this.observePlaybackState(PLAYBACK_STATE.PLAYING, "playback_started");
     this.setPlaybackSystemState("playing");
@@ -1045,6 +488,8 @@ const VideoPlayer = {
   },
 
   handlePlaybackPaused() {
+    this.providerEngineMemory?.pause();
+    this.recoveryGuard?.suspend();
     this.setPlaybackSystemState(this._terminalPlaybackError ? "none" : "paused");
   },
 
@@ -1066,59 +511,6 @@ const VideoPlayer = {
     }
   },
 
-  setupIosPwaTapControls() {
-    if (!this.iosPwaMode) return;
-
-    this.el.classList.add("ios-pwa-tap-playback");
-    this._onIosPwaTap = (event) => {
-      if (!this.shouldHandleIosPwaTap(event)) return;
-
-      const now = Date.now();
-      if (now - this._lastIosPwaTapAt < 350) return;
-      this._lastIosPwaTapAt = now;
-
-      if (!this.playerUIController.controlsVisible) {
-        this.playerUIController.revealControls();
-        this.reportIosPwaTelemetry("controls_revealed", {
-          target: event.target?.tagName || "unknown",
-        });
-        return;
-      }
-
-      const pausedBefore = this.isPaused();
-      this.reportIosPwaTelemetry("center_tap_play_pause", {
-        paused_before: pausedBefore,
-        target: event.target?.tagName || "unknown",
-      });
-      this.togglePlayPause();
-    };
-    this.lifecycle.listen(this.el, "click", this._onIosPwaTap);
-  },
-
-  shouldHandleIosPwaTap(event) {
-    if (event.defaultPrevented || event.button !== 0) return false;
-
-    const target = event.target;
-    if (!(target instanceof Element)) return false;
-
-    return !target.closest(
-      [
-        "button",
-        "a",
-        "input",
-        "select",
-        "textarea",
-        "label",
-        "[role='button']",
-        "#player-controls",
-        "#progress-container",
-        "#settings-menu",
-        "#tracks-menu",
-        ".no-ios-pwa-tap",
-      ].join(","),
-    );
-  },
-
   reportIosPwaTelemetry(event, extra = {}) {
     if (!this.iosPwaMode) return;
 
@@ -1136,38 +528,8 @@ const VideoPlayer = {
     });
   },
 
-  setupSourceFailover() {
-    const statusElement = this.el.querySelector("#source-failover-status");
-
-    this.sourceFailoverController = createSourceFailoverController({
-      enabled: this.sourceFailoverEnabled,
-      statusElement,
-      pushRequest: (payload) => this.pushEventSafe("request_source_failover", payload),
-      onApply: (payload) => this.applySourceFailover(payload),
-      onUnavailable: (terminalError, payload) => {
-        this.presentTerminalPlaybackError(
-          terminalError?.message || payload?.error_message || "Falha na reprodução",
-          payload?.hint || null,
-        );
-      },
-    });
-
-    const applyRef = this.handleEvent("source_failover", (payload) =>
-      this.sourceFailoverController?.apply(payload),
-    );
-    const unavailableRef = this.handleEvent("source_failover_unavailable", (payload) =>
-      this.sourceFailoverController?.unavailable(payload),
-    );
-
-    this.lifecycle.add(() => {
-      this.removeHandleEvent?.(applyRef);
-      this.removeHandleEvent?.(unavailableRef);
-      this.sourceFailoverController?.destroy();
-      this.sourceFailoverController = null;
-    });
-  },
-
   applySourceFailover(payload) {
+    if (this.recoveryGuard?.terminal) return;
     const streamUrl = payload?.stream_url;
     if (typeof streamUrl !== "string" || streamUrl.length === 0) return;
 
@@ -1183,6 +545,8 @@ const VideoPlayer = {
     this.streamUrl = streamUrl;
     this.proxyUrl = payload.proxy_url || streamUrl;
     this.sourceType = payload.source_type || this.sourceType;
+    this.providerId = payload.provider_id ? String(payload.provider_id) : null;
+    this._pendingEngineReason = "failover";
     this.contentId = String(payload.content_id);
     this.useProxy = true;
     this.currentUrl = null;
@@ -1191,6 +555,7 @@ const VideoPlayer = {
     this.el.dataset.streamUrl = this.streamUrl;
     this.el.dataset.proxyUrl = this.proxyUrl;
     this.el.dataset.sourceType = this.sourceType;
+    this.el.dataset.providerId = this.providerId || "";
     this.el.dataset.contentId = this.contentId;
     if (payload.stream_type) this.el.dataset.streamType = payload.stream_type;
 
@@ -1212,76 +577,6 @@ const VideoPlayer = {
   // ============================================
   // Event Listeners
   // ============================================
-
-  setupEventListeners() {
-    this.mediaEventBindings = createMediaEventBindings({
-      host: this.buildMediaEventBindingsHost(),
-      lifecycle: this.lifecycle,
-      root: this.el,
-      video: this.video,
-    });
-    this.mediaEventBindings.bindControlEvents();
-    this.playerUIController.bindRetry(
-      () => this.retryPlaybackFromError(),
-      (target, event, handler) => this.lifecycle.listen(target, event, handler),
-    );
-    const autoplayPlayBtn = this.el.querySelector("#autoplay-play-btn");
-    if (autoplayPlayBtn) {
-      this.lifecycle.listen(autoplayPlayBtn, "click", () => {
-        this.playerUIController.hideAutoplayBlocked();
-        this.play();
-      });
-    }
-    this.setupIosPwaTapControls();
-    this.setupMobileControls();
-    this.mediaEventBindings.bindMediaEvents();
-    this.mediaEventBindings.bindPageLifecycle();
-    this.bindLiveViewCommands();
-  },
-
-  buildMediaEventBindingsHost() {
-    return {
-      emergencyStopPlayback: () => this.emergencyStopPlayback(),
-      emitPlaybackEvent: (name) => emitPlaybackEvent(this.el, name),
-      flushPlaybackMetrics: (outcome) => this.flushPlaybackMetrics(outcome),
-      getBufferingController: () => this.nativeBufferingController,
-      getIosPwaController: () => this.iosPwaPlaybackController,
-      getUiController: () => this.playerUIController,
-      getWatchPartyPolicy: () => this.watchPartyPolicy,
-      handleNativeVolumeChange: () => this.handleNativeVolumeChange(),
-      handlePlaybackEnded: () => this.handlePlaybackEnded(),
-      handlePlaybackPaused: () => this.handlePlaybackPaused(),
-      handlePlaybackStarted: () => this.handlePlaybackStarted(),
-      isIosPwaMode: () => Boolean(this.iosPwaMode),
-      isVodContent: () => this.contentType === "vod",
-      observePlaybackState: (state, reason) => this.observePlaybackState(state, reason),
-      reportDuration: (duration) => this.pushEventSafe("duration_available", { duration }),
-      reportProgress: () => this.reportProgress(),
-      setPlaybackRate: (rate) => this.setPlaybackRate(rate),
-      setVolume: (volume) => this.setVolume(volume),
-      setWatchPartySyncHold: (held) => this.setWatchPartySyncHold(held),
-      toggleAVPlayerPreference: () => this.toggleAVPlayerPreference(),
-      toggleFullscreen: () => this.toggleFullscreen(),
-      toggleMute: () => this.toggleMute(),
-      togglePiP: () => this.togglePiP(),
-      togglePlayPause: () => this.togglePlayPause(),
-      toggleSubtitles: () => this.toggleSubtitles(),
-      updateBufferBar: () => this.updateBufferBar(),
-      updateTimeUI: () => this.updateTimeUI(),
-      usesNativePlaybackEvents: () => this.usesNativePlaybackEvents(),
-    };
-  },
-
-  setupMobileControls() {
-    this.mobileControls = createMobileControls({
-      root: this.el,
-      controls: this.el.querySelector("#player-controls"),
-      video: this.video,
-      presentation: this.playerUIController,
-      shouldUseNativeControls: () => this.nativeTouchControls || this.iosPwaMode,
-      toggleFullscreen: () => this.toggleFullscreen(),
-    });
-  },
 
   bindLiveViewCommands() {
     this.handleEvent("set_quality", ({ level }) => this.setQuality(level));
@@ -1313,7 +608,8 @@ const VideoPlayer = {
   // UI Update Helpers
   // ============================================
 
-  showPlaybackError(message, hint = null) {
+  showPlaybackError(message, hint = null, reason = "fatal_media_error") {
+    if (this.recoveryGuard?.terminal) return;
     const failoverRequested = this.sourceFailoverController?.request({
       contentId: this.contentId,
       position: this.getCurrentTime(),
@@ -1321,6 +617,7 @@ const VideoPlayer = {
     });
 
     if (failoverRequested) {
+      this.observePlaybackState(PLAYBACK_STATE.RECOVERING, "source_failover");
       this._terminalPlaybackError = false;
       this.setPlaybackSystemState("none");
       this.playerUIController?.showRecovery();
@@ -1328,13 +625,17 @@ const VideoPlayer = {
       return;
     }
 
-    this.presentTerminalPlaybackError(message, hint);
+    this.presentTerminalPlaybackError(message, hint, reason);
   },
 
-  presentTerminalPlaybackError(message, hint = null) {
+  presentTerminalPlaybackError(message, hint = null, reason = "fatal_media_error") {
+    this.providerEngineMemory?.clear();
+    this.recoveryGuard?.finish();
+    this.startupPresentation?.stop();
     this._terminalPlaybackError = true;
     this.observePlaybackState(PLAYBACK_STATE.TERMINAL, "terminal_error");
     this.setPlaybackSystemState("none");
+    this.flushPlaybackMetrics("error", reason);
     this.playerUIController?.showError(message, hint);
   },
 
@@ -1372,7 +673,12 @@ const VideoPlayer = {
   },
 
   handleNativeVolumeChange() {
-    if (!this.video || this.usingAVPlayer || this.usingH265web || !this.nativeTouchControls) {
+    if (
+      !usesNativeAudioControls(this.video, {
+        nativeControls: this.nativeTouchControls,
+        canvasPlayback: this.usingAVPlayer || this.usingH265web,
+      })
+    ) {
       this.updateVolumeUI();
       return;
     }
@@ -1391,6 +697,8 @@ const VideoPlayer = {
   },
 
   updateTimeUI() {
+    this.startupPresentation?.canvasProgress(this.getCurrentTime(), !this.isPaused());
+    this.providerEngineMemory?.progress();
     return this.playerUIController?.updateTime() ?? null;
   },
 
@@ -1442,6 +750,10 @@ const VideoPlayer = {
   },
 
   setWatchPartySyncHold(held) {
+    if (this.watchPartyPolicy?.isViewer) {
+      if (held) this.recoveryGuard?.suspend();
+      else this.recoveryGuard?.resume();
+    }
     return this.watchPartyPolicy?.setSyncHold(held) ?? true;
   },
 
@@ -1594,14 +906,27 @@ const VideoPlayer = {
 
   reportPlayerLifecycle(stage, extra = {}) {
     if (stage === "player_engine_selected") {
+      this._selectedEngine = extra.engine;
+      this._memorySeekTokens?.clear();
+      this.providerEngineMemory?.select({
+        providerId: this.providerId,
+        streamType: this.currentStreamType,
+        engine: extra.engine,
+        batchId: this.playbackMetrics?.active?.batchId,
+        startedAt: this.playbackMetrics?.active?.startedAt,
+        selectionReason: extra.reason ?? this.playbackMetrics?.active?.engineReason,
+      });
+      this.startupPresentation?.attach({
+        native: !["avplayer", "h265web"].includes(extra.engine),
+      });
       if (extra.fallback) {
-        this.playbackMetrics?.recordFallback(extra.engine);
+        this.playbackMetrics?.recordFallback(extra.engine, extra.reason || "fallback_codec");
         this.playbackOrchestrator?.recordFallback(extra.engine);
       } else {
-        this.playbackMetrics?.selectEngine(extra.engine);
+        this.playbackMetrics?.selectEngine(extra.engine, extra.reason);
       }
     } else if (stage === "player_engine_fallback") {
-      this.playbackMetrics?.recordFallback(extra.to);
+      this.playbackMetrics?.recordFallback(extra.to, extra.reason || "fallback_codec");
       this.playbackOrchestrator?.recordFallback(extra.to);
     }
 
@@ -1637,13 +962,19 @@ const VideoPlayer = {
     }
   },
 
-  flushPlaybackMetrics(outcome) {
-    const metric = this.playbackMetrics?.finish(outcome);
-    if (metric) this.pushEventSafe("client_telemetry", metric);
+  flushPlaybackMetrics(outcome, reason, { beacon = false } = {}) {
+    const metric = this.playbackMetrics?.finish(outcome, reason);
+    if (!metric) return;
+    // On the way out the socket may already be gone; the beacon gets there
+    // anyway and the server keeps one copy of the sample.
+    if (beacon) sendQoeBeacon(metric);
+    this.pushEventSafe("client_telemetry", metric);
   },
 
   retryPlaybackFromError() {
     log.info("[VideoPlayer] Retrying playback from error screen");
+    this.initPlaybackEngineTransitionController();
+    this.recoveryGuard?.begin();
     this.sourceFailoverController?.reset();
     this.pushEventSafe("reset_source_failover", {});
     this.reportPlayerLifecycle("player_retry_from_error", {
@@ -1651,6 +982,9 @@ const VideoPlayer = {
       fallback_attempts: this.fallbackAttempts,
     });
 
+    this.flushPlaybackMetrics("restarted");
+    this._playbackMountedAt = performance.now();
+    this.startupPresentation?.begin();
     this.playerUIController.showRecovery();
     this.retryCount = 0;
     this.hlsRecoveryCoordinator?.reset();
@@ -1674,168 +1008,19 @@ const VideoPlayer = {
   // Player Initialization
   // ============================================
 
-  teardownAVPlayer(player = this.avPlayer) {
-    return this.avPlayerTeardownQueue?.destroy(player) || Promise.resolve();
-  },
-
-  cleanup({ preservePlaybackState = false } = {}) {
-    this.reportPlayerLifecycle("player_cleanup", {
-      preserve_playback_state: preservePlaybackState,
-    });
-
-    if (!preservePlaybackState) {
-      this.observePlaybackState(PLAYBACK_STATE.DESTROYED, "cleanup");
-    }
-
-    this.setPlaybackSystemState("none");
-    this.playbackSessionId += 1;
-    void this.playbackEngineTransitionController?.cancel("cleanup");
-    this.nativeEngineActivation?.cancelBackgroundWork();
-    this._qualityCapabilitiesCancel?.();
-    this._qualityCapabilitiesCancel = null;
-    this.hlsRecoveryCoordinator?.cancel();
-    this.mpegtsRecoveryCoordinator?.cancel();
-
-    if (this.mediaElementEngine) {
-      const mediaElementEngine = this.mediaElementEngine;
-      this.mediaElementEngine = null;
-
-      if (this.playbackOrchestrator) {
-        this.playbackOrchestrator.releaseEngine(mediaElementEngine.id);
-      } else {
-        mediaElementEngine
-          .destroy()
-          .catch((error) =>
-            log.debug("[VideoPlayer] Media element engine teardown failed:", error),
-          );
-      }
-    }
-
-    void this.streamTransport?.teardown();
-
-    this.nativeBufferManager?.destroy();
-    this.nativeBufferManager = null;
-
-    this.stopAVPlayerTimeUpdates();
-    if (this.avPlayer) {
-      const avPlayer = this.avPlayer;
-      this.avPlayer = null;
-      this.teardownAVPlayer(avPlayer);
-    }
-    this.nativeSubtitleController?.reset();
-    this.releaseExternalSubtitleSourceLease();
-    this.subtitleSourceResolver?.reset();
-    if (this.avbridge) {
-      this.avbridge.destroy().catch((err) => {
-        log.debug("[VideoPlayer] avbridge cleanup threw:", err);
-      });
-      this.avbridge = null;
-    }
-    this.usingAvbridge = false;
-
-    if (this.h265web) {
-      this.h265web.destroy().catch((err) => {
-        log.debug("[VideoPlayer] h265web cleanup threw:", err);
-      });
-      this.h265web = null;
-    }
-    this.usingH265web = false;
-
-    const avContainer = this.el?.querySelector("#avplayer-mount");
-    if (avContainer) {
-      avContainer.replaceChildren();
-      avContainer.classList.add("hidden");
-    }
-
-    this.usingAVPlayer = false;
-    this.setNativeTouchControls(false);
-
-    if (this.video) {
-      this.applyAudioState();
-      this.resetNativeMediaElement({ restoreAudioState: true });
-    }
-  },
-
-  resetNativeMediaElement({ restoreAudioState = false } = {}) {
-    if (!this.video) return;
-
-    this._suppressNativePlaybackEvents = true;
-    const muted = this.video.muted;
-    const volume = this.video.volume;
-
-    this.video.pause();
-    this.video.muted = true;
-    this.video.removeAttribute("src");
-    this.video.load();
-
-    if (restoreAudioState) {
-      this.video.muted = muted;
-      this.video.volume = volume;
-    }
-  },
-
-  emergencyStopPlayback() {
-    if (this._emergencyStopDone) return;
-    this._emergencyStopDone = true;
-    this._suppressNativePlaybackEvents = true;
-    this.setPlaybackSystemState("none");
-
-    try {
-      this.video?.pause();
-      if (this.video) {
-        this.video.muted = true;
-        this.video.removeAttribute("src");
-        this.video.load();
-      }
-    } catch (error) {
-      log.debug("[VideoPlayer] Emergency native teardown failed:", error);
-    }
-
-    try {
-      this.avPlayer?.pause?.();
-      this.avPlayer?.stop?.();
-      this.avPlayer?.destroy?.();
-    } catch (error) {
-      log.debug("[VideoPlayer] Emergency AVPlayer teardown failed:", error);
-    }
-
-    try {
-      this.avbridge?.pause?.();
-      this.avbridge?.destroy?.();
-    } catch (error) {
-      log.debug("[VideoPlayer] Emergency avbridge teardown failed:", error);
-    }
-
-    try {
-      this.h265web?.pause?.();
-      this.h265web?.destroy?.();
-    } catch (error) {
-      log.debug("[VideoPlayer] Emergency h265web teardown failed:", error);
-    }
-  },
-
   getPlaybackStateSnapshot() {
     return this.playbackOrchestrator?.snapshot().lifecycle ?? null;
   },
 
   observePlaybackState(nextState, reason, metadata = {}) {
-    return this.playbackOrchestrator?.observe(nextState, reason, metadata) ?? null;
-  },
-
-  beginPlaybackSession() {
-    if (!this.playbackOrchestrator || this.playbackOrchestrator.destroyed) {
-      this.playbackOrchestrator = createPlaybackOrchestrator({
-        reportLifecycle: (event, metadata) => this.reportPlayerLifecycle(event, metadata),
-        logInvalid: (transition) =>
-          log.debug("[VideoPlayer] Invalid playback state transition:", transition),
-      });
+    if (nextState === PLAYBACK_STATE.SEEKING) this.providerEngineMemory?.pause();
+    if (nextState === PLAYBACK_STATE.STALLED || nextState === PLAYBACK_STATE.RECOVERING) {
+      this.providerEngineMemory?.interrupt();
+      this.recoveryGuard?.recover();
+      if (nextState === PLAYBACK_STATE.RECOVERING || this.startupPresentation?.hasFrame)
+        this.startupPresentation?.recover();
     }
-
-    this.playbackSessionId = this.playbackOrchestrator.begin();
-    return this.playbackSessionId;
-  },
-  isCurrentPlaybackSession(sessionId) {
-    return !this._destroyed && sessionId === this.playbackSessionId;
+    return this.playbackOrchestrator?.observe(nextState, reason, metadata) ?? null;
   },
 
   hlsRecoveryContext() {
@@ -1896,184 +1081,10 @@ const VideoPlayer = {
     });
   },
 
-  buildStreamTransportHost() {
-    return {
-      adoptHlsEngine: (sessionId) => this.activateHlsEngineFromLoader(sessionId),
-      getCodecAbr: () => this.codecABR,
-      getContentType: () => this.contentType,
-      getCurrentUrl: () => this.currentUrl,
-      getNetworkMonitor: () => this.networkMonitor,
-      getPresentation: () => this.playerUIController,
-      getSessionId: () => this.playbackSessionId,
-      getStreamingMode: () => this.streamingMode,
-      getVideo: () => this.video,
-      handleStreamError: (type, data) => this.handleStreamError(type, data),
-      isManualQuality: () => this.manualQuality !== null,
-      isSessionCurrent: (sessionId) => this.isCurrentPlaybackSession(sessionId),
-      playNativeAfterResume: (sessionId) => this.playNativeAfterResume(sessionId),
-      pushEvent: (event, payload) => this.pushEventSafe(event, payload),
-      showQualityChange: (label) => this.playerUI?.showQualityChange(label),
-      updateAudioTracks: () => this.updateAudioTracks(),
-      updateQualityList: () => this.updateQualityList(),
-      updateSubtitleTracks: () => this.updateSubtitleTracks(),
-    };
-  },
-
-  initPlayer({ sessionId: providedSessionId = null } = {}) {
-    this._terminalPlaybackError = false;
-
-    if (!this.streamUrl) {
-      this.showPlaybackError("URL do stream nao fornecida");
-      return;
-    }
-
-    this.playerUIController.showLoading();
-    log.info("Initializing player with URL:", this.streamUrl);
-    log.debug("Streaming mode:", this.streamingMode);
-    log.debug("Content type:", this.contentType);
-    log.debug("Source type:", this.sourceType);
-
-    // Log advanced feature availability
-    if (isWebCodecsSupported()) {
-      log.debug("WebCodecs API available - hardware acceleration possible");
-    }
-    if (isMSEInWorkersSupported()) {
-      log.debug("MSE in Workers available - offloading parsing to worker thread");
-    }
-    if (this.codecABR) {
-      log.debug("Codec-aware ABR active - optimizing quality selection by codec efficiency");
-    }
-
-    // Use explicit stream type hint from backend if available (token-based URLs have
-    // no extension), except that a URL naming HLS (`.m3u8`) always gets an HLS engine.
-    this.currentStreamType = resolveStreamType(this.el.dataset.streamType, this.streamUrl);
-    log.debug("Detected stream type:", this.currentStreamType);
-
-    this.flushPlaybackMetrics("restarted");
-    this.cleanup();
-
-    // cleanup() advances playbackSessionId to invalidate work still in flight
-    // from the engine it just tore down. A caller that hands us a session is
-    // continuing that same session (the AVPlayer to native fallback does), so
-    // re-adopt it here: otherwise every isSessionCurrent() check below compares
-    // against the bumped id, aborts, and no engine is ever activated. The old
-    // engine is stopped by cleanup()'s explicit cancellations, not by the id.
-    let sessionId;
-
-    if (providedSessionId == null) {
-      sessionId = this.beginPlaybackSession();
-    } else {
-      sessionId = providedSessionId;
-      this.playbackSessionId = providedSessionId;
-    }
-    this.currentUrl = this.getEffectiveUrl(this.currentStreamType);
-    this.observePlaybackState(PLAYBACK_STATE.LOADING, "source_loading", {
-      session_id: sessionId,
-      stream_type: this.currentStreamType,
-    });
-    this.playbackMetrics.begin({
-      contentType: this.contentType,
-      streamType: this.currentStreamType,
-      displayMode: isStandalonePwa() ? "standalone" : "browser",
-    });
-    this.reportPlayerLifecycle("player_session_started", {
-      session_id: sessionId,
-      engine: this.currentStreamType,
-    });
-
-    // Create stream loader (idempotent — recreated lazily after cleanup during fallbacks)
-    this.ensureStreamLoader();
-
-    // Send codec capabilities to backend for optimal stream selection
-    const capabilities = getCapabilitySummary();
-    this.pushEventSafe("player_initializing", {
-      stream_type: this.currentStreamType,
-      streaming_mode: this.streamingMode,
-      pip_supported: this.isPiPSupported(),
-      capabilities, // Send codec support info to backend
-    });
-
-    // Check Device Codec Memory for recommended player (Netflix pattern)
-    const contentKey = this.sourceType === "gindex" ? "gindex" : this.currentStreamType;
-    const recommendedPlayer = getRecommendedPlayer(contentKey);
-    const engineContext = this.buildEngineContext(recommendedPlayer);
-    const engine = assertEngineSelection(selectEngine(engineContext));
-    this.playbackMetrics.selectEngine(engine);
-
-    log.debug("[VideoPlayer] Engine decision context", {
-      currentStreamType: this.currentStreamType,
-      contentType: this.contentType,
-      sourceType: this.sourceType,
-      recommendedPlayer,
-      preferAVPlayer: this.preferAVPlayer,
-      useProxy: this.useProxy,
-      selectedEngine: engine,
-      shouldPreferAVPlayerForLiveTs: engineContext.shouldPreferAVPlayerForLiveTs,
-      hlsSupported: engineContext.capabilities.hlsJs,
-      mpegtsSupported: engineContext.capabilities.mpegts,
-      nativeHlsSupported: engineContext.capabilities.nativeHls,
-      userAgent: navigator.userAgent,
-    });
-    this.reportPlayerDebug("init_player_decision", {
-      recommended_player: recommendedPlayer,
-      selected_engine: engine,
-    });
-
-    log.debug("[VideoPlayer] Activating engine (engine_selector decision):", engine);
-    void this.playbackEngineActivation.activate(engine, { sessionId });
-  },
-
-  buildEngineRecoveryHost() {
-    return {
-      canRetry: () => this.retryCount < this.maxRetries,
-      canTryAVPlayer: () =>
-        this.shouldPreferAVPlayerForLiveTs() && !this.usingAVPlayer && !this.avPlayerAttempted,
-      cleanup: (options) => this.cleanup(options),
-      consumeRetry: () => {
-        this.retryCount++;
-      },
-      getErrorContext: () => ({
-        contentId: this.contentId,
-        contentType: this.contentType,
-        currentUrl: this.currentUrl,
-        fallbackAttempts: this.fallbackAttempts,
-        retryCount: this.retryCount,
-        sourceType: this.sourceType,
-        streamType: this.currentStreamType,
-        streamingMode: this.streamingMode,
-        usingAVPlayer: this.usingAVPlayer,
-        video: this.video,
-      }),
-      getHlsRecoveryContext: () => this.hlsRecoveryContext(),
-      getHlsRecoveryCoordinator: () => this.hlsRecoveryCoordinator,
-      getMpegtsRecoveryCoordinator: () => this.mpegtsRecoveryCoordinator,
-      getPageProtocol: () => window.location.protocol,
-      getSessionId: () => this.playbackSessionId,
-      getStreamUrls: () => ({
-        currentUrl: this.currentUrl,
-        streamUrl: this.streamUrl,
-        useProxy: this.useProxy,
-      }),
-      isSessionCurrent: (sessionId) => this.isCurrentPlaybackSession(sessionId),
-      observePlaybackState: (state, reason) => this.observePlaybackState(state, reason),
-      playNative: () => this.playNative(),
-      playWithMpegts: () => this.playWithMpegts(),
-      pushEvent: (event, payload) => this.pushEventSafe(event, payload),
-      recordError: () => this.playbackMetrics?.recordError(),
-      showErrorWithDiagnostics: (message, error, runDiagnostics) =>
-        this.showErrorWithDiagnostics(message, error, runDiagnostics),
-      showPlaybackError: (message) => this.showPlaybackError(message),
-      teardownStreamLoaderForTransition: (sessionId) =>
-        this.teardownStreamLoaderForTransition(sessionId),
-      tryAVPlayerFallback: () => this.tryAVPlayerFallback(),
-      useDirectStream: () => {
-        this.useProxy = false;
-        this.currentUrl = this.streamUrl;
-      },
-    };
-  },
-
   handleStreamError(type, data) {
+    if (this.recoveryGuard?.terminal) return;
+    if ((type !== "hls" || data.fatal) && this.recoveryGuard && !this.recoveryGuard.attempt())
+      return;
     return this.engineRecoveryPolicy?.handleStreamError(type, data);
   },
 
@@ -2114,6 +1125,7 @@ const VideoPlayer = {
    * Check circuit breaker before attempting fallback (exponential backoff)
    */
   canAttemptFallback() {
+    if (this.recoveryGuard?.terminal) return false;
     const decision = evaluateFallbackAttempt(
       {
         attempts: this.fallbackAttempts,
@@ -2144,8 +1156,8 @@ const VideoPlayer = {
     );
   },
 
-  tryAVPlayerFallback() {
-    return this.avPlayerEngineActivation?.tryFallback() ?? Promise.resolve(false);
+  tryAVPlayerFallback(reason = "fallback_codec") {
+    return this.avPlayerEngineActivation?.tryFallback(reason) ?? Promise.resolve(false);
   },
 
   /**
@@ -2246,6 +1258,10 @@ const VideoPlayer = {
     return this.getNativePlaybackEngine();
   },
 
+  async play(options = {}) {
+    return this.playbackCommandController?.play(options);
+  },
+
   async togglePlayPause(options = {}) {
     return this.playbackCommandController?.togglePlayPause(options);
   },
@@ -2307,75 +1323,6 @@ const VideoPlayer = {
   // ============================================
   // Lifecycle
   // ============================================
-
-  destroyed() {
-    this.flushPlaybackMetrics("cancelled");
-    this._destroyed = true;
-    this.playbackCommandController?.destroy();
-    this.playbackCommandController = null;
-    this._disposePlaybackBridge?.();
-    this._disposePlaybackBridge = null;
-    this.lifecycle?.dispose();
-    this.lifecycle = null;
-    this._startupDiagnosticsCancel?.();
-    this._startupDiagnosticsCancel = null;
-    this.nativeEngineActivation?.cancelBackgroundWork();
-    this._qualityCapabilitiesCancel?.();
-    this._qualityCapabilitiesCancel = null;
-    this.playbackEngineTransitionController?.destroy();
-    this.cleanup();
-    this.playbackBrowserIntegration?.destroy();
-    this.playbackBrowserIntegration = null;
-    this.playbackEngineActivation?.destroy();
-    this.playbackEngineActivation = null;
-    this.nativeEngineActivation = null;
-    this.avPlayerEngineActivation = null;
-    this.avbridgeEngineActivation = null;
-    this.h265webEngineActivation = null;
-    this.watchPartyPolicy = null;
-    this.streamTransport = null;
-    this.playbackEngineTransitionController = null;
-    this.nativeSubtitleController?.destroy();
-    this.nativeSubtitleController = null;
-    this.playbackOrchestrator?.destroy();
-    this.playbackOrchestrator = null;
-    this.networkMonitor?.stop();
-    this.nativeBufferManager?.stop();
-    this.subtitleSourceResolver?.destroy();
-    this.subtitleSourceResolver = null;
-    this.trackProbeController?.destroy();
-    this.trackProbeController = null;
-    this.playerTrackController?.destroy();
-    this.trackOperations?.destroy();
-    this.trackOperations = null;
-    this.playerTrackPresentationController?.destroy();
-    this.playerTrackPresentationController = null;
-    this.playerUIController?.destroy();
-    this.playerUIController = null;
-    this.playerUI = null;
-    this.stopAVPlayerTimeUpdates();
-    this.aspectRatioController?.destroy();
-    this.aspectRatioController = null;
-    this.mobileControls?.destroy();
-    this.mobileControls = null;
-
-    this.mediaEventBindings = null;
-    this.engineRecoveryPolicy = null;
-    this._onIosPwaTap = null;
-
-    this.nextEpisodeController?.destroy();
-    this.nextEpisodeController = null;
-    this.nativeBufferingController?.destroy();
-    this.nativeBufferingController = null;
-
-    if (this.watchInterval) {
-      clearInterval(this.watchInterval);
-    }
-
-    if (this.el) {
-      this.el.__videoPlayerHook = null;
-    }
-  },
 };
 
 export default VideoPlayer;

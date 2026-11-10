@@ -35,6 +35,14 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   @default_buffer_size 30
   @default_subscriber_buffer_bytes 5 * 1_024 * 1_024
   @max_redirects 5
+  # A live upstream that drops mid-stream is reconnected without telling the
+  # viewers: their players keep the connection to us and see a short gap
+  # instead of an error that tears down and rebuilds the player. Bounded so a
+  # channel that is really gone still fails, at most @max_resumes times per
+  # @resume_window_ms, waiting a little longer each time.
+  @max_resumes 3
+  @resume_window_ms 60_000
+  @resume_backoff_ms [250, 1_000, 2_000]
   @redirect_statuses [301, 302, 303, 307, 308]
 
   @type subscription :: %{
@@ -168,7 +176,9 @@ defmodule Streamix.Iptv.StreamMultiplexer do
           Application.get_env(:streamix, :live_mux_idle_timeout_ms, @default_idle_timeout)
         ),
       started_at: nil,
-      health_recorded?: false
+      health_recorded?: false,
+      resuming?: false,
+      resumes: []
     }
 
     Logger.info("[StreamMux] ready stream=#{SafeLog.content_ref(stream_key)}")
@@ -337,6 +347,18 @@ defmodule Streamix.Iptv.StreamMultiplexer do
     }
   end
 
+  # Mid-resume the viewers already have the stream; a newcomer gets the same
+  # answer instead of waiting for a `:ready` the resume will not broadcast.
+  defp subscription(%{resuming?: true} = state) do
+    %{
+      pid: self(),
+      status: :ready,
+      response_status: state.response_status,
+      headers: state.response_headers,
+      backlog: :queue.to_list(state.buffer)
+    }
+  end
+
   defp subscription(_state) do
     %{pid: self(), status: :connecting, response_status: nil, headers: [], backlog: []}
   end
@@ -399,6 +421,12 @@ defmodule Streamix.Iptv.StreamMultiplexer do
 
   defp process_response({:headers, _ref, headers}, %{status: :redirecting} = state) do
     follow_redirect(headers, state)
+  end
+
+  defp process_response({:headers, _ref, _headers}, %{resuming?: true} = state) do
+    Logger.info("[StreamMux] upstream resumed stream_key=#{inspect(state.stream_key)}")
+    :telemetry.execute([:streamix, :live_mux, :resumed], %{count: 1}, %{})
+    {:ok, %{state | status: :streaming, resuming?: false}}
   end
 
   defp process_response({:headers, _ref, headers}, state) do
@@ -477,25 +505,68 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   end
 
   defp handle_connection_failure(reason, state) do
-    if state.buffer_count == 0 and state.url_index + 1 < length(state.urls) do
-      Upstream.close(state.mint_conn)
-      send(self(), :connect)
+    cond do
+      state.buffer_count == 0 and state.url_index + 1 < length(state.urls) ->
+        fail_over(state)
 
-      {:noreply,
-       %{
-         state
-         | url_index: state.url_index + 1,
-           current_url: nil,
-           mint_conn: nil,
-           request_ref: nil,
-           response_status: nil,
-           response_headers: [],
-           redirect_count: 0,
-           status: :connecting
-       }}
-    else
-      stop_after_error(reason, state)
+      resumable?(state) ->
+        resume(reason, state)
+
+      true ->
+        stop_after_error(reason, state)
     end
+  end
+
+  defp fail_over(state) do
+    begin_reconnect(%{state | url_index: state.url_index + 1}, 0)
+  end
+
+  defp begin_reconnect(state, delay_ms) do
+    Upstream.close(state.mint_conn)
+    Process.send_after(self(), :connect, delay_ms)
+
+    {:noreply,
+     %{
+       state
+       | current_url: nil,
+         mint_conn: nil,
+         request_ref: nil,
+         response_status: if(state.resuming?, do: state.response_status),
+         response_headers: if(state.resuming?, do: state.response_headers, else: []),
+         redirect_count: 0,
+         status: :connecting
+     }}
+  end
+
+  # Only a stream that has already delivered bytes, to someone still
+  # watching, is resumed; a failure before the first byte keeps the URL
+  # failover above and then the error.
+  defp resumable?(state) do
+    state.buffer_count > 0 and map_size(state.subscribers) > 0 and
+      length(recent_resumes(state)) < @max_resumes
+  end
+
+  defp recent_resumes(state) do
+    now = System.monotonic_time(:millisecond)
+    Enum.filter(state.resumes, &(now - &1 < @resume_window_ms))
+  end
+
+  defp resume(reason, state) do
+    resumes = recent_resumes(state)
+    delay_ms = Enum.at(@resume_backoff_ms, length(resumes), List.last(@resume_backoff_ms))
+
+    Logger.info(
+      "[StreamMux] upstream dropped (#{SafeLog.redact_inspect(Upstream.safe_reason(reason))}); " <>
+        "resuming in #{delay_ms}ms stream_key=#{inspect(state.stream_key)}"
+    )
+
+    state = %{
+      state
+      | resuming?: true,
+        resumes: [System.monotonic_time(:millisecond) | resumes]
+    }
+
+    begin_reconnect(state, delay_ms)
   end
 
   defp stop_after_error(reason, state) do

@@ -1,3 +1,5 @@
+import { isAppleTouch, isStandalone } from "../core/browser_environment.js";
+
 export const hasWebCodecsHevcSupport = (windowRef = globalThis.window) =>
   typeof windowRef?.VideoDecoder === "function";
 
@@ -48,24 +50,10 @@ export function isAppleWebKitBrowser(navigatorRef = globalThis.navigator) {
 }
 
 export function isAppleTouchDevice(navigatorRef = globalThis.navigator) {
-  const userAgent = navigatorRef?.userAgent || "";
-  const platform = navigatorRef?.platform || "";
-
-  return (
-    /iPad|iPhone|iPod/.test(userAgent) ||
-    (platform === "MacIntel" && Number(navigatorRef?.maxTouchPoints) > 1)
-  );
+  return isAppleTouch({ navigatorRef });
 }
 
-export function isStandalonePwa({
-  navigatorRef = globalThis.navigator,
-  windowRef = globalThis.window,
-} = {}) {
-  return (
-    navigatorRef?.standalone === true ||
-    windowRef?.matchMedia?.("(display-mode: standalone)")?.matches === true
-  );
-}
+export const isStandalonePwa = isStandalone;
 
 export function isIosPwaMode(environment = {}) {
   return isAppleTouchDevice(environment.navigatorRef) && isStandalonePwa(environment);

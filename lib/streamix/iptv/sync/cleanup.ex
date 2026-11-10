@@ -20,6 +20,12 @@ defmodule Streamix.Iptv.Sync.Cleanup do
   @delete_chunk 500
   @query_timeout :timer.seconds(60)
   @empty_counts %{watch_party_rooms: 0, catalog_items: 0}
+  @content_type_tables [
+    {"live_channel", "live_channels"},
+    {"movie", "movies"},
+    {"series", "series"},
+    {"episode", "episodes"}
+  ]
 
   require Logger
 
@@ -32,13 +38,16 @@ defmodule Streamix.Iptv.Sync.Cleanup do
        doesn't grow unbounded.
 
   Pass a provider ID to scope the sweep to that provider. The optional
-  `:limit` bounds how many catalog items are cleaned in this invocation.
+  `:limit` bounds how many catalog items are cleaned in this invocation, and
+  `:after_id` restricts the sweep to `catalog_items.id > after_id` for keyset
+  pagination.
 
   Each chunk runs in its own transaction. Completed chunks stay committed if
   a later chunk fails, making retries cheap and idempotent.
   """
   def cleanup_orphaned_user_data(provider_id \\ nil, opts \\ []) do
     limit = cleanup_limit!(opts)
+    after_id = cleanup_after_id!(opts)
 
     Logger.info(
       "Cleaning up orphaned watch-party rooms and catalog_items" <>
@@ -46,7 +55,7 @@ defmodule Streamix.Iptv.Sync.Cleanup do
     )
 
     provider_id
-    |> find_orphaned_catalog_item_ids(limit)
+    |> find_orphaned_catalog_item_ids(limit: limit, after_id: after_id)
     |> do_cleanup()
   end
 
@@ -117,39 +126,62 @@ defmodule Streamix.Iptv.Sync.Cleanup do
     )
   end
 
-  # A catalog item can belong to exactly one content table. CASE is important:
-  # PostgreSQL evaluates only the matching branch, so each row performs one
-  # indexed existence check instead of probing all four content tables.
-  defp find_orphaned_catalog_item_ids(provider_id, limit) do
-    CatalogItem
-    |> where(
-      [ci],
-      fragment(
-        """
-        CASE ?
-          WHEN 'live_channel' THEN
-            NOT EXISTS (SELECT 1 FROM live_channels lc WHERE lc.catalog_item_id = ?)
-          WHEN 'movie' THEN
-            NOT EXISTS (SELECT 1 FROM movies m WHERE m.catalog_item_id = ?)
-          WHEN 'series' THEN
-            NOT EXISTS (SELECT 1 FROM series s WHERE s.catalog_item_id = ?)
-          WHEN 'episode' THEN
-            NOT EXISTS (SELECT 1 FROM episodes e WHERE e.catalog_item_id = ?)
-          ELSE TRUE
-        END
-        """,
-        ci.content_type,
-        ci.id,
-        ci.id,
-        ci.id,
-        ci.id
-      )
+  # Decomposing by `content_type` lets PostgreSQL plan each branch as an
+  # Anti Join (`Merge Anti Join` / `Nested Loop Anti Join`) against its single
+  # content table's `catalog_item_id` index instead of evaluating four
+  # correlated `SubPlan`s inside a `CASE` expression.
+  @doc false
+  @spec find_orphaned_catalog_item_ids(integer() | nil, pos_integer() | keyword() | nil) :: [
+          integer()
+        ]
+  def find_orphaned_catalog_item_ids(provider_id \\ nil, limit_or_opts \\ nil) do
+    provider_id
+    |> orphaned_catalog_item_ids_query(limit_or_opts)
+    |> Repo.all(timeout: @query_timeout)
+  end
+
+  @doc false
+  @spec orphaned_catalog_item_ids_query(integer() | nil, pos_integer() | keyword() | nil) ::
+          Ecto.Query.t()
+  def orphaned_catalog_item_ids_query(provider_id \\ nil, limit_or_opts \\ nil) do
+    {limit, after_id} = normalize_query_opts!(limit_or_opts)
+
+    [first | rest] =
+      Enum.map(@content_type_tables, fn {content_type, table} ->
+        orphaned_type_query(content_type, table, provider_id, after_id, limit)
+      end)
+
+    base = from(branch in subquery(first), select: %{id: branch.id})
+
+    unioned =
+      Enum.reduce(rest, base, fn branch_query, acc ->
+        union_all(acc, ^branch_query)
+      end)
+
+    from(orphan in subquery(unioned),
+      order_by: [asc: orphan.id],
+      select: orphan.id
+    )
+    |> maybe_limit(limit)
+  end
+
+  defp orphaned_type_query(content_type, table, provider_id, after_id, limit) do
+    from(ci in CatalogItem,
+      as: :catalog_item,
+      where: ci.content_type == ^content_type,
+      where:
+        not exists(
+          from(content in table,
+            where: content.catalog_item_id == parent_as(:catalog_item).id,
+            select: 1
+          )
+        ),
+      order_by: [asc: ci.id],
+      select: %{id: ci.id}
     )
     |> maybe_scope_provider(provider_id)
-    |> order_by([ci], asc: ci.id)
+    |> maybe_after_id(after_id)
     |> maybe_limit(limit)
-    |> select([ci], ci.id)
-    |> Repo.all(timeout: @query_timeout)
   end
 
   defp maybe_scope_provider(query, nil), do: query
@@ -157,8 +189,24 @@ defmodule Streamix.Iptv.Sync.Cleanup do
   defp maybe_scope_provider(query, provider_id),
     do: where(query, [ci], ci.provider_id == ^provider_id)
 
+  defp maybe_after_id(query, nil), do: query
+  defp maybe_after_id(query, after_id), do: where(query, [ci], ci.id > ^after_id)
+
   defp maybe_limit(query, nil), do: query
   defp maybe_limit(query, limit), do: limit(query, ^limit)
+
+  defp normalize_query_opts!(nil), do: {nil, nil}
+
+  defp normalize_query_opts!(limit) when is_integer(limit) and limit > 0,
+    do: {limit, nil}
+
+  defp normalize_query_opts!(opts) when is_list(opts),
+    do: {cleanup_limit!(opts), cleanup_after_id!(opts)}
+
+  defp normalize_query_opts!(invalid) do
+    raise ArgumentError,
+          "expected limit or keyword options, got: #{inspect(invalid)}"
+  end
 
   defp cleanup_limit!(opts) do
     case Keyword.get(opts, :limit) do
@@ -170,6 +218,20 @@ defmodule Streamix.Iptv.Sync.Cleanup do
 
       invalid ->
         raise ArgumentError, "expected :limit to be a positive integer, got: #{inspect(invalid)}"
+    end
+  end
+
+  defp cleanup_after_id!(opts) do
+    case Keyword.get(opts, :after_id) do
+      nil ->
+        nil
+
+      after_id when is_integer(after_id) and after_id >= 0 ->
+        after_id
+
+      invalid ->
+        raise ArgumentError,
+              "expected :after_id to be a non-negative integer, got: #{inspect(invalid)}"
     end
   end
 

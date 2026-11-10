@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readSource as readFile } from "./support/player_hook_source.js";
 
 async function source(relativePath) {
   return readFile(new URL(relativePath, import.meta.url), "utf8");

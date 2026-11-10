@@ -4,6 +4,7 @@ defmodule Streamix.Iptv.TmdbClient.Transport do
   alias Streamix.Gindex
   alias Streamix.Iptv.TmdbClient.Config
   alias Streamix.Iptv.TmdbTokenPool
+  alias Streamix.PublicUrls
 
   @base_url "https://api.themoviedb.org/3"
   @timeout :timer.seconds(10)
@@ -143,6 +144,6 @@ defmodule Streamix.Iptv.TmdbClient.Transport do
     do: Req.Response.get_retry_after(response) || @initial_backoff
 
   defp image_base_url do
-    "#{Application.get_env(:streamix, :tmdb_proxy_url, "https://tmdb.mahina.fun")}/t/p"
+    "#{PublicUrls.tmdb_proxy()}/t/p"
   end
 end

@@ -1,5 +1,9 @@
+import { createLogger } from "../core/logger.js";
+
+const log = createLogger("lifecycle_scope");
+
 const reportDisposeError = (error) => {
-  console.error("[VideoPlayer] Lifecycle cleanup failed:", error);
+  log.error("[VideoPlayer] Lifecycle cleanup failed:", error);
 };
 
 export class LifecycleScope {

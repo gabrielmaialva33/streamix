@@ -20,22 +20,29 @@ defmodule StreamixWeb.PlayerLive do
 
   require Logger
 
-  alias Streamix.{Access, Accounts, Billing, Library}
+  alias Streamix.{Access, Billing, Library, Playback}
   import StreamixWeb.PlayerComponents
   import StreamixWeb.PlayerHelpers
 
+  alias Streamix.Catalog
+  alias Streamix.SafeLog
   alias Streamix.Torrent
+  alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.PlayerComponents.Metadata
-  alias StreamixWeb.PlayerLifecycleTelemetry
+  alias StreamixWeb.PlayerEvents
   alias StreamixWeb.PlayerSourceFailover
+  alias StreamixWeb.ReturnPath
+  alias StreamixWeb.Telemetry.PlayerLifecycle
 
   @torrent_peer_target 30
   @token_refresh_min_interval_ms 5_000
 
   @impl true
   def mount(%{"type" => type, "id" => id} = params, _session, socket) do
+    socket = PlayerEvents.attach(socket)
+
     user_id = socket.assigns.current_scope.user.id
-    return_to = safe_return_path(params["return_to"])
+    return_to = ReturnPath.safe(params["return_to"])
 
     case load_content_preflight(type, id, user_id) do
       {:ok, content, provider} ->
@@ -74,10 +81,6 @@ defmodule StreamixWeb.PlayerLive do
     Billing.touch_playback_session(socket.assigns[:playback_session])
 
     {:noreply, assign(socket, current_time: current_time, duration: duration)}
-  end
-
-  def handle_event("streaming_mode_changed", %{"mode" => mode}, socket) do
-    {:noreply, assign(socket, streaming_mode: safe_streaming_mode(mode))}
   end
 
   def handle_event(
@@ -128,7 +131,7 @@ defmodule StreamixWeb.PlayerLive do
   # other player event already goes through this normalizer — it bounds the
   # text and matches the engine against a known list.
   def handle_event("player_error", params, socket) do
-    normalized = PlayerLifecycleTelemetry.normalize(params)
+    normalized = PlayerLifecycle.normalize(params)
 
     :telemetry.execute(
       [:streamix, :player, :error],
@@ -246,11 +249,6 @@ defmodule StreamixWeb.PlayerLive do
     {:noreply, socket}
   end
 
-  def handle_event("player_lifecycle", params, socket) do
-    PlayerLifecycleTelemetry.observe(params)
-    {:noreply, socket}
-  end
-
   def handle_event("codec_abr_suggestion", _params, socket) do
     {:noreply, socket}
   end
@@ -277,37 +275,6 @@ defmodule StreamixWeb.PlayerLive do
     Billing.touch_playback_session(socket.assigns[:playback_session])
 
     {:noreply, socket}
-  end
-
-  def handle_event("set_quality", %{"level" => level}, socket) do
-    {:noreply, push_event(socket, "set_quality", %{level: level})}
-  end
-
-  def handle_event("set_audio_track", %{"track" => track}, socket) do
-    {:noreply, push_event(socket, "set_audio_track", %{track: track})}
-  end
-
-  def handle_event("set_subtitle_track", %{"track" => track}, socket) do
-    {:noreply, push_event(socket, "set_subtitle_track", %{track: track})}
-  end
-
-  def handle_event("adjust_subtitle_offset", %{"delta" => delta}, socket) do
-    case Integer.parse(delta) do
-      {delta, ""} ->
-        user = socket.assigns.current_scope.user
-        update_subtitle_offset(socket, user.subtitle_offset_ms + delta)
-
-      _ ->
-        {:noreply, put_flash(socket, :error, "Ajuste de legenda inválido")}
-    end
-  end
-
-  def handle_event("reset_subtitle_offset", _params, socket) do
-    update_subtitle_offset(socket, 0)
-  end
-
-  def handle_event("toggle_pip", _, socket) do
-    {:noreply, push_event(socket, "toggle_pip", %{})}
   end
 
   def handle_event("close_player", _, socket) do
@@ -342,6 +309,108 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   def handle_event("avplayer_preference_changed", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_async(:resolve_source, {:ok, {stream_url, state}}, socket)
+      when state in [:failed, :slow] do
+    # `:failed`: the probe found nothing this server can reach or hand out,
+    # so the token proxy would only answer errors until the browser gave up
+    # and asked for another source. `:slow`: it has not decided within the
+    # budget. Either way, ask for another source now, before the player
+    # exists.
+    case next_source(socket) do
+      {:ok, source, attempted_ids} ->
+        :telemetry.execute(
+          [:streamix, :player, :source_failover],
+          %{count: 1},
+          %{
+            status: :selected,
+            from_content_id: socket.assigns.content.id,
+            to_content_id: source.content.id,
+            provider_id: source.provider.id,
+            reason: if(state == :slow, do: :probe_slow, else: :probe_failed)
+          }
+        )
+
+        {:noreply,
+         socket
+         |> assign(
+           content: source.content,
+           provider: source.provider,
+           content_type: safe_content_type(source.content_type),
+           next_episode:
+             load_next_episode(
+               source.content_type,
+               source.content,
+               source.provider,
+               socket.assigns.user_id
+             ),
+           source_failover_attempted_ids: attempted_ids,
+           source_failover_count: socket.assigns.source_failover_count + 1
+         )
+         |> show_resolved_player(source.stream_url)}
+
+      {:error, attempted_ids} ->
+        socket = assign(socket, source_failover_attempted_ids: attempted_ids)
+
+        if state == :slow do
+          # Nothing to fall back on: this provider is the only way to play
+          # the title, so wait for its probe after all.
+          {:noreply,
+           resolve_source_async(
+             socket,
+             Atom.to_string(socket.assigns.content_type),
+             socket.assigns.content,
+             socket.assigns.provider,
+             socket.assigns.user_id,
+             :infinity
+           )}
+        else
+          {:noreply, show_resolved_player(socket, stream_url)}
+        end
+    end
+  end
+
+  def handle_async(:resolve_source, {:ok, {stream_url, _probe_state}}, socket) do
+    {:noreply, show_resolved_player(socket, stream_url)}
+  end
+
+  # The probe has its own deadline, so this is a crash, not a slow source.
+  # The token proxy reports whatever is wrong to the player.
+  def handle_async(:resolve_source, {:exit, reason}, socket) do
+    Logger.warning("[PlayerLive] source resolution failed",
+      reason: SafeLog.redact_inspect(reason)
+    )
+
+    {:ok, stream_url} =
+      resolve_stream_url(
+        Atom.to_string(socket.assigns.content_type),
+        socket.assigns.content,
+        socket.assigns.provider,
+        socket.assigns.user_id,
+        probe: false
+      )
+
+    {:noreply, show_resolved_player(socket, stream_url)}
+  end
+
+  defp next_source(%{assigns: %{source_failover_enabled: true}} = socket) do
+    case PlayerSourceFailover.next(
+           socket.assigns.content_type,
+           socket.assigns.content,
+           socket.assigns.current_scope.user,
+           socket.assigns.source_failover_attempted_ids
+         ) do
+      {:ok, source, attempted_ids} -> {:ok, source, attempted_ids}
+      {:error, :no_sources, attempted_ids} -> {:error, attempted_ids}
+    end
+  end
+
+  defp next_source(socket), do: {:error, socket.assigns.source_failover_attempted_ids}
+
+  defp show_resolved_player(socket, stream_url) do
+    assign(socket, stream_url: stream_url, player_state: :loading)
+  end
 
   @impl true
   def handle_info({:torrent_session_ready, {:ok, %{file_idx: file_idx}}}, socket) do
@@ -382,17 +451,26 @@ defmodule StreamixWeb.PlayerLive do
   def render(assigns) do
     ~H"""
     <div class="fixed inset-0 h-[100dvh] w-[100dvw] overflow-hidden bg-black">
+      <.player_startup_screen
+        :if={@player_state == :resolving_source}
+        content={@content}
+        content_type={@content_type}
+        on_close="close_player"
+      />
       <.video_player
-        :if={@player_state != :torrent_buffering}
+        :if={@player_state not in [:torrent_buffering, :resolving_source]}
         content={@content}
         content_type={@content_type}
         stream_url={@stream_url}
         streaming_mode={@streaming_mode}
         provider_type={@provider.provider_type}
+        provider_id={@provider.id}
         fullscreen={true}
         on_close="close_player"
         show_controls={true}
         next_episode={@next_episode}
+        season_episodes={@season_episodes}
+        synopsis={Map.get(@content, :plot)}
         expected_duration={Map.get(@content, :duration_secs, 0) || 0}
         subtitles_enabled={@current_scope.user.subtitles_enabled}
         subtitle_language={@current_scope.user.subtitle_language}
@@ -414,26 +492,9 @@ defmodule StreamixWeb.PlayerLive do
   # Private Helpers
   # ============================================
 
-  defp update_subtitle_offset(socket, offset_ms) do
-    user = socket.assigns.current_scope.user
-
-    case Accounts.update_user_settings(user, %{subtitle_offset_ms: offset_ms}) do
-      {:ok, updated_user} ->
-        {:noreply,
-         socket
-         |> assign(current_scope: %{socket.assigns.current_scope | user: updated_user})
-         |> push_event("subtitle_offset_changed", %{
-           offset_ms: updated_user.subtitle_offset_ms
-         })}
-
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Não foi possível ajustar a legenda")}
-    end
-  end
-
   defp handle_loaded_content(socket, type, user_id, content, provider, return_to) do
     if Access.plays_global_content?(socket.assigns.current_scope.user, provider) do
-      load_authorized_content(socket, type, user_id, content, provider, return_to)
+      load_available_content(socket, type, user_id, content, provider, return_to)
     else
       target_path = return_to || ~p"/watch/#{type}/#{content.id}"
 
@@ -446,6 +507,45 @@ defmodule StreamixWeb.PlayerLive do
        |> redirect(to: ~p"/plans?return_to=#{target_path}")}
     end
   end
+
+  defp load_available_content(socket, type, user_id, content, provider, return_to) do
+    if Streamix.Playback.content_dead?(type, content) do
+      # Never probe here: the replacement goes through
+      # load_authorized_content/6, which shows the startup screen and probes
+      # off the mount when its provider needs it.
+      case PlayerSourceFailover.next(
+             type,
+             content,
+             socket.assigns.current_scope.user,
+             MapSet.new(),
+             probe: false
+           ) do
+        {:ok, source, _attempted} ->
+          load_authorized_content(
+            socket,
+            source.content_type,
+            user_id,
+            source.content,
+            source.provider,
+            return_to
+          )
+
+        {:error, :no_sources, _attempted} ->
+          {:ok,
+           socket
+           |> put_flash(:error, unavailable_message(type))
+           |> redirect(to: ~p"/")}
+      end
+    else
+      load_authorized_content(socket, type, user_id, content, provider, return_to)
+    end
+  end
+
+  defp unavailable_message("live_channel"),
+    do: "Este canal está fora do ar no momento. Tente outro canal."
+
+  defp unavailable_message(_type),
+    do: "Este vídeo está indisponível no momento. Tente outra versão nos detalhes."
 
   defp load_authorized_content(
          socket,
@@ -505,17 +605,88 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   defp load_authorized_content(socket, type, user_id, content, provider, return_to) do
-    case resolve_stream_url(type, content, provider, user_id) do
-      {:ok, stream_url} ->
-        start_authorized_player(socket, type, user_id, content, provider, stream_url, return_to)
+    # A cached failure goes the same way: the token proxy cannot serve an item
+    # whose probe found nothing usable, so the resolution step moves it to
+    # another provider instead of handing the player a URL that only fails.
+    if probe_state(type, content, provider) in [:pending, :failed] do
+      start_resolving_player(socket, type, user_id, content, provider, return_to)
+    else
+      case resolve_stream_url(type, content, provider, user_id) do
+        {:ok, stream_url} ->
+          start_authorized_player(socket, type, user_id, content, provider, stream_url, return_to)
 
-      {:error, :not_found} ->
-        {:ok,
-         socket
-         |> put_flash(:error, "Conteúdo não encontrado")
-         |> redirect(to: ~p"/")}
+        {:error, :not_found} ->
+          {:ok,
+           socket
+           |> put_flash(:error, "Conteúdo não encontrado")
+           |> redirect(to: ~p"/")}
+      end
     end
   end
+
+  # A provider that probes each item can take as long as its slowest source
+  # to name a URL (measured: 11 s for a MegaEmbed episode). Probing inside
+  # mount kept the page blank, and past ten seconds the LiveView client gave
+  # up on the join, so the first try of a title never played. The page now
+  # renders the player's startup screen at once and the probe runs here,
+  # off the mount.
+  defp start_resolving_player(socket, type, user_id, content, provider, return_to) do
+    with {:ok, socket} <-
+           start_authorized_player(socket, type, user_id, content, provider, nil, return_to) do
+      {:ok,
+       socket
+       |> assign(player_state: :resolving_source)
+       |> resolve_source_async(type, content, provider, user_id)}
+    end
+  end
+
+  defp resolve_source_async(socket, type, content, provider, user_id, budget \\ nil) do
+    if connected?(socket) do
+      budget = budget || probe_budget(socket)
+
+      start_async(socket, :resolve_source, fn ->
+        resolve_within(budget, type, content, provider, user_id)
+      end)
+    else
+      socket
+    end
+  end
+
+  # With another provider of the same title to fall back on, a probe that has
+  # not decided within the budget is not worth waiting for: MegaEmbed took
+  # 10 s to give up, measured in a real browser, while the alternative
+  # played 0.9 s after it was chosen. The probe keeps running inside
+  # DeliveryProbe and caches its answer for the next viewer either way.
+  defp probe_budget(socket) do
+    if socket.assigns.source_failover_enabled,
+      do: Application.get_env(:streamix, :player_probe_budget_ms, 2_500),
+      else: :infinity
+  end
+
+  defp resolve_within(budget, type, content, provider, user_id) do
+    task =
+      Task.Supervisor.async_nolink(Streamix.TaskSupervisor, fn ->
+        resolve_stream_url(type, content, provider, user_id)
+      end)
+
+    case Task.yield(task, budget) || Task.shutdown(task, :brutal_kill) do
+      {:ok, {:ok, stream_url}} -> {stream_url, probe_state(type, content, provider)}
+      {:exit, reason} -> exit(reason)
+      nil -> {nil, :slow}
+    end
+  end
+
+  defp probe_state(type, content, provider) do
+    case delivery_type(type) do
+      nil -> :not_probed
+      delivery_type -> Playback.xtream_probe_state(provider, delivery_type, content)
+    end
+  end
+
+  defp delivery_type("movie"), do: :movie
+  defp delivery_type("episode"), do: :episode
+  defp delivery_type("live_channel"), do: :channel
+  defp delivery_type(_type), do: nil
 
   defp start_authorized_player(socket, type, user_id, content, provider, stream_url, return_to) do
     case reserve_playback_session(socket) do
@@ -552,7 +723,7 @@ defmodule StreamixWeb.PlayerLive do
     # Mount runs twice (static HTTP + WS upgrade). Writing watch history on
     # the static pass duplicated every play into the timeline.
     if connected?(socket), do: record_watch_history(socket, type, content)
-    prepare_connected_player(socket, type, content, user_id)
+    prepare_connected_player(socket, type, content, user_id, provider)
 
     next_episode = load_next_episode(type, content, provider, user_id)
 
@@ -575,6 +746,7 @@ defmodule StreamixWeb.PlayerLive do
       |> assign(subtitle_tracks: [])
       |> assign(user_id: user_id)
       |> assign(next_episode: next_episode)
+      |> assign(season_episodes: load_season_episodes(socket, type, content))
       |> assign(playback_session: playback_session)
       |> assign(return_to: return_to)
       |> assign(
@@ -586,7 +758,37 @@ defmodule StreamixWeb.PlayerLive do
     {:ok, socket}
   end
 
-  defp prepare_connected_player(socket, type, content, user_id) do
+  # The current season, for the in-player episodes panel (Netflix's "Episódios"
+  # button). Each item links to its own watch page and carries the user's
+  # progress.
+  defp load_season_episodes(socket, type, %{season_id: season_id} = content)
+       when type in ["episode", "gindex_episode"] and is_integer(season_id) do
+    episodes = Catalog.list_season_episodes(season_id)
+
+    progress =
+      Library.get_watch_progress_map(
+        socket.assigns.current_scope.library_key,
+        "episode",
+        Enum.map(episodes, & &1.id)
+      )
+
+    Enum.map(episodes, fn episode ->
+      %{
+        id: episode.id,
+        number: episode.episode_num,
+        title: DisplayTitle.episode(episode.title || "Episódio #{episode.episode_num}"),
+        plot: episode.plot,
+        image: episode.still_path || episode.cover,
+        path: ~p"/watch/#{type}/#{episode.id}",
+        progress: Map.get(progress, episode.id, 0.0),
+        current: episode.id == content.id
+      }
+    end)
+  end
+
+  defp load_season_episodes(_socket, _type, _content), do: []
+
+  defp prepare_connected_player(socket, type, content, user_id, provider) do
     if connected?(socket) do
       topic = "user:#{user_id}:progress"
       # Defensive idempotent subscribe: unsubscribe first so a re-mount on
@@ -594,7 +796,7 @@ defmodule StreamixWeb.PlayerLive do
       # stack subscriptions and trigger duplicate handle_info callbacks.
       Phoenix.PubSub.unsubscribe(Streamix.PubSub, topic)
       Phoenix.PubSub.subscribe(Streamix.PubSub, topic)
-      prewarm_upstream_redirect(type, content, user_id)
+      prewarm_upstream_redirect(type, content, user_id, provider && provider.id)
     end
   end
 
@@ -624,6 +826,7 @@ defmodule StreamixWeb.PlayerLive do
       |> assign(subtitle_tracks: [])
       |> assign(user_id: user_id)
       |> assign(next_episode: nil)
+      |> assign(season_episodes: [])
       |> assign(playback_session: playback_session)
       |> assign(return_to: return_to)
       |> assign(torrent_info_hash: info_hash)
@@ -754,14 +957,6 @@ defmodule StreamixWeb.PlayerLive do
     end
   end
 
-  defp safe_return_path(path) when is_binary(path) do
-    if String.starts_with?(path, "/") and not String.starts_with?(path, "//") do
-      path
-    end
-  end
-
-  defp safe_return_path(_), do: nil
-
   defp find_quality_label(qualities, level) when is_list(qualities) do
     case Enum.find(qualities, fn q -> q["index"] == level end) do
       %{"label" => label} -> label
@@ -778,12 +973,6 @@ defmodule StreamixWeb.PlayerLive do
   defp safe_content_type("gindex_episode"), do: :gindex_episode
   defp safe_content_type("torrent"), do: :torrent
   defp safe_content_type(_), do: :live_channel
-
-  defp safe_streaming_mode("low_latency"), do: :low_latency
-  defp safe_streaming_mode("balanced"), do: :balanced
-  defp safe_streaming_mode("quality"), do: :quality
-  defp safe_streaming_mode("adaptive"), do: :adaptive
-  defp safe_streaming_mode(_), do: :balanced
 
   defp normalize_failover_position(value) when is_integer(value) and value >= 0, do: value * 1.0
 

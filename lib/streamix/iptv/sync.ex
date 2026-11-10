@@ -18,6 +18,7 @@ defmodule Streamix.Iptv.Sync do
   alias Streamix.Iptv.Provider
   alias Streamix.Iptv.Sync.{Categories, Cleanup, Live, Movies, Series, Telemetry}
   alias Streamix.Repo
+  alias Streamix.SafeLog
 
   require Logger
 
@@ -144,7 +145,7 @@ defmodule Streamix.Iptv.Sync do
         |> Map.new()
       rescue
         e ->
-          Logger.error("[Sync] Task timeout or crash: #{inspect(e)}")
+          Logger.error("[Sync] Task timeout or crash", reason: SafeLog.redact_inspect(e))
           # Kill remaining tasks and return partial results
           Enum.each(tasks, &Task.shutdown(&1, :brutal_kill))
           %{live: {:error, :timeout}, movies: {:error, :timeout}, series: {:error, :timeout}}
@@ -162,7 +163,7 @@ defmodule Streamix.Iptv.Sync do
       {:error, {:exception, Exception.message(e)}}
   catch
     :exit, reason ->
-      Logger.error("[Sync] Process exit: #{inspect(reason)}")
+      Logger.error("[Sync] Process exit", reason: SafeLog.redact_inspect(reason))
       {:error, {:exit, reason}}
   end
 

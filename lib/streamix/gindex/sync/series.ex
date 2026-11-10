@@ -6,6 +6,7 @@ defmodule Streamix.Gindex.Sync.Series do
   alias Streamix.Gindex.Scraper
   alias Streamix.Gindex.Sync.FolderBatch
   alias Streamix.Gindex.Sync.Persistence
+  alias Streamix.SafeLog
 
   require Logger
 
@@ -33,13 +34,19 @@ defmodule Streamix.Gindex.Sync.Series do
           {:cont, {:ok, merge_stats(totals, stats)}}
 
         {:error, reason} ->
-          Logger.warning("[GIndex Sync] Failed to scrape series: #{inspect(reason)}")
+          Logger.warning("[GIndex Sync] Failed to scrape series",
+            reason: SafeLog.redact_inspect(reason)
+          )
+
           {:halt, {:error, reason}}
       end
     end)
   rescue
     error ->
-      Logger.error("[GIndex Sync] Error during series sync: #{inspect(error)}")
+      Logger.error("[GIndex Sync] Error during series sync",
+        reason: SafeLog.redact_inspect(error)
+      )
+
       {:error, error}
   end
 
@@ -64,7 +71,10 @@ defmodule Streamix.Gindex.Sync.Series do
     end)
   rescue
     error ->
-      Logger.error("[GIndex Sync] Failed to upsert series batch: #{inspect(error)}")
+      Logger.error("[GIndex Sync] Failed to upsert series batch",
+        reason: SafeLog.redact_inspect(error)
+      )
+
       {:error, error}
   end
 

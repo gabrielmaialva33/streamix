@@ -9,6 +9,7 @@ defmodule Streamix.Queue.Publisher do
   require Logger
 
   alias Streamix.Queue.{Connection, SyncTask}
+  alias Streamix.SafeLog
 
   @exchange "streamix.sync"
   @priorities [:high, :normal, :low]
@@ -223,7 +224,7 @@ defmodule Streamix.Queue.Publisher do
             {:ok, task_id}
 
           error ->
-            Logger.error("[Publisher] Failed to publish: #{inspect(error)}")
+            Logger.error("[Publisher] Failed to publish", reason: SafeLog.redact_inspect(error))
             error
         end
     end

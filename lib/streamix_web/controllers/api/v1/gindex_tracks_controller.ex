@@ -14,6 +14,26 @@ defmodule StreamixWeb.Api.V1.GindexTracksController do
 
   use StreamixWeb, :controller
 
+  use OpenApiSpex.ControllerSpecs
+
+  action_fallback StreamixWeb.Api.V1.FallbackController
+
+  alias StreamixWeb.Api.V1.{Operations, Schemas}
+
+  operation :show,
+            Operations.build(
+              "tracks.show",
+              "Get cached GIndex media tracks",
+              "MediaTracksResponse",
+              parameters: [Operations.path(:type), Operations.path(:id, :integer)],
+              security: [],
+              errors: [:not_found],
+              responses: [
+                accepted:
+                  {"Probe in progress", "application/json", Schemas.ref("MediaProbingResponse")}
+              ]
+            )
+
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
   alias Streamix.Gindex

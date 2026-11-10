@@ -121,7 +121,8 @@ defmodule Streamix.Iptv.Streaming.StreamErrors do
   Maps a raw resolve error tuple into one of the canonical stream error codes.
   """
   @spec code_from_reason(term()) :: code()
-  def code_from_reason({:unexpected_status, 404}), do: :upstream_not_found
+  def code_from_reason({:unexpected_status, status}) when status in [404, 410],
+    do: :upstream_not_found
 
   def code_from_reason({:quota_exhausted, count}) when is_integer(count),
     do: :provider_capacity_exhausted
@@ -140,7 +141,7 @@ defmodule Streamix.Iptv.Streaming.StreamErrors do
   # not playable from this host, so it reads as an unavailable provider.
   def code_from_reason({:not_media, _content_type}), do: :upstream_unavailable
 
-  def code_from_reason({:http_error, 404}), do: :upstream_not_found
+  def code_from_reason({:http_error, status}) when status in [404, 410], do: :upstream_not_found
 
   def code_from_reason({:http_error, status}) when status in 500..599,
     do: :upstream_unavailable

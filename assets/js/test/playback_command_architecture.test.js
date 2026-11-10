@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
+import { readSourceSync as readFileSync } from "./support/player_hook_source.js";
 
 const hookSource = readFileSync(new URL("../hooks/video_player.js", import.meta.url), "utf8");
 const controllerSource = readFileSync(
@@ -17,11 +17,11 @@ test("VideoPlayer composes one transport-command controller", () => {
 
   assert.match(
     hookSource,
-    /import \{ createPlaybackCommandController \} from "\.\.\/player\/playback_command_controller";/,
+    /import \{ createPlaybackCommandController \} from "(?:\.\.\/player|\.)\/playback_command_controller\.js";/,
   );
   assert.ok(
     normalized.includes(
-      "this.initUI(); this.initPlaybackCommandController(); this.initPlaybackBrowserIntegration(); this.updateVolumeUI();",
+      "this.initUI(); this.initStartupPresentation(); this.initPlaybackCommandController(); this.initPlaybackBrowserIntegration(); this.updateVolumeUI();",
     ),
   );
   assert.match(

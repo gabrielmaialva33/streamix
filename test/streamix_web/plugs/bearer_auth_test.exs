@@ -7,7 +7,7 @@ defmodule StreamixWeb.Plugs.BearerAuthTest do
   alias StreamixWeb.Plugs.BearerAuth
 
   describe "call/2 with a valid token" do
-    test "assigns :current_user and the unlocked library key" do
+    test "assigns :current_scope when the Bearer header is correct" do
       user = user_fixture()
       encoded = user |> api_token_fixture() |> String.trim_trailing("=")
 
@@ -17,7 +17,9 @@ defmodule StreamixWeb.Plugs.BearerAuthTest do
         |> BearerAuth.call([])
 
       refute conn.halted
-      assert conn.assigns.current_user.id == user.id
+      assert %Streamix.Accounts.Scope{user: %{id: id}} = conn.assigns.current_scope
+      assert id == user.id
+      refute Map.has_key?(conn.assigns, :current_user)
       assert conn.assigns.current_library_key == library_key_fixture(user)
     end
 
@@ -31,7 +33,9 @@ defmodule StreamixWeb.Plugs.BearerAuthTest do
         |> BearerAuth.call([])
 
       refute conn.halted
-      assert conn.assigns.current_user.id == user.id
+      assert %Streamix.Accounts.Scope{user: %{id: id}} = conn.assigns.current_scope
+      assert id == user.id
+      refute Map.has_key?(conn.assigns, :current_user)
     end
 
     test "tolerates lowercase scheme separator" do
@@ -44,7 +48,9 @@ defmodule StreamixWeb.Plugs.BearerAuthTest do
         |> BearerAuth.call([])
 
       refute conn.halted
-      assert conn.assigns.current_user.id == user.id
+      assert %Streamix.Accounts.Scope{user: %{id: id}} = conn.assigns.current_scope
+      assert id == user.id
+      refute Map.has_key?(conn.assigns, :current_user)
     end
   end
 
@@ -120,7 +126,7 @@ defmodule StreamixWeb.Plugs.BearerAuthTest do
         |> BearerAuth.call(optional: true)
 
       refute conn.halted
-      assert conn.assigns[:current_user] == nil
+      assert conn.assigns[:current_scope] == nil
     end
 
     test "still authenticates a valid Bearer header" do
@@ -133,7 +139,9 @@ defmodule StreamixWeb.Plugs.BearerAuthTest do
         |> BearerAuth.call(optional: true)
 
       refute conn.halted
-      assert conn.assigns.current_user.id == user.id
+      assert %Streamix.Accounts.Scope{user: %{id: id}} = conn.assigns.current_scope
+      assert id == user.id
+      refute Map.has_key?(conn.assigns, :current_user)
     end
   end
 end

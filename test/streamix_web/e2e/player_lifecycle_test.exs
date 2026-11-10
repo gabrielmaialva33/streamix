@@ -46,7 +46,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
     %{media_origin: "http://127.0.0.1:#{port}"}
   end
 
-  test "resumes VOD before play and enables native controls on iOS WebKit", %{
+  test "resumes VOD before play and keeps the gesture chrome on iOS WebKit", %{
     conn: session,
     media_origin: media_origin
   } do
@@ -389,10 +389,12 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
             !state.autoplay &&
             state.preload === "metadata" &&
             !state.pictureInPictureDisabled &&
-            state.nativeControls &&
+            // An iPhone gets the same gesture chrome as every other device
+            // (double tap to seek, pinch to fill), not Safari's inline controls.
+            !state.nativeControls &&
             state.lifecycleLogs === "false" &&
-            state.nativeTouchControls &&
-            state.bottomControlsHidden &&
+            !state.nativeTouchControls &&
+            !state.bottomControlsHidden &&
             state.videoCount === 1 &&
             state.avChildren === 0
           ) {

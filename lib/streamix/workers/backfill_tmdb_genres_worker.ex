@@ -24,6 +24,7 @@ defmodule Streamix.Workers.BackfillTmdbGenresWorker do
   alias Streamix.Catalog
   alias Streamix.Iptv.{Movie, Series, TmdbClient}
   alias Streamix.Repo
+  alias Streamix.SafeLog
 
   require Logger
 
@@ -83,7 +84,7 @@ defmodule Streamix.Workers.BackfillTmdbGenresWorker do
   end
 
   defp skip(kind, id, reason) do
-    Logger.warning("[TMDB Genres] #{kind} #{id} skipped: #{inspect(reason)}")
+    Logger.warning("[TMDB Genres] #{kind} #{id} skipped", reason: SafeLog.redact_inspect(reason))
     :ok
   end
 

@@ -25,7 +25,7 @@ defmodule Streamix.WatchPartyTest do
     loaded_room = WatchParty.get_room_by_invite_with_content(room.invite_code)
 
     assert loaded_room.catalog_item.id == movie.catalog_item_id
-    assert Streamix.Iptv.catalog_item_content_name(loaded_room.catalog_item) == movie.name
+    assert Streamix.Catalog.catalog_item_content_name(loaded_room.catalog_item) == movie.name
   end
 
   test "room creation is idempotent for the same host and content" do

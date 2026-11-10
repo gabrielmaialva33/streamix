@@ -127,7 +127,7 @@ export class NextEpisodeController {
     if (!this.episode?.stream_url || this.preloader || this.destroyed) return;
 
     const url = this.episode.stream_url;
-    this.log.debug("[VideoPlayer] Pre-loading next episode:", url);
+    this.log.debug("[VideoPlayer] Pre-loading next episode");
     this.addPreconnect(url);
 
     if (this.streamType(url, this.episode.type) !== "hls" || !this.hlsSupported()) return;

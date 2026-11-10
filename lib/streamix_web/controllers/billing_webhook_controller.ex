@@ -4,6 +4,7 @@ defmodule StreamixWeb.BillingWebhookController do
   require Logger
 
   alias Streamix.Billing
+  alias Streamix.SafeLog
 
   # Stripe retries on timeout, so we have to answer quickly. Anything
   # that takes longer than this is almost certainly a sync reconciliation
@@ -32,9 +33,13 @@ defmodule StreamixWeb.BillingWebhookController do
         |> json(%{error: %{code: "timeout", message: "handler timed out, please retry"}})
 
       {:error, reason} ->
+        Logger.warning("[Billing] Stripe webhook rejected",
+          reason: SafeLog.redact_inspect(reason)
+        )
+
         conn
         |> put_status(:unprocessable_entity)
-        |> json(%{error: %{code: "webhook_rejected", message: inspect(reason)}})
+        |> json(%{error: %{code: "webhook_rejected", message: "Webhook could not be processed"}})
     end
   end
 

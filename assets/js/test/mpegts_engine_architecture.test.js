@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readSource as readFile } from "./support/player_hook_source.js";
 
 const streamLoaderUrl = new URL("../media/stream_loader.js", import.meta.url);
 const videoPlayerUrl = new URL("../hooks/video_player.js", import.meta.url);
@@ -16,7 +16,7 @@ test("StreamLoader creates and owns the MPEG-TS playback engine", async () => {
 
   assert.match(
     loader,
-    /import \{ createMpegtsPlaybackEngine \} from "\.\.\/player\/mpegts_playback_engine\.js";/,
+    /import \{ createMpegtsPlaybackEngine \} from "(?:\.\.\/player|\.)\/mpegts_playback_engine\.js";/,
   );
   assert.match(loader, /this\.mpegtsEngine = null;/);
   assert.match(loader, /const engine = createMpegtsPlaybackEngine\(\{/);

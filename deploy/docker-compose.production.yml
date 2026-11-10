@@ -35,6 +35,9 @@ services:
     networks:
       - shared_network
 
+  # Shared on shared_network with another app's BullMQ queues, which require
+  # the default noeviction policy: do not add maxmemory-policy *-lru here, it
+  # would evict their jobs and locks. Streamix only keeps TTL'd cache in it.
   redis:
     image: ${REDIS_IMAGE:-redis:8.10.2-alpine}
     container_name: streamix-redis
@@ -95,6 +98,13 @@ services:
       - streamix_data:/app/data
     ports:
       - "127.0.0.1:4000:4000"
+    # Every deploy recreates this container, and json-file logs go with it.
+    # journald keeps them across deploys (host retention: 1 GB / 7 days);
+    # read with `journalctl -t streamix` (`docker logs` still works).
+    logging:
+      driver: journald
+      options:
+        tag: streamix
     depends_on:
       postgres:
         condition: service_healthy

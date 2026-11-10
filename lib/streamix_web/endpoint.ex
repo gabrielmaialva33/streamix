@@ -66,7 +66,7 @@ defmodule StreamixWeb.Endpoint do
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],
     json_decoder: Phoenix.json_library(),
-    body_reader: {StreamixWeb.CacheBodyReader, :read_body, []}
+    body_reader: {StreamixWeb.Plugs.CacheBodyReader, :read_body, []}
 
   plug Plug.MethodOverride
   plug StreamixWeb.Plugs.PreserveMethod

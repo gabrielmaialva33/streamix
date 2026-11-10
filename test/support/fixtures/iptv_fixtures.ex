@@ -6,7 +6,6 @@ defmodule Streamix.IptvFixtures do
   import Ecto.Query, only: [from: 2]
   import Streamix.AccountsFixtures, only: [library_key_fixture: 1]
 
-  alias Streamix.Iptv
   alias Streamix.Iptv.{CatalogItem, History, LiveChannel, WatchProgress}
   alias Streamix.Repo
 
@@ -38,7 +37,7 @@ defmodule Streamix.IptvFixtures do
       |> Provider.changeset(attrs)
       |> Repo.insert!()
     else
-      {:ok, provider} = Iptv.create_provider(user.id, attrs)
+      {:ok, provider} = Streamix.Providers.create_provider(user.id, attrs)
       provider
     end
   end
@@ -117,7 +116,7 @@ defmodule Streamix.IptvFixtures do
 
   def favorite_fixture(user, channel) do
     {:ok, favorite} =
-      Iptv.add_favorite(library_key_fixture(user), %{
+      Streamix.Library.add_favorite(library_key_fixture(user), %{
         content_type: "live_channel",
         content_id: channel.id
       })
@@ -127,7 +126,7 @@ defmodule Streamix.IptvFixtures do
 
   def watch_history_fixture(user, channel, duration \\ 0) do
     {:ok, history} =
-      Iptv.add_watch_history(library_key_fixture(user), "live_channel", channel.id, %{
+      Streamix.Library.add_watch_history(library_key_fixture(user), "live_channel", channel.id, %{
         duration_seconds: duration
       })
 
@@ -293,7 +292,7 @@ defmodule Streamix.IptvFixtures do
   """
   def movie_favorite_fixture(user, movie) do
     {:ok, favorite} =
-      Iptv.add_favorite(library_key_fixture(user), %{
+      Streamix.Library.add_favorite(library_key_fixture(user), %{
         content_type: "movie",
         content_id: movie.id
       })
@@ -309,7 +308,7 @@ defmodule Streamix.IptvFixtures do
     progress = Map.get(attrs, :progress_seconds, 0)
 
     {:ok, history} =
-      Iptv.add_watch_history(library_key_fixture(user), "movie", movie.id, %{
+      Streamix.Library.add_watch_history(library_key_fixture(user), "movie", movie.id, %{
         duration_seconds: duration,
         progress_seconds: progress
       })

@@ -645,6 +645,16 @@ defmodule StreamixWeb.PlayerLiveTest do
 
       assert html =~ "S01E01"
       assert html =~ "Bleach [L] - T1:E1"
+
+      # The in-player episodes panel lists the season and marks this one.
+      document = LazyHTML.from_document(html)
+
+      assert [current] =
+               document
+               |> LazyHTML.query("#player-episodes-panel a[aria-current='true']")
+               |> LazyHTML.attribute("href")
+
+      assert current == ~p"/watch/episode/#{episode.id}"
     end
   end
 end

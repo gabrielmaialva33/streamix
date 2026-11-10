@@ -57,6 +57,36 @@ defmodule Streamix.Iptv.Streaming.XtreamDelivery do
   def live_mode(_provider), do: :ts
 
   @doc """
+  Where an item stands with the delivery probe, without probing:
+  `:not_probed` (its provider does not probe, so the route is static),
+  `:pending` (it probes and no decision is cached yet), `:decided` or
+  `:failed` (a cached failure: the token proxy cannot serve it either,
+  because the probe found no source this server can reach or hand out).
+
+  A page uses it to avoid blocking on a probe: `:pending` means minting the
+  URL may take as long as the slowest source.
+  """
+  @spec probe_state(map() | nil, item_type(), map()) ::
+          :not_probed | :pending | :decided | :failed
+  def probe_state(provider, :channel, channel) do
+    case live_mode(provider) do
+      :ts -> :not_probed
+      :probe -> peek_state(DeliveryProbe.peek(provider, :channel, channel))
+    end
+  end
+
+  def probe_state(provider, type, content) do
+    case mode(provider, content) do
+      :probe -> peek_state(DeliveryProbe.peek(provider, type, content))
+      _static -> :not_probed
+    end
+  end
+
+  defp peek_state(:miss), do: :pending
+  defp peek_state({:ok, _decision}), do: :decided
+  defp peek_state({:error, _reason}), do: :failed
+
+  @doc """
   The route a player must be given for `content`: `:hls` (an `.m3u8` gateway
   URL), `{:direct, extension}` (the direct route, suffixed with the
   container the client will receive) or `:proxy` (the token proxy).

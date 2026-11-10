@@ -13,6 +13,8 @@ defmodule StreamixWeb.StreamController do
   require Logger
 
   alias Streamix.Gindex
+  alias Streamix.Providers
+  alias Streamix.PublicUrls
   alias Streamix.SafeLog
   alias StreamixWeb.Plugs.ApiKeyAuth
   alias StreamixWeb.StreamErrors
@@ -151,14 +153,14 @@ defmodule StreamixWeb.StreamController do
 
   defp stream_by_type(%{method: "HEAD"} = conn, url, type, meta) do
     case Application.get_env(:streamix, :stream_proxy_backend, :beam) do
-      :redirect -> resolve_and_redirect_to_proxy(conn, url, meta)
+      :redirect -> resolve_and_redirect_to_proxy(conn, url, type, meta)
       _ -> Streamix.Playback.head_stream(conn, url, stream_options(url, type, meta))
     end
   end
 
   defp stream_by_type(conn, url, type, meta) do
     case Application.get_env(:streamix, :stream_proxy_backend, :beam) do
-      :redirect -> resolve_and_redirect_to_proxy(conn, url, meta)
+      :redirect -> resolve_and_redirect_to_proxy(conn, url, type, meta)
       _ -> pipe_from_beam(conn, url, type, meta)
     end
   end
@@ -191,7 +193,7 @@ defmodule StreamixWeb.StreamController do
   # locks the credentials. No-op (chain = [url]) when there's no provider
   # context — keeps raw-URL tokens working unchanged.
   defp derive_url_chain(url, %{provider_id: provider_id}) when is_integer(provider_id) do
-    case Streamix.Providers.get_provider(provider_id) do
+    case Providers.get_provider(provider_id) do
       nil ->
         [url]
 
@@ -245,7 +247,7 @@ defmodule StreamixWeb.StreamController do
 
   # --- All streaming types: resolve redirects and send to source proxy ---
 
-  defp resolve_and_redirect_to_proxy(conn, url, meta) do
+  defp resolve_and_redirect_to_proxy(conn, url, type, meta) do
     # O nginx em source.mahina.fun já segue cadeia de redirects via Lua,
     # com cache + UA stealth. Quando a URL inicial vem com creds IPTV
     # (/movie/USER/PASS/...) só andamos a chain o suficiente pra trocar
@@ -253,7 +255,10 @@ defmodule StreamixWeb.StreamController do
     # (vauth → vauth → vauth) roda no nginx, sem segurar BEAM. Se a URL
     # já vem limpa, mantém o chase deep antigo (sem regressão).
     case Streamix.Playback.resolve_stream_url_for_proxy(url,
-           provider_id: Map.get(meta, :provider_id)
+           provider_id: Map.get(meta, :provider_id),
+           content_id: Map.get(meta, :content_id),
+           media_type: type,
+           url_chain: derive_url_chain(url, meta)
          ) do
       {:ok, final_url} ->
         # Pick a source proxy from the configured pool. Each request
@@ -326,7 +331,7 @@ defmodule StreamixWeb.StreamController do
         Enum.random(list)
 
       _ ->
-        Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.fun")
+        PublicUrls.stream_proxy()
     end
   end
 

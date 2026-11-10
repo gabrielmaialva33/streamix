@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readSource as readFile } from "./support/player_hook_source.js";
 
 const hookUrl = new URL("../hooks/video_player.js", import.meta.url);
 const transportUrl = new URL("../player/stream_transport.js", import.meta.url);
@@ -40,7 +40,7 @@ test("the player hook composes the transport and no longer constructs or tears d
 
   assert.match(
     hook,
-    /import \{ createStreamTransport \} from "\.\.\/player\/stream_transport\.js";/,
+    /import \{ createStreamTransport \} from "(?:\.\.\/player|\.)\/stream_transport\.js";/,
   );
   assert.match(
     hook,

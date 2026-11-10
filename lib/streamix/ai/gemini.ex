@@ -25,6 +25,8 @@ defmodule Streamix.AI.Gemini do
 
   require Logger
 
+  alias Streamix.SafeLog
+
   @base_url "https://generativelanguage.googleapis.com/v1beta"
   @model "gemini-embedding-001"
   @embedding_dimensions 3072
@@ -151,7 +153,7 @@ defmodule Streamix.AI.Gemini do
         {:error, {:api_error, status, body}}
 
       {:error, reason} ->
-        Logger.error("[Gemini] Request failed: #{inspect(reason)}")
+        Logger.error("[Gemini] Request failed", reason: SafeLog.redact_inspect(reason))
         {:error, {:request_failed, reason}}
     end
   end
@@ -189,7 +191,7 @@ defmodule Streamix.AI.Gemini do
         {:error, {:api_error, status, body}}
 
       {:error, reason} ->
-        Logger.error("[Gemini] Batch request failed: #{inspect(reason)}")
+        Logger.error("[Gemini] Batch request failed", reason: SafeLog.redact_inspect(reason))
         {:error, {:request_failed, reason}}
     end
   end

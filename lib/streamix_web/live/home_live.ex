@@ -5,10 +5,12 @@ defmodule StreamixWeb.HomeLive do
 
   alias StreamixWeb.HomeData, as: Data
   alias StreamixWeb.LiveSessionNavigation
+  alias StreamixWeb.ReturnPath
 
   import StreamixWeb.Home.Authenticated
   import StreamixWeb.Home.Landing
 
+  @impl true
   def mount(_params, _session, socket) do
     Logger.info("[HomeLive] mount connected=#{connected?(socket)}")
 
@@ -23,6 +25,7 @@ defmodule StreamixWeb.HomeLive do
     {:ok, socket}
   end
 
+  @impl true
   def handle_async(task, {:ok, sections}, socket)
       when task in [:home_catalog, :home_personalization, :home_library, :home_annotations] do
     group = task_group(task)
@@ -42,7 +45,7 @@ defmodule StreamixWeb.HomeLive do
     group = task_group(task)
     # Only the kind of failure: the reason of a crashed shelf task can carry
     # the user's taste vector or history entries.
-    Logger.warning("[HomeLive] #{group} load failed: #{failure_kind(reason)}")
+    Logger.warning("[HomeLive] shelf load failed", group: group, reason: failure_kind(reason))
     emit_home_group(group, :error)
 
     {:noreply,
@@ -125,6 +128,7 @@ defmodule StreamixWeb.HomeLive do
   # `/` is the public session while `/home` is authenticated. The classifier
   # keeps signed-in card navigation on the current LiveView socket and falls
   # back to a normal redirect for the public landing.
+  @impl true
   def handle_event("play_movie", %{"id" => id}, socket) do
     {:noreply, navigate_from_home(socket, ~p"/browse/movies/#{id}")}
   end
@@ -162,13 +166,9 @@ defmodule StreamixWeb.HomeLive do
     {:noreply, Data.filter_channels_category(socket, category)}
   end
 
-  defp with_return_to(path, return_to) do
-    path <> "?return_to=" <> URI.encode_www_form(return_to)
-  end
-
   defp navigate_from_home(socket, path) do
     current_path = socket.assigns.current_path
-    LiveSessionNavigation.navigate(socket, current_path, with_return_to(path, current_path))
+    LiveSessionNavigation.navigate(socket, current_path, ReturnPath.append(path, current_path))
   end
 
   defp home_path(%{host_uri: %URI{path: "/home"}}), do: "/home"
@@ -183,6 +183,7 @@ defmodule StreamixWeb.HomeLive do
   defp home_busy?(home_loading),
     do: Enum.any?(home_loading, fn {_group, state} -> state != false end)
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div
@@ -195,9 +196,9 @@ defmodule StreamixWeb.HomeLive do
       aria-busy={to_string(home_busy?(@home_loading))}
     >
       <%= if @current_scope do %>
-        <.render_authenticated_home {assigns} />
+        <.authenticated_home {assigns} />
       <% else %>
-        <.render_landing_page {assigns} />
+        <.landing_page {assigns} />
       <% end %>
     </div>
     """

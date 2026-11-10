@@ -204,7 +204,7 @@ export class MediaEventBindings {
     const onPageTeardown = (event) => {
       this.host.getIosPwaController().handlePageHide(event);
       if (this.host.isIosPwaMode() && event?.persisted) return;
-      this.host.flushPlaybackMetrics("cancelled");
+      this.host.flushPlaybackMetrics("cancelled", undefined, { beacon: true });
       this.host.emergencyStopPlayback();
     };
     this.lifecycle.listen(this.windowRef, "pagehide", onPageTeardown, { capture: true });

@@ -86,4 +86,19 @@ defmodule StreamixWeb.Api.V1.AuthControllerTest do
       assert response["error"]["code"] == "missing_params"
     end
   end
+
+  test "registering an email already in use answers 422, not 500", %{conn: conn} do
+    user_fixture(%{email: "taken@example.com"})
+
+    response =
+      conn
+      |> post(~p"/api/v1/auth/register", %{
+        "email" => "taken@example.com",
+        "password" => "a valid password 123"
+      })
+      |> json_response(422)
+
+    assert response["error"]["code"] == "validation_failed"
+    assert response["error"]["message"] =~ "email"
+  end
 end

@@ -26,6 +26,7 @@ defmodule Streamix.Queue.SyncPipeline do
 
   alias Broadway.Message
   alias Streamix.Queue.{Connection, SyncTask}
+  alias Streamix.SafeLog
 
   @doc """
   Starts the Broadway pipeline.
@@ -102,7 +103,9 @@ defmodule Streamix.Queue.SyncPipeline do
   end
 
   defp log_failure(type, reason, :retry) do
-    Logger.error("[SyncPipeline] Task failed type=#{inspect(type)} reason=#{inspect(reason)}")
+    Logger.error("[SyncPipeline] Task failed type=#{inspect(type)}",
+      reason: SafeLog.redact_inspect(reason)
+    )
   end
 
   defp broadway_name("streamix.sync.high"), do: Streamix.Queue.SyncPipeline.High

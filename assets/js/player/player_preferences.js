@@ -19,12 +19,25 @@ const MAX_POSITIONS = 100; // Max number of positions to store
 // longer applies). Reads with a stale schema are wiped on the next
 // access — much cheaper than asking every user to clear localStorage by
 // hand.
-// Bumped to 3 (2026-05-24): a deploy broke AVPlayer for MP4/xtream and
-// users who'd previously recorded 30+ AVPlayer successes were stuck on
-// `open stream failed, ret: -2` because the cached recommendation kept
-// short-circuiting the native engine. Schema bump wipes every client's
-// memory on next load so engine_selector re-evaluates from scratch.
-const DEVICE_COMPAT_SCHEMA = 3;
+// Version 6 discards recommendations without an absolute expiry. Settings and
+// resume positions are separate from device evidence.
+const DEVICE_COMPAT_SCHEMA = 6;
+const RECOMMENDATION_TTL_MS = 3 * 24 * 60 * 60 * 1000;
+
+export function playerRecommendationKey({ providerId, streamType } = {}) {
+  if (!/^[1-9]\d*$/.test(String(providerId)) || !/^[a-z0-9]{2,12}$/.test(streamType || ""))
+    return null;
+  return `provider:${providerId}:${streamType}`;
+}
+
+function validRecommendationKey(key) {
+  return typeof key === "string" && /^provider:[1-9]\d*:[a-z0-9]{2,12}$/.test(key);
+}
+
+function freshRecommendation(data) {
+  const age = Date.now() - data?.decidedAt;
+  return Number.isFinite(age) && age >= 0 && age < RECOMMENDATION_TTL_MS;
+}
 
 // ============================================
 // Device Fingerprint & Codec Compatibility
@@ -99,6 +112,7 @@ function saveDeviceCompatibility(compat) {
  * next playback attempt falls back to engine_selector defaults.
  */
 export function forgetRecommendedPlayer(contentType) {
+  if (!validRecommendationKey(contentType)) return;
   const compat = getDeviceCompatibility();
   if (compat.players[contentType]) {
     delete compat.players[contentType];
@@ -108,18 +122,25 @@ export function forgetRecommendedPlayer(contentType) {
 }
 
 /**
- * Record which player worked for a specific content type
- * @param {string} contentType - Content type (e.g., 'mkv', 'gindex', 'hls')
+ * Record which player worked for an identified provider/container.
+ * @param {string} contentType - Scoped key returned by playerRecommendationKey
  * @param {string} player - Player that worked ('native', 'avplayer', 'hls', 'mpegts')
  * @param {object} context - Additional context (codecs detected, etc.)
  */
 export function recordPlayerSuccess(contentType, player, context = {}) {
+  if (!validRecommendationKey(contentType)) return;
+  if (player === "avplayer" && context.ttffMs > 15_000) return;
   const compat = getDeviceCompatibility();
+  const previous = compat.players[contentType];
+  const continuing = previous?.recommendedPlayer === player && freshRecommendation(previous);
+  // An in-flight memory-selected play cannot restart expired or explicitly forgotten evidence.
+  if (player === "avplayer" && context.selectionReason === "provider_memory" && !continuing) return;
 
   compat.players[contentType] = {
     recommendedPlayer: player,
     context,
-    successCount: (compat.players[contentType]?.successCount || 0) + 1,
+    decidedAt: continuing ? previous.decidedAt : Date.now(),
+    successCount: (continuing ? previous.successCount || 0 : 0) + 1,
     lastSuccess: Date.now(),
   };
 
@@ -128,19 +149,18 @@ export function recordPlayerSuccess(contentType, player, context = {}) {
 }
 
 /**
- * Get recommended player for a content type based on past experience
- * @param {string} contentType - Content type to check
+ * Get a recent recommendation for an identified provider/container.
+ * @param {string} contentType - Scoped key returned by playerRecommendationKey
  * @returns {string|null} Recommended player or null if no data
  */
 export function getRecommendedPlayer(contentType) {
+  if (!validRecommendationKey(contentType)) return null;
   const compat = getDeviceCompatibility();
   const playerData = compat.players[contentType];
 
   if (!playerData) return null;
 
-  // Only trust recommendations from the last 30 days
-  const thirtyDays = 30 * 24 * 60 * 60 * 1000;
-  if (Date.now() - playerData.lastSuccess > thirtyDays) {
+  if (!freshRecommendation(playerData)) {
     return null;
   }
 
@@ -176,7 +196,7 @@ function getAllPrefs() {
     const stored = localStorage.getItem(STORAGE_KEY);
     return stored ? JSON.parse(stored) : {};
   } catch (e) {
-    console.warn("[PlayerPreferences] Failed to read preferences:", e);
+    log.warn("[PlayerPreferences] Failed to read preferences:", e);
     return {};
   }
 }
@@ -188,7 +208,7 @@ function saveAllPrefs(prefs) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
   } catch (e) {
-    console.warn("[PlayerPreferences] Failed to save preferences:", e);
+    log.warn("[PlayerPreferences] Failed to save preferences:", e);
   }
 }
 
@@ -288,7 +308,7 @@ export function clearAllPreferences() {
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch (e) {
-    console.warn("[PlayerPreferences] Failed to clear preferences:", e);
+    log.warn("[PlayerPreferences] Failed to clear preferences:", e);
   }
 }
 
@@ -304,7 +324,7 @@ function getAllPositions() {
     const stored = localStorage.getItem(POSITION_KEY);
     return stored ? JSON.parse(stored) : {};
   } catch (e) {
-    console.warn("[PlayerPreferences] Failed to read positions:", e);
+    log.warn("[PlayerPreferences] Failed to read positions:", e);
     return {};
   }
 }
@@ -316,7 +336,7 @@ function saveAllPositions(positions) {
   try {
     localStorage.setItem(POSITION_KEY, JSON.stringify(positions));
   } catch (e) {
-    console.warn("[PlayerPreferences] Failed to save positions:", e);
+    log.warn("[PlayerPreferences] Failed to save positions:", e);
   }
 }
 
@@ -397,6 +417,6 @@ export function clearAllPlaybackPositions() {
   try {
     localStorage.removeItem(POSITION_KEY);
   } catch (e) {
-    console.warn("[PlayerPreferences] Failed to clear positions:", e);
+    log.warn("[PlayerPreferences] Failed to clear positions:", e);
   }
 }

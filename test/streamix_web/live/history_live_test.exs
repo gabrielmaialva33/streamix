@@ -20,6 +20,36 @@ defmodule StreamixWeb.HistoryLiveTest do
   describe "mount" do
     setup :register_and_log_in_user
 
+    test "filter URL survives direct entry, patches and returning to an earlier filter", %{
+      conn: conn,
+      user: user
+    } do
+      provider = provider_fixture(user)
+      movie = movie_fixture(provider, %{name: "Filtro Filme", title: "Filtro Filme"})
+      channel = channel_fixture(provider, %{name: "Filtro Canal"})
+      movie_history_fixture(user, movie)
+      watch_history_fixture(user, channel)
+
+      {:ok, view, _html} = live(conn, "/history?type=movie")
+      assert has_element?(view, "#history-list", "Filtro Filme")
+      refute has_element?(view, "#history-list", "Filtro Canal")
+
+      view |> element("#history-filter-live_channel") |> render_click()
+      assert_patch(view, "/history?type=live_channel")
+      assert has_element?(view, "#history-list", "Filtro Canal")
+      refute has_element?(view, "#history-list", "Filtro Filme")
+
+      render_patch(view, "/history?type=movie")
+      assert has_element?(view, "#history-list", "Filtro Filme")
+      refute has_element?(view, "#history-list", "Filtro Canal")
+
+      render_patch(view, "/history?type=invalid")
+      assert has_element?(view, "#history-list", "Filtro Filme")
+      assert has_element?(view, "#history-list", "Filtro Canal")
+      view |> element("#history-filter-all") |> render_click()
+      assert_patch(view, "/history")
+    end
+
     test "renders history page with empty state", %{conn: conn} do
       {:ok, view, html} = live(conn, ~p"/history")
 

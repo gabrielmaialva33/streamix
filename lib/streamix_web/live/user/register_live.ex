@@ -3,6 +3,7 @@ defmodule StreamixWeb.User.RegisterLive do
 
   alias Streamix.Accounts
 
+  @impl true
   def mount(_params, _session, socket) do
     changeset = Accounts.new_user_registration()
 
@@ -16,6 +17,7 @@ defmodule StreamixWeb.User.RegisterLive do
     {:ok, socket, temporary_assigns: [form: nil]}
   end
 
+  @impl true
   def handle_event("validate", %{"user" => user_params}, socket) do
     changeset = Accounts.new_user_registration(user_params) |> Map.put(:action, :validate)
 
@@ -38,6 +40,7 @@ defmodule StreamixWeb.User.RegisterLive do
     assign(socket, form: form, check_errors: changeset.action != nil)
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <%!-- Logo (mobile only — desktop has branded panel) --%>

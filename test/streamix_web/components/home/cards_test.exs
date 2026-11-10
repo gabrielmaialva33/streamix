@@ -4,6 +4,7 @@ defmodule StreamixWeb.Home.CardsTest do
   import Phoenix.LiveViewTest
 
   alias StreamixWeb.Content.CarouselComponents, as: ContentCarousel
+  alias StreamixWeb.Content.FavoriteComponents
   alias StreamixWeb.Home.{Cards, Carousel, Landing}
 
   @blocked_image "https://png.pngtree.com/png-vector/blocked-image.png"
@@ -78,7 +79,7 @@ defmodule StreamixWeb.Home.CardsTest do
 
   test "favorite cards select their fallback before blocked images reach the browser" do
     html =
-      render_component(&Cards.favorite_item/1,
+      render_component(&FavoriteComponents.favorite_item/1,
         favorite: %{
           content_type: "movie",
           content_id: 20,
@@ -125,7 +126,7 @@ defmodule StreamixWeb.Home.CardsTest do
     movie = %{id: 60, name: "Filme", provider_id: 7}
 
     home_html =
-      render_component(&Carousel.render_content_carousel/1,
+      render_component(&Carousel.content_carousel/1,
         type: :movies,
         title: "Filmes",
         items: [movie],
@@ -136,6 +137,18 @@ defmodule StreamixWeb.Home.CardsTest do
       render_component(&ContentCarousel.for_you_section/1,
         recommendations: [movie]
       )
+
+    refute home_html =~ ~s(href="/browse/movies")
+
+    defaults =
+      render_component(&Carousel.content_carousel/1,
+        type: :movies,
+        title: "Filmes",
+        items: [movie]
+      )
+
+    assert defaults =~ ~s(id="carousel-movies-filmes")
+    assert defaults =~ ~s(href="/browse/movies")
 
     assert home_html =~ "media-shelf-track"
     assert home_html =~ "media-shelf-card--poster-home"

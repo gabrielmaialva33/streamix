@@ -6,6 +6,37 @@ defmodule StreamixWeb.Api.V1.HistoryController do
   """
   use StreamixWeb, :controller
 
+  use OpenApiSpex.ControllerSpecs
+
+  action_fallback StreamixWeb.Api.V1.FallbackController
+
+  alias StreamixWeb.Api.V1.Operations
+
+  operation :index,
+            Operations.build("history.index", "List watch history", "HistoryResponse",
+              security: Operations.authenticated(),
+              parameters: [
+                Operations.query(:type),
+                Operations.query(:limit, :integer),
+                Operations.query(:offset, :integer)
+              ]
+            )
+
+  operation :upsert,
+            Operations.build("history.upsert", "Save watch progress", "HistoryEntry",
+              status: :created,
+              body: "HistoryRequest",
+              security: Operations.authenticated(),
+              errors: [:not_found, :unprocessable_entity]
+            )
+
+  operation :delete,
+            Operations.build("history.delete", "Remove watch history", nil,
+              status: :no_content,
+              parameters: [Operations.path(:id, :integer)],
+              security: Operations.authenticated()
+            )
+
   import StreamixWeb.Helpers.Params,
     only: [
       bounded_integer: 4,
@@ -24,7 +55,7 @@ defmodule StreamixWeb.Api.V1.HistoryController do
   Lists user's watch history. Query params: type, limit, offset
   """
   def index(conn, params) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
 
     opts = [
       content_type: params["type"],
@@ -57,7 +88,7 @@ defmodule StreamixWeb.Api.V1.HistoryController do
   Body: { "type": "movie", "content_id": 123, "progress_seconds": 3600, "duration_seconds": 7200, "completed": false }
   """
   def upsert(conn, %{"type" => type, "content_id" => content_id} = params) do
-    user = conn.assigns.current_user
+    user = conn.assigns.current_scope.user
 
     case playable_history_target(user.id, type, content_id) do
       {:ok, content_id} ->
@@ -75,7 +106,7 @@ defmodule StreamixWeb.Api.V1.HistoryController do
         end
 
       {:error, :invalid_content_id} ->
-        invalid_id(conn)
+        {:error, :invalid_id, "Invalid history id"}
 
       {:error, :invalid_content_type} ->
         Response.error(
@@ -105,12 +136,8 @@ defmodule StreamixWeb.Api.V1.HistoryController do
         send_resp(conn, 204, "")
 
       :error ->
-        invalid_id(conn)
+        {:error, :invalid_id, "Invalid history id"}
     end
-  end
-
-  defp invalid_id(conn) do
-    Response.error(conn, :bad_request, "invalid_id", "Invalid history id")
   end
 
   defp progress_attrs(params) do

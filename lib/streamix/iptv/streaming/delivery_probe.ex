@@ -237,12 +237,7 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbe do
   defp probe(provider, type, content) do
     content
     |> candidates()
-    |> Enum.reduce_while([], fn source, failures ->
-      case probe_source(provider, type, content, source) do
-        {:ok, decision} -> {:halt, {:ok, decision}}
-        {:skip, reason} -> {:cont, [reason | failures]}
-      end
-    end)
+    |> hedge(fn source -> probe_source(provider, type, content, source) end)
     |> case do
       {:ok, decision} ->
         {:ok, decision}
@@ -256,6 +251,56 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbe do
 
         {:error, failure_reason(failures)}
     end
+  end
+
+  # Sources are tried in the provider's order, but a slow one no longer holds
+  # the others back: when a source has not answered within `hedge_ms`, the
+  # next starts alongside it, at most `max_parallel_sources` at a time, and
+  # the first usable answer wins. A dead first source used to cost its full
+  # timeout before the second was even asked — on a player page that waits
+  # for this decision, seconds of black screen. A source that fails fast
+  # hands over to the next immediately.
+  #
+  # The attempts are linked to this probe, so the deadline that kills it
+  # kills them too; each releases its HLS lease through the lease monitor.
+  defp hedge(sources, attempt) do
+    hedge(sources, %{}, [], attempt)
+  end
+
+  defp hedge([], running, failures, _attempt) when map_size(running) == 0, do: failures
+
+  defp hedge([source | rest], running, failures, attempt) when map_size(running) == 0 do
+    hedge(rest, start_attempt(running, source, attempt), failures, attempt)
+  end
+
+  defp hedge(pending, running, failures, attempt) do
+    receive do
+      {ref, result} when is_map_key(running, ref) ->
+        Process.demonitor(ref, [:flush])
+        running = Map.delete(running, ref)
+
+        case result do
+          {:ok, decision} ->
+            Enum.each(running, fn {_ref, task} -> Task.shutdown(task, :brutal_kill) end)
+            {:ok, decision}
+
+          {:skip, reason} ->
+            hedge(pending, running, [reason | failures], attempt)
+        end
+    after
+      config(:hedge_ms, 1_200) ->
+        if pending != [] and map_size(running) < config(:max_parallel_sources, 2) do
+          [source | rest] = pending
+          hedge(rest, start_attempt(running, source, attempt), failures, attempt)
+        else
+          hedge(pending, running, failures, attempt)
+        end
+    end
+  end
+
+  defp start_attempt(running, source, attempt) do
+    task = Task.async(fn -> attempt.(source) end)
+    Map.put(running, task.ref, task)
   end
 
   defp candidates(content) do

@@ -22,7 +22,8 @@ defmodule StreamixWeb.StreamToken.Resolver do
   alias Streamix.Access
   alias Streamix.Accounts
   alias Streamix.Gindex
-  alias StreamixWeb.UrlValidator
+  alias Streamix.Providers
+  alias Streamix.Security.UrlValidator
 
   # Token expires in 2 hours (reduced from 24h for security).
   @token_max_age 7_200
@@ -334,7 +335,7 @@ defmodule StreamixWeb.StreamToken.Resolver do
   # ----- URL-token path -----
 
   defp handle_url_token(url, user_id, provider_id, premium_required, bypass_subscription) do
-    case Streamix.Providers.get_provider(provider_id) do
+    case Providers.get_provider(provider_id) do
       nil ->
         {:error, :invalid_token}
 

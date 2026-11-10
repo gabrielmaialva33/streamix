@@ -20,7 +20,7 @@ defmodule Streamix.Gindex.Sync.AnimesTest do
     assert Repo.aggregate(Series, :count) == 1
 
     assert MapSet.member?(
-             Streamix.Iptv.gindex_known_paths(source.provider_id, :animes),
+             Streamix.Providers.gindex_known_paths(source.provider_id, :animes),
              anime.gindex_path
            )
   end

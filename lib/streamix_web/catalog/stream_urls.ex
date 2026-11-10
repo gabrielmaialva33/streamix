@@ -34,6 +34,7 @@ defmodule StreamixWeb.Catalog.StreamUrls do
   forward the `X-API-Key` header.
   """
 
+  alias Streamix.PublicUrls
   alias StreamixWeb.StreamToken
 
   @sign_opts [bypass_subscription: true]
@@ -208,7 +209,7 @@ defmodule StreamixWeb.Catalog.StreamUrls do
   defp browser_token_proxy_url(token), do: edge_url(token_proxy_url(token))
 
   defp edge_url(url) do
-    proxy_base = Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.fun")
+    proxy_base = PublicUrls.stream_proxy()
     "#{String.trim_trailing(proxy_base, "/")}/proxy?url=#{URI.encode_www_form(url)}"
   end
 

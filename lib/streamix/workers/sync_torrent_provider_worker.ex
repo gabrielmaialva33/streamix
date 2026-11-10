@@ -23,6 +23,7 @@ defmodule Streamix.Workers.SyncTorrentProviderWorker do
 
   alias Streamix.Providers
   alias Streamix.Repo
+  alias Streamix.SafeLog
   alias Streamix.Torrent
   alias Streamix.Workers.Torrent.{SyncOrchestratorWorker, SyncSourceWorker}
 
@@ -41,7 +42,10 @@ defmodule Streamix.Workers.SyncTorrentProviderWorker do
           :ok
 
         {:error, reason} = err ->
-          Logger.error("[Torrent Dispatcher] provider ensure failed: #{inspect(reason)}")
+          Logger.error("[Torrent Dispatcher] provider ensure failed",
+            reason: SafeLog.redact_inspect(reason)
+          )
+
           err
       end
     else

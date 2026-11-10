@@ -14,15 +14,18 @@ defmodule StreamixWeb.TorrentLive do
   import StreamixWeb.App.Filters
   import StreamixWeb.CoreComponents, only: [icon: 1, page_header: 1]
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
+  alias Streamix.Catalog
   alias Streamix.Library
   alias Streamix.Torrent
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.Content.HelperComponents
   alias StreamixWeb.Helpers.ImageProxy
+  alias StreamixWeb.ReturnPath
 
   @per_page 48
 
+  @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_scope.user
     user_id = user.id
@@ -47,6 +50,7 @@ defmodule StreamixWeb.TorrentLive do
     {:ok, socket}
   end
 
+  @impl true
   def handle_params(params, _url, socket) do
     search = params["search"] || ""
 
@@ -61,6 +65,7 @@ defmodule StreamixWeb.TorrentLive do
     {:noreply, socket}
   end
 
+  @impl true
   def handle_event("search", %{"search" => search}, socket) do
     path = if search == "", do: ~p"/torrent", else: ~p"/torrent?search=#{search}"
     {:noreply, push_patch(socket, to: path)}
@@ -85,7 +90,7 @@ defmodule StreamixWeb.TorrentLive do
 
     case parse_positive_integer(id) do
       {:ok, movie_id} ->
-        movie = Streamix.Catalog.get_movie!(movie_id)
+        movie = Catalog.get_movie!(movie_id)
 
         case FavoriteState.toggle(library_key, "movie", movie_id, %{
                content_name: movie.title || movie.name,
@@ -103,6 +108,7 @@ defmodule StreamixWeb.TorrentLive do
     end
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="space-y-6">
@@ -259,14 +265,10 @@ defmodule StreamixWeb.TorrentLive do
   # Torrent movies live behind the system torrent provider; the detail
   # page resolves it via the provider route.
   defp detail_path(nil, movie_id),
-    do: with_return_to(~p"/browse/movies/#{movie_id}", ~p"/torrent")
+    do: ReturnPath.append(~p"/browse/movies/#{movie_id}", ~p"/torrent")
 
   defp detail_path(provider_id, movie_id),
-    do: with_return_to(~p"/providers/#{provider_id}/movies/#{movie_id}", ~p"/torrent")
-
-  defp with_return_to(path, return_to) do
-    path <> "?return_to=" <> URI.encode_www_form(return_to)
-  end
+    do: ReturnPath.append(~p"/providers/#{provider_id}/movies/#{movie_id}", ~p"/torrent")
 
   defp load_movies(socket) do
     if socket.assigns.provider do

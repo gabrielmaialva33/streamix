@@ -26,6 +26,8 @@ defmodule StreamixWeb.TorrentStreamController do
   alias Plug.Conn
 
   alias Streamix.Access
+  alias Streamix.Providers
+  alias Streamix.SafeLog
   alias Streamix.Torrent
   # Headers we copy from the rqbit response back to the browser.
   @forwardable_response_headers ~w(content-type content-length content-range accept-ranges)
@@ -65,7 +67,10 @@ defmodule StreamixWeb.TorrentStreamController do
         send_resp(conn, 504, "swarm not ready")
 
       {:error, reason} ->
-        Logger.warning("[TorrentStream] start_or_join failed: #{inspect(reason)}")
+        Logger.warning("[TorrentStream] start_or_join failed",
+          reason: SafeLog.redact_inspect(reason)
+        )
+
         send_resp(conn, 502, "torrent backend unavailable")
     end
   end
@@ -127,7 +132,7 @@ defmodule StreamixWeb.TorrentStreamController do
         chunked_conn
 
       {:error, reason, _acc} ->
-        Logger.warning("[TorrentStream] upstream error: #{inspect(reason)}")
+        Logger.warning("[TorrentStream] upstream error", reason: SafeLog.redact_inspect(reason))
         send_resp(conn, 502, "torrent upstream error")
     end
   end
@@ -205,7 +210,7 @@ defmodule StreamixWeb.TorrentStreamController do
     # TorrentProvider. The Access gate handles admin / subscribed /
     # explicit-permission paths — we just supply the provider so it
     # can recognize this as global content.
-    case Streamix.Providers.get_torrent_provider() do
+    case Providers.get_torrent_provider() do
       nil ->
         :unauthorized
 

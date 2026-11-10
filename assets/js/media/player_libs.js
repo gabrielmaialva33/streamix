@@ -1,3 +1,4 @@
+import { memoizeImport } from "../core/async_primitives.js";
 /**
  * Player Libraries Lazy Loader
  *
@@ -20,29 +21,23 @@ function configureMpegtsLogging(mpegts) {
   logging.enableInfo = false;
 }
 
-/**
- * Lazy-load hls.js. Returns the Hls constructor.
- * Cached after first load.
- */
-export async function getHls() {
-  if (!_Hls) {
-    const mod = await import("hls.js");
-    _Hls = mod.default;
-  }
+const loadHls = memoizeImport(async () => {
+  const mod = await import("hls.js");
+  _Hls = mod.default;
   return _Hls;
-}
-
-/**
- * Lazy-load mpegts.js. Returns the mpegts module.
- * Cached after first load.
- */
-export async function getMpegts() {
-  if (!_mpegts) {
-    const mod = await import("mpegts.js");
-    _mpegts = mod.default;
-    configureMpegtsLogging(_mpegts);
-  }
+});
+const loadMpegts = memoizeImport(async () => {
+  const mod = await import("mpegts.js");
+  configureMpegtsLogging(mod.default);
+  _mpegts = mod.default;
   return _mpegts;
+});
+
+export async function getHls() {
+  return loadHls();
+}
+export async function getMpegts() {
+  return loadMpegts();
 }
 
 /**
@@ -70,13 +65,4 @@ export function isMpegtsSupported() {
   if (!mediaSource) return false;
 
   return typeof mediaSource.isTypeSupported === "function";
-}
-
-/**
- * Pre-load both libraries in parallel (call when navigating to player page).
- * Non-blocking, returns immediately.
- */
-export function preloadPlayerLibs() {
-  getHls().catch(() => {});
-  getMpegts().catch(() => {});
 }

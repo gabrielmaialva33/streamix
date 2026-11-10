@@ -12,8 +12,6 @@ defmodule Streamix.Library do
   Every library operation therefore takes the caller's unlocked
   `Streamix.Library.Key` — `scope.library_key` on the web, the bearer token's
   key on the API — instead of a bare user id. A key carries its user id.
-  `Streamix.Iptv` keeps compatibility delegates while callers migrate to
-  this focused boundary.
   """
 
   alias Streamix.Cache
@@ -206,5 +204,5 @@ defmodule Streamix.Library do
 
   # User-library maintenance
 
-  defdelegate cleanup_orphaned_user_data(provider_id, opts), to: Streamix.Iptv.Sync
+  defdelegate cleanup_orphaned_user_data(provider_id \\ nil, opts \\ []), to: Streamix.Iptv.Sync
 end

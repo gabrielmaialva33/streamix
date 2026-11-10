@@ -75,7 +75,7 @@ defmodule Streamix.Torrent.Reaper do
         :ok
 
       {:error, reason} ->
-        Logger.debug("[Torrent.Reaper] list failed: #{inspect(reason)}")
+        Logger.debug("[Torrent.Reaper] list failed", reason: SafeLog.redact_inspect(reason))
         :error
     end
   end
@@ -98,19 +98,24 @@ defmodule Streamix.Torrent.Reaper do
 
   defp reap_if_still_unregistered(info_hash) do
     if registered?(info_hash) do
-      Logger.debug("[Torrent.Reaper] skipping #{info_hash} — session registered mid-sweep")
+      Logger.debug("[Torrent.Reaper] skipping session registered mid-sweep",
+        content_ref: SafeLog.content_ref(info_hash)
+      )
 
       :ok
     else
-      Logger.info("[Torrent.Reaper] reaping orphaned torrent #{SafeLog.content_ref(info_hash)}")
+      Logger.info("[Torrent.Reaper] reaping orphaned torrent",
+        content_ref: SafeLog.content_ref(info_hash)
+      )
 
       case Client.remove(info_hash) do
         :ok ->
           :ok
 
         {:error, reason} ->
-          Logger.warning(
-            "[Torrent.Reaper] failed to remove #{SafeLog.content_ref(info_hash)}: #{inspect(reason)}"
+          Logger.warning("[Torrent.Reaper] failed to remove content",
+            content_ref: SafeLog.content_ref(info_hash),
+            reason: SafeLog.redact_inspect(reason)
           )
       end
     end

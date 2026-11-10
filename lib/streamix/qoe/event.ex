@@ -10,6 +10,9 @@ defmodule Streamix.Qoe.Event do
     field :kind, :string
     field :event, :string
     field :outcome, :string
+    field :end_reason, :string
+    field :engine_reason, :string
+    field :client_revision, :string
     field :engine, :string
     field :content_type, :string
     field :stream_type, :string

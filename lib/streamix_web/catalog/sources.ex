@@ -19,6 +19,7 @@ defmodule StreamixWeb.Catalog.Sources do
   would sign them.
   """
 
+  alias Streamix.Providers
   alias StreamixWeb.Catalog.Serializer
   alias StreamixWeb.Content.SeriesSources
   alias StreamixWeb.Content.SourceBadges
@@ -59,7 +60,7 @@ defmodule StreamixWeb.Catalog.Sources do
       sources
       |> Enum.map(& &1.provider)
       |> Enum.uniq_by(& &1.id)
-      |> Streamix.Providers.provider_health_statuses()
+      |> Providers.provider_health_statuses()
 
     sources
     |> Enum.with_index()

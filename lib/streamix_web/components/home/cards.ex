@@ -6,26 +6,25 @@ defmodule StreamixWeb.Home.Cards do
   use Phoenix.Component
   use StreamixWeb, :verified_routes
 
-  import StreamixWeb.Content.CardComponents
+  alias StreamixWeb.Content.CardComponents, as: ContentCards
   import StreamixWeb.CoreComponents
   import StreamixWeb.Home.Helpers
 
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Helpers.ImageProxy
 
-  def render_movie_card(assigns) do
-    assigns =
-      assigns
-      |> assign_new(:class, fn -> nil end)
-      |> assign_new(:progress, fn -> nil end)
-      |> assign_new(:is_favorite, fn -> false end)
+  attr :movie, :map, required: true
+  attr :class, :any, default: nil
+  attr :progress, :any, default: nil
+  attr :is_favorite, :boolean, default: false
 
+  def movie_card(assigns) do
     ~H"""
     <div class={[
       "media-shelf-card media-shelf-card--poster media-shelf-card--poster-home",
       @class
     ]}>
-      <.movie_card
+      <ContentCards.movie_card
         movie={@movie}
         is_favorite={@is_favorite}
         progress={@progress}
@@ -37,19 +36,18 @@ defmodule StreamixWeb.Home.Cards do
     """
   end
 
-  def render_series_card(assigns) do
-    assigns =
-      assigns
-      |> assign_new(:class, fn -> nil end)
-      |> assign_new(:progress, fn -> nil end)
-      |> assign_new(:is_favorite, fn -> false end)
+  attr :series, :map, required: true
+  attr :class, :any, default: nil
+  attr :progress, :any, default: nil
+  attr :is_favorite, :boolean, default: false
 
+  def series_card(assigns) do
     ~H"""
     <div class={[
       "media-shelf-card media-shelf-card--poster media-shelf-card--poster-home",
       @class
     ]}>
-      <.series_card
+      <ContentCards.series_card
         series={@series}
         is_favorite={@is_favorite}
         progress={@progress}
@@ -60,10 +58,13 @@ defmodule StreamixWeb.Home.Cards do
     """
   end
 
+  @doc "Home shelf: compact linked TV card without EPG or favorite controls."
+  attr :channel, :map, required: true
+  attr :class, :any, default: nil
+
   def channel_card(assigns) do
     assigns =
       assigns
-      |> assign_new(:class, fn -> nil end)
       |> assign(:image_url, ImageProxy.browser_image(assigns.channel.stream_icon))
 
     ~H"""
@@ -114,10 +115,12 @@ defmodule StreamixWeb.Home.Cards do
     """
   end
 
+  attr :entry, :map, required: true
+  attr :class, :any, default: nil
+
   def history_item(assigns) do
     assigns =
       assigns
-      |> assign_new(:class, fn -> nil end)
       |> assign(:image_url, ImageProxy.browser_image(assigns.entry.content_icon))
 
     ~H"""
@@ -170,53 +173,6 @@ defmodule StreamixWeb.Home.Cards do
           </span>
           <span>{format_relative_time(@entry.watched_at)}</span>
         </p>
-      </div>
-    </.link>
-    """
-  end
-
-  def favorite_item(assigns) do
-    assigns =
-      assigns
-      |> assign_new(:class, fn -> nil end)
-      |> assign(:image_url, ImageProxy.browser_image(assigns.favorite.content_icon))
-
-    ~H"""
-    <.link
-      href={watch_path(@favorite.content_type, @favorite.content_id)}
-      class={[
-        "content-card media-shelf-card media-shelf-card--favorite group overflow-hidden rounded-md bg-surface transition-transform duration-300 hover:-translate-y-1 sm:rounded-lg",
-        @class
-      ]}
-    >
-      <div class="relative flex aspect-[2/3] items-center justify-center bg-surface-hover">
-        <div
-          id={"fav-img-#{@favorite.content_type}-#{@favorite.content_id}"}
-          phx-hook="ImageFallback"
-          class="w-full h-full"
-        >
-          <img
-            :if={@image_url}
-            src={@image_url}
-            alt={@favorite.content_name}
-            class="w-full h-full object-cover"
-            loading="lazy"
-            decoding="async"
-            data-fallback-target
-          />
-          <div
-            data-fallback
-            class={[
-              "w-full h-full flex items-center justify-center text-text-muted",
-              @image_url && "hidden"
-            ]}
-          >
-            <.icon name={content_type_icon(@favorite.content_type)} class="size-6 sm:size-10" />
-          </div>
-        </div>
-        <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hidden sm:flex items-center justify-center">
-          <.icon name="hero-play-solid" class="size-8 text-white/90 drop-shadow-lg" />
-        </div>
       </div>
     </.link>
     """

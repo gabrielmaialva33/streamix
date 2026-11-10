@@ -52,6 +52,7 @@ export class PlaybackCommandController {
     pushEvent,
     emitPlaybackEvent = defaultEmitPlaybackEvent,
     savePlaybackRate = defaultSavePlaybackRate,
+    onSeekStart = () => {},
     onDebug = (...args) => defaultLogger.debug(...args),
     onError = (...args) => defaultLogger.error(...args),
   } = {}) {
@@ -99,6 +100,7 @@ export class PlaybackCommandController {
     this.pushEvent = requiredCallback(pushEvent, "pushEvent");
     this.emitPlaybackEvent = requiredCallback(emitPlaybackEvent, "emitPlaybackEvent");
     this.savePlaybackRate = requiredCallback(savePlaybackRate, "savePlaybackRate");
+    this.onSeekStart = requiredCallback(onSeekStart, "onSeekStart");
     this.onDebug = optionalCallback(onDebug);
     this.onError = optionalCallback(onError);
     this._destroyed = false;
@@ -106,6 +108,15 @@ export class PlaybackCommandController {
 
   get destroyed() {
     return this._destroyed;
+  }
+
+  // Starts playback and never pauses: for buttons that only mean "play"
+  // (autoplay blocked, replay at the end), where a toggle would stop a video
+  // that has meanwhile started on its own.
+  async play({ remote = false } = {}) {
+    if (this._destroyed) return false;
+    if (!this.isPaused()) return true;
+    return this.togglePlayPause({ remote });
   }
 
   async togglePlayPause({ remote = false } = {}) {
@@ -221,9 +232,12 @@ export class PlaybackCommandController {
 
       if (target === null) return undefined;
 
+      const finishSeek = optionalCallback(this.onSeekStart());
+
       Promise.resolve()
         .then(() => engine.seek(target))
         .then(() => this.updateMediaSessionPosition({ force: true }))
+        .finally(finishSeek)
         .catch((error) => {
           this.debug("[VideoPlayer] managed engine seek skipped:", errorMessage(error));
         });
@@ -252,12 +266,14 @@ export class PlaybackCommandController {
 
     const engine = this.getManagedPlaybackEngine();
     if (engine) {
+      const finishSeek = optionalCallback(this.onSeekStart());
       Promise.resolve()
         .then(() => engine.seek(target))
         .then(() => {
           this.emitPlaybackEvent(this.getRoot(), "seeked");
           this.updateMediaSessionPosition({ force: true });
         })
+        .finally(finishSeek)
         .catch((error) => {
           this.debug("[VideoPlayer] managed engine seek skipped:", errorMessage(error));
         });
@@ -275,6 +291,7 @@ export class PlaybackCommandController {
     const target = Number(time);
     if (!video || this.getContentType() === "live" || !Number.isFinite(target)) return false;
 
+    const finishSeek = optionalCallback(this.onSeekStart());
     try {
       this.getNativeBufferingController()?.prepareSeek?.();
       video.currentTime = target;
@@ -282,6 +299,8 @@ export class PlaybackCommandController {
     } catch (error) {
       this.error("[VideoPlayer] native seek failed:", error);
       return false;
+    } finally {
+      finishSeek();
     }
   }
 

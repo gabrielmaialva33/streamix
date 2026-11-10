@@ -8,7 +8,21 @@ defmodule StreamixWeb.Api.V1.TelemetryController do
   """
   use StreamixWeb, :controller
 
+  use OpenApiSpex.ControllerSpecs
+
+  action_fallback StreamixWeb.Api.V1.FallbackController
+
+  alias StreamixWeb.Api.V1.Operations
+
+  operation :ingest,
+            Operations.build("telemetry.ingest", "Ingest playback metrics", "TelemetryResponse",
+              status: :accepted,
+              body: "TelemetryRequest",
+              security: Operations.authenticated()
+            )
+
   alias Streamix.Qoe
+  alias StreamixWeb.Api.V1.Response
 
   plug StreamixWeb.Plugs.BearerAuth
 
@@ -37,9 +51,7 @@ defmodule StreamixWeb.Api.V1.TelemetryController do
     {batch_id, metrics} = normalize_payload(params)
 
     if metrics == [] do
-      conn
-      |> put_status(:bad_request)
-      |> json(%{error: %{code: "invalid_body", message: "Expected telemetry metric payload"}})
+      Response.error(conn, :bad_request, "invalid_body", "Expected telemetry metric payload")
     else
       {:ok, result} = Qoe.ingest(conn.assigns.current_library_key, batch_id, metrics)
 
@@ -50,9 +62,7 @@ defmodule StreamixWeb.Api.V1.TelemetryController do
   end
 
   def ingest(conn, _params) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{error: %{code: "invalid_body", message: "Expected batch_id and metrics array"}})
+    Response.error(conn, :bad_request, "invalid_body", "Expected batch_id and metrics array")
   end
 
   # Auth plug

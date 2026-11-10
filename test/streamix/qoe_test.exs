@@ -5,6 +5,55 @@ defmodule Streamix.QoeTest do
   alias Streamix.Qoe.Event
   alias Streamix.Repo
 
+  test "persists bounded playback reasons and the served client revision, without adding identity" do
+    revision = String.duplicate("a", 40)
+
+    assert {:ok, %{accepted: 1}} =
+             Qoe.record_client_event(nil, %{
+               "batch_id" => Ecto.UUID.generate(),
+               "kind" => "playback",
+               "event" => "playback_session",
+               "outcome" => "error",
+               "end_reason" => "startup_deadline",
+               "engine_reason" => "provider_memory",
+               "client_revision" => revision,
+               "provider_id" => 3,
+               "title" => "Synthetic",
+               "url" => "https://invalid.test/secret"
+             })
+
+    event = Repo.one!(Event)
+    assert Map.get(event, :end_reason) == "startup_deadline"
+    assert Map.get(event, :engine_reason) == "provider_memory"
+    assert Map.get(event, :client_revision) == revision
+    refute Map.has_key?(event, :provider_id)
+    refute Map.has_key?(event, :title)
+    refute Map.has_key?(event, :url)
+  end
+
+  test "invalid and oversized labels or revisions are discarded, and older clients remain accepted" do
+    for metric <- [
+          %{},
+          %{
+            "end_reason" => "https://invalid.test/token",
+            "engine_reason" => "person@example.test",
+            "client_revision" => "https://invalid.test/token"
+          },
+          %{
+            "end_reason" => "startup_deadline" <> String.duplicate("x", 200),
+            "engine_reason" => ["capability"],
+            "client_revision" => String.duplicate("a", 41)
+          }
+        ] do
+      batch = Ecto.UUID.generate()
+      assert {:ok, %{accepted: 1}} = Qoe.ingest(nil, batch, [metric])
+      event = Repo.get_by!(Event, batch_id: batch)
+      assert Map.get(event, :end_reason) == nil
+      assert Map.get(event, :engine_reason) == nil
+      assert Map.get(event, :client_revision) == nil
+    end
+  end
+
   test "bounds client values and drops fields outside the persistence contract" do
     metric = %{
       "kind" => "playback",

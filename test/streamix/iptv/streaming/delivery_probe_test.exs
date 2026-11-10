@@ -120,6 +120,34 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbeTest do
     refute_received {:hop, "GET", @panel, _path, "source=1"}
   end
 
+  test "a source that does not answer does not hold the next one back", context do
+    config = Application.get_env(:streamix, :xtream_delivery)
+    Application.put_env(:streamix, :xtream_delivery, Keyword.put(config, :hedge_ms, 100))
+    movie = %{context.movie | source_ids: [1, 2]}
+
+    record(fn
+      %{query_string: "source=1"} = conn ->
+        # A dead cluster IP: nothing comes back for longer than a viewer waits.
+        receive do
+          :never -> conn
+        after
+          3_000 -> Plug.Conn.send_resp(conn, 504, "")
+        end
+
+      %{host: @panel} = conn ->
+        redirect(conn, "https://#{@redirector}/hls/master")
+
+      conn ->
+        hls(conn)
+    end)
+
+    started = System.monotonic_time(:millisecond)
+
+    assert {:ok, {:hls, root}} = DeliveryProbe.decide(context.provider, :movie, movie)
+    assert String.ends_with?(root, "?source=2")
+    assert System.monotonic_time(:millisecond) - started < 1_500
+  end
+
   test "episodes are probed on the series path", context do
     record(fn
       %{host: @panel} = conn -> redirect(conn, "https://#{@redirector}/hls/master")

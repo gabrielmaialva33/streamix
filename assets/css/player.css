@@ -201,3 +201,186 @@
     }
 }
 
+
+/* ── Netflix-style chrome ─────────────────────────────────────────────
+   The player root (#video-player-container) carries state attributes the
+   VideoPlayer hook sets: data-player-locked, data-player-panel,
+   data-player-fit and data-player-idle-paused. This file only reacts. */
+
+/* Touch-only controls (centre play row, lock, fit) stay off fine pointers. */
+@media (hover: hover) and (pointer: fine) {
+    [data-player-touch-only] {
+        display: none !important;
+    }
+}
+
+/* Auto-hidden touch chrome hides the new controls along with the rest. */
+#player-controls.controls-hidden #player-center-controls,
+#player-controls.controls-hidden #player-lock-btn,
+#player-controls.controls-hidden #player-fit-btn {
+    opacity: 0;
+    pointer-events: none !important;
+}
+
+#player-center-controls {
+    transition: opacity 0.2s ease-in-out;
+}
+
+/* Fit / fill (pinch or the fit button). */
+#video-player-container[data-player-fit="fill"] #video-element {
+    object-fit: cover;
+}
+
+#player-fit-btn .player-fit-fit-icon,
+#video-player-container[data-player-fit="fill"] #player-fit-btn .player-fit-fill-icon {
+    display: none;
+}
+
+#video-player-container[data-player-fit="fill"] #player-fit-btn .player-fit-fit-icon {
+    display: block;
+}
+
+/* Screen lock: only the unlock pill stays. */
+#player-lock-overlay {
+    display: none;
+}
+
+#video-player-container[data-player-locked="true"] #player-lock-overlay {
+    display: flex;
+}
+
+#video-player-container[data-player-locked="true"] #player-controls,
+#video-player-container[data-player-locked="true"] #next-episode-overlay,
+#video-player-container[data-player-locked="true"] #player-episodes-layer,
+#video-player-container[data-player-locked="true"] #resume-toast {
+    display: none !important;
+}
+
+/* Episodes panel. */
+#player-episodes-layer {
+    display: none;
+}
+
+#video-player-container[data-player-panel="episodes"] #player-episodes-layer {
+    display: block;
+}
+
+#video-player-container[data-player-panel="episodes"] #player-episodes-panel {
+    animation: player-panel-in 0.24s ease-out;
+}
+
+@keyframes player-panel-in {
+    from {
+        transform: translateX(2rem);
+        opacity: 0;
+    }
+}
+
+/* Pause screen: after a few idle seconds paused, dim the picture and show
+   what is playing; the controls step aside until the next movement. */
+#player-pause-info {
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.6s ease, visibility 0s linear 0.6s;
+}
+
+#video-player-container[data-player-idle-paused="true"] #player-pause-info {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.6s ease, visibility 0s;
+}
+
+#video-player-container[data-player-idle-paused="true"] #player-controls {
+    opacity: 0 !important;
+}
+
+/* Double-tap seek feedback, created by the hook on each side. */
+.player-seek-feedback {
+    pointer-events: none;
+    position: absolute;
+    top: 50%;
+    z-index: 35;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 7.5rem;
+    height: 7.5rem;
+    margin-top: -3.75rem;
+    border-radius: 9999px;
+    background: rgb(0 0 0 / 0.45);
+    color: #fff;
+    font-size: 1.05rem;
+    font-weight: 700;
+    opacity: 0;
+    transform: scale(0.85);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.player-seek-feedback[data-side="left"] {
+    left: 12%;
+}
+
+.player-seek-feedback[data-side="right"] {
+    right: 12%;
+}
+
+.player-seek-feedback[data-visible="true"] {
+    opacity: 1;
+    transform: scale(1);
+}
+
+/* Startup: the title's picture, blurred, stays up until the first decoded
+   frame (the JS owns the element and its timing); the stage line under the
+   spinner says what is happening in plain words. */
+[data-player-startup-cover] {
+    animation: player-cover-in 0.35s ease-out both;
+}
+
+[data-player-startup-cover][hidden] {
+    display: none;
+}
+
+@keyframes player-cover-in {
+    from {
+        opacity: 0;
+    }
+}
+
+[data-player-stage-text] {
+    max-width: 18rem;
+    padding: 0 1rem;
+    color: rgb(255 255 255 / 0.85);
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    text-align: center;
+    text-shadow: 0 1px 6px rgb(0 0 0 / 0.6);
+}
+
+[data-player-stage-text]:empty {
+    display: none;
+}
+
+#video-player-container[data-player-stage="slow"] [data-player-stage-text],
+#video-player-container[data-player-stage="reconnecting"] [data-player-stage-text] {
+    color: #fff;
+}
+
+@media (min-width: 640px) {
+    [data-player-stage-text] {
+        font-size: 1.05rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #player-pause-info,
+    #player-center-controls,
+    .player-seek-feedback {
+        transition: none;
+    }
+
+    #video-player-container[data-player-panel="episodes"] #player-episodes-panel,
+    [data-player-startup-cover] {
+        animation: none;
+    }
+}

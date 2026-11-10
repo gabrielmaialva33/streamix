@@ -22,6 +22,7 @@ defmodule Streamix.AI.SemanticSearch do
   require Logger
 
   alias Streamix.AI.{Embeddings, Qdrant, ScoreThresholds, SearchHealth}
+  alias Streamix.SafeLog
 
   # The NVIDIA endpoint accepts 64 E5 inputs in one request (also within
   # Gemini's batch API envelope). Sending 10 made a full production backfill
@@ -204,13 +205,16 @@ defmodule Streamix.AI.SemanticSearch do
         {:cont, {:ok, indexed_total}}
 
       {:error, reason} ->
-        Logger.error("[SemanticSearch] Checkpoint persistence failed: #{inspect(reason)}")
+        Logger.error("[SemanticSearch] Checkpoint persistence failed",
+          reason: SafeLog.redact_inspect(reason)
+        )
+
         {:halt, {:error, {:checkpoint_failed, context.collection, count, reason}}}
     end
   end
 
   defp handle_index_batch({:error, reason}, _batch, _batch_number, count, context) do
-    Logger.error("[SemanticSearch] Batch indexing failed: #{inspect(reason)}")
+    Logger.error("[SemanticSearch] Batch indexing failed", reason: SafeLog.redact_inspect(reason))
     {:halt, {:error, {:batch_failed, context.collection, count, reason}}}
   end
 

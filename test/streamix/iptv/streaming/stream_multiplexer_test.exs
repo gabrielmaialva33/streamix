@@ -67,6 +67,46 @@ defmodule Streamix.Iptv.StreamMultiplexerTest do
     send(viewer, :stop)
   end
 
+  test "reconnects a live upstream that drops mid-stream without failing the viewer" do
+    counter = start_supervised!({Agent, fn -> 0 end})
+    port = start_live_server(counter)
+    provider_id = 7_020
+    ProviderRuntime.put_capabilities(provider_id, capabilities(1))
+    stream_key = {:resume_test, System.unique_integer([:positive])}
+    url = "http://127.0.0.1:#{port}/live"
+
+    assert {:ok, subscription} =
+             StreamMultiplexer.subscribe(stream_key, url,
+               provider_id: provider_id,
+               idle_timeout: 0,
+               url_validator: &allow_test_url/1
+             )
+
+    mux_pid = subscription.pid
+    assert_receive {:upstream_ready, first_handler}
+    assert {:ok, 200, _headers, []} = await_ready(subscription)
+
+    StreamMultiplexer.demand(mux_pid)
+    send(first_handler, {:chunk, "one"})
+    assert_receive {:stream_mux, ^mux_pid, {:chunk, "one"}}
+
+    # The provider sheds the connection, the way overloaded panels do.
+    send(first_handler, :drop)
+
+    assert_receive {:upstream_ready, second_handler}, 3_000
+    StreamMultiplexer.demand(mux_pid)
+    send(second_handler, {:chunk, "two"})
+
+    assert_receive {:stream_mux, ^mux_pid, {:chunk, "two"}}
+    refute_received {:stream_mux, ^mux_pid, {:error, _reason}}
+    refute_received {:stream_mux, ^mux_pid, {:ready, _status, _headers, _backlog}}
+    assert Agent.get(counter, & &1) == 2
+    # Still one provider slot, held across the reconnect.
+    assert ProviderRuntime.snapshot(provider_id).capacity.leased_connections == 1
+
+    StreamMultiplexer.unsubscribe(mux_pid)
+  end
+
   test "frees the registry name promptly after the upstream ends cleanly" do
     counter = start_supervised!({Agent, fn -> 0 end})
     port = start_live_server(counter)
@@ -401,6 +441,9 @@ defmodule Streamix.Iptv.StreamMultiplexerTest do
 
         :done ->
           conn
+
+        :drop ->
+          Process.exit(self(), :kill)
       end
     end
   end

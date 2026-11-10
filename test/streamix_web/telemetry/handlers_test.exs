@@ -72,6 +72,23 @@ defmodule StreamixWeb.Telemetry.HandlersTest do
            "the audit sink went silent after malformed player errors"
   end
 
+  test "a snoozed job is routine, a failed one is a warning" do
+    import ExUnit.CaptureLog
+
+    meta = fn state ->
+      %{state: state, worker: "W", queue: "q", attempt: 1, reason: :why}
+    end
+
+    warnings =
+      capture_log([level: :warning], fn ->
+        Handlers.handle_event([:oban, :job, :stop], %{duration: 0}, meta.(:snoozed), nil)
+        Handlers.handle_event([:oban, :job, :stop], %{duration: 0}, meta.(:failure), nil)
+      end)
+
+    refute warnings =~ "[Oban] snoozed"
+    assert warnings =~ "[Oban] failure"
+  end
+
   test "every declared event is attached" do
     attached = attached_events()
 

@@ -42,15 +42,19 @@ defmodule Streamix.Iptv.Streaming.XtreamHls do
 
   ## Live
 
-  A live playlist is never cached: every refresh is fetched upstream (with a
-  short `live_playlist_timeout_ms`, default 8 s) and rewritten, and the
-  session's registry keeps only a sliding window of references. Every viewer
-  of a channel shares the session and, through `Streamix.Hls.SegmentCache`,
-  one upstream fetch per segment; the lookahead is at most
+  A live playlist is fetched upstream on every refresh (with a short
+  `live_playlist_timeout_ms`, default 8 s) and rewritten, and the session's
+  registry keeps only a sliding window of references. Every viewer of a
+  channel shares the session and, through `Streamix.Hls.SegmentCache`, one
+  upstream fetch per segment; the lookahead is at most
   `live_prefetch_segments` (1) segment. When a channel's root is a media
   playlist (no variants), the master route answers a one-variant master that
   points at the root resource, so the player's periodic refreshes use the
-  resource route and its token policy instead of restarting the playback.
+  resource route and its token policy instead of restarting the playback, and
+  stashes the playlist template briefly (`live_playlist_ttl_ms`, default 2 s)
+  for the immediate variant request. Serving a live media playlist also
+  prefetches the initial segment(s) at the live sync point (live edge minus
+  `live_sync_segments`, default 3).
 
   Requests use the provider-facing User-Agent, validate every redirect hop
   against SSRF and run under a per-provider fetch lease (see
@@ -86,7 +90,10 @@ defmodule Streamix.Iptv.Streaming.XtreamHls do
   """
   def fetch_resource(session_id, resource_id, content, opts \\ []) do
     with :ok <- Gateway.valid_range(Keyword.get(opts, :range)),
-         {:ok, resource, session} <- Sessions.resource(session_id, resource_id, content) do
+         {:ok, resource, session} <-
+           Sessions.resource(session_id, resource_id, content,
+             consume_live_template?: consume_live_template?(opts)
+           ) do
       resource = Map.put(resource, :headers, [{"user-agent", UpstreamPolicy.user_agent()}])
       serve_opts = serve_options(session_id, content, session, opts)
 
@@ -103,7 +110,7 @@ defmodule Streamix.Iptv.Streaming.XtreamHls do
 
         true ->
           upstream(session, resource, serve_opts).()
-          |> remember_playlist(session_id, resource_id, session)
+          |> remember_playlist(session_id, resource_id, session, serve_opts)
           |> invalidate_on_restart(session_id)
       end
     end
@@ -119,7 +126,8 @@ defmodule Streamix.Iptv.Streaming.XtreamHls do
   every refresh. Everything else is `fetch_resource/4` of the root.
   """
   def fetch_master(session_id, resource_id, {type, _id} = content, opts \\ []) do
-    with {:ok, response} <- fetch_resource(session_id, resource_id, content, opts) do
+    with {:ok, response} <-
+           fetch_resource(session_id, resource_id, content, Keyword.put(opts, :master, true)) do
       if type == :channel and live_media_playlist?(response) do
         {:ok, live_master(Keyword.fetch!(opts, :resource_url).(session_id, resource_id))}
       else
@@ -156,17 +164,41 @@ defmodule Streamix.Iptv.Streaming.XtreamHls do
 
   # A master (no `#EXTINF`) or a media playlist with `#EXT-X-ENDLIST` cannot
   # change during a VOD session, so its template is kept and never refetched.
-  # A live playlist is never kept; only its latest segment order is.
-  defp remember_playlist({:ok, %{template: template, body: body} = response}, sid, rid, session) do
-    immutable? =
-      not session.live? and
-        (String.contains?(body, "#EXT-X-ENDLIST") or not String.contains?(body, "#EXTINF"))
+  # A live media playlist fetched for the synthetic master is kept briefly for
+  # the immediate variant request; later refreshes are never kept. Serving a
+  # live media playlist also prefetches the segment(s) at the live sync point.
+  defp remember_playlist(
+         {:ok, %{template: template, body: body} = response},
+         sid,
+         rid,
+         session,
+         serve_opts
+       ) do
+    cache_mode = playlist_cache_mode(session, response, body, serve_opts)
+    Sessions.put_playlist(sid, rid, template, cache_mode)
 
-    Sessions.put_playlist(sid, rid, template, immutable?)
+    if session.live? and template.segments != [] do
+      prefetch_after(sid, {:playlist, rid}, session, serve_opts)
+    end
+
     {:ok, Map.delete(response, :template)}
   end
 
-  defp remember_playlist(result, _sid, _rid, _session), do: result
+  defp remember_playlist(result, _sid, _rid, _session, _serve_opts), do: result
+
+  defp playlist_cache_mode(%{live?: true}, response, _body, serve_opts) do
+    if Keyword.get(serve_opts, :master, false) and live_media_playlist?(response),
+      do: :live_master,
+      else: false
+  end
+
+  defp playlist_cache_mode(_session, _response, body, _serve_opts) do
+    String.contains?(body, "#EXT-X-ENDLIST") or not String.contains?(body, "#EXTINF")
+  end
+
+  defp consume_live_template?(opts) do
+    not Keyword.get(opts, :master, false) and Keyword.get(opts, :method) not in [:head]
+  end
 
   # Whole GETs of media go through the shared single-flight cache; a range,
   # a HEAD or a playlist never does.
@@ -233,6 +265,7 @@ defmodule Streamix.Iptv.Streaming.XtreamHls do
     policy = UpstreamPolicy.with_domain_policy(provider_id: session.provider_id)[:domain_policy]
 
     [
+      master: Keyword.get(opts, :master, false),
       method: Keyword.get(opts, :method),
       range: Keyword.get(opts, :range),
       http_options: http_options(),

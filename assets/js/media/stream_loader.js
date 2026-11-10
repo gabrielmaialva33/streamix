@@ -326,7 +326,7 @@ export class StreamLoader {
    * Load HLS stream (async - lazy loads hls.js on first call)
    */
   async loadHls(url) {
-    log.debug("Loading HLS:", url);
+    log.debug("Loading HLS");
     if (this.disposed) throw new StreamLoaderCancelledError();
     const token = ++this._hlsLoadToken;
     const sessionId = this.sessionId;
@@ -405,7 +405,7 @@ export class StreamLoader {
    * Load MPEG-TS stream (async - lazy loads mpegts.js on first call)
    */
   async loadMpegts(url, type = "mpegts") {
-    log.debug("Loading MPEG-TS:", url, "type:", type);
+    log.debug("Loading MPEG-TS type:", type);
     if (this.disposed) throw new StreamLoaderCancelledError();
     const token = ++this._mpegtsLoadToken;
     const sessionId = this.sessionId;
@@ -466,7 +466,7 @@ export class StreamLoader {
       return this.loadHls(url);
     }
 
-    log.debug("Soft reloading HLS:", url);
+    log.debug("Soft reloading HLS");
     const hls = this.hlsEngine.reload(url);
     if (this.disposed) throw new StreamLoaderCancelledError();
 

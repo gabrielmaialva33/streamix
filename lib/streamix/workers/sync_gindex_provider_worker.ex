@@ -16,6 +16,7 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
   alias Streamix.Gindex
   alias Streamix.Providers
   alias Streamix.Repo
+  alias Streamix.SafeLog
   alias Streamix.Workers.Gindex.ScanRootWorker
   alias Streamix.Workers.Gindex.SyncOrchestratorWorker
 
@@ -37,7 +38,10 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
           :ok
 
         {:error, reason} = error ->
-          Logger.error("[GIndex Dispatcher] provider ensure failed: #{inspect(reason)}")
+          Logger.error("[GIndex Dispatcher] provider ensure failed",
+            reason: SafeLog.redact_inspect(reason)
+          )
+
           error
       end
     else

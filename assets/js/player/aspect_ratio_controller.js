@@ -88,6 +88,10 @@ export function createAspectRatioController({
     const style = aspectStyleForMode(normalizedMode);
     const forcedRatio = style.aspectRatio !== "";
     activeMode = normalizedMode;
+    if (root?.dataset) {
+      if (normalizedMode === "cover") root.dataset.playerFit = "fill";
+      else delete root.dataset.playerFit;
+    }
 
     for (const element of collectTargets()) {
       element.style.objectFit = style.objectFit;
@@ -110,9 +114,10 @@ export function createAspectRatioController({
     });
   };
 
-  // Every new player starts from the media's intrinsic ratio. Manual choices
-  // remain available, but only for this mounted playback session.
-  apply("auto");
+  // Every new player fills the screen, phones included, the way streaming
+  // apps open. The intrinsic ratio ("Automático"/"Original") stays one tap
+  // or pinch away, and a manual choice lasts only for this playback session.
+  apply("cover");
 
   root?.querySelectorAll(".aspect-option").forEach((button) => {
     const onClick = () => apply(button.dataset.aspectMode);
@@ -122,6 +127,16 @@ export function createAspectRatioController({
   });
 
   if (typeof MutationObserverImpl === "function") {
+    // Fit buttons and pinch gestures share the same native/canvas styling path
+    // as the aspect menu, including clearing any forced ratio dimensions.
+    if (root?.dataset) {
+      const observer = new MutationObserverImpl(() => {
+        const fill = root.dataset.playerFit === "fill";
+        if (fill !== (activeMode === "cover")) apply(fill ? "cover" : "auto");
+      });
+      observer.observe(root, { attributes: true, attributeFilter: ["data-player-fit"] });
+      observers.push(observer);
+    }
     for (const selector of MOUNT_SELECTORS) {
       const mount = root?.querySelector(selector);
       if (!mount) continue;

@@ -12,7 +12,10 @@ const budgets = {
   cssGzip: Number(process.env.ASSET_BUDGET_CSS_GZIP || 36 * 1024),
   eagerJsGzip: Number(process.env.ASSET_BUDGET_EAGER_JS_GZIP || 64 * 1024),
   totalJsGzip: Number(process.env.ASSET_BUDGET_TOTAL_JS_GZIP || 640 * 1024),
-  reachableJsFiles: Number(process.env.ASSET_BUDGET_REACHABLE_JS_FILES || 34),
+  // Shared browser predicates, async primitives and the wrapper emitter add
+  // three small chunks over the 37-file base. Keep the measured 40-file cap;
+  // byte budgets above are unchanged (the hook/wrapper extractions add no chunks).
+  reachableJsFiles: Number(process.env.ASSET_BUDGET_REACHABLE_JS_FILES || 40),
 };
 
 function gzipSize(file) {

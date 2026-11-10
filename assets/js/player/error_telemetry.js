@@ -12,8 +12,8 @@
  * - Aggregates errors for pattern detection
  */
 
-import { getCapabilitySummary } from "../media/codec_detector";
-import { getDeviceCompatibilityReport } from "./player_preferences";
+import { getCapabilitySummary } from "../media/codec_detector.js";
+import { getDeviceCompatibilityReport } from "./player_preferences.js";
 
 // Error history for pattern detection
 const errorHistory = [];

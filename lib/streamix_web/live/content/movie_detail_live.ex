@@ -4,11 +4,14 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   Works for both /browse/movies/:id (global provider) and /providers/:id/movies/:id (user provider).
   """
   use StreamixWeb, :live_view
+  alias Streamix.Catalog
+  alias Streamix.Providers
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Content.SourceBadges
   alias StreamixWeb.LiveSessionNavigation
   alias StreamixWeb.PlayerHelpers
+  alias StreamixWeb.ReturnPath
 
   import StreamixWeb.SourcePickerComponents
   import StreamixWeb.App.Premium
@@ -41,9 +44,10 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
   # Mount for /providers/:provider_id/movies/:id (user provider). Must
   # come first: the browse clause's pattern also matches these params.
+  @impl true
   def mount(%{"provider_id" => _, "id" => movie_id} = params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    return_to = safe_return_path(params["return_to"])
+    return_to = ReturnPath.safe(params["return_to"])
     provider_filter = provider_query_param(params["provider"])
 
     Detail.with_provider(socket, :provider, params, fn provider ->
@@ -62,7 +66,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   # Mount for /browse/movies/:id (global provider)
   def mount(%{"id" => movie_id} = params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    return_to = safe_return_path(params["return_to"])
+    return_to = ReturnPath.safe(params["return_to"])
     provider_filter = provider_query_param(params["provider"])
 
     Detail.with_provider(socket, :browse, %{}, fn provider ->
@@ -109,7 +113,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           mode
           |> detail_base_path(provider, movie)
           |> with_provider_filter(provider_filter)
-          |> with_return_to(return_to)
+          |> ReturnPath.append(return_to)
 
         preferred_provider_id = preferred_provider_id(provider_filter, mode, provider)
 
@@ -154,6 +158,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
     end
   end
 
+  @impl true
   def handle_async({:movie_enrichment, movie_id}, {:ok, movie}, socket)
       when movie_id == socket.assigns.movie.id do
     {:noreply,
@@ -184,6 +189,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
   # ?source=<movie_id> picks one of the authorized copies; anything else keeps
   # the recommended one.
+  @impl true
   def handle_params(params, _uri, %{assigns: %{movie_variants: variants}} = socket) do
     variant =
       case Integer.parse(to_string(params["source"])) do
@@ -196,6 +202,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
+  @impl true
   def handle_event("select_source", %{"id" => id}, socket) do
     {:noreply, push_patch(socket, to: with_source(socket.assigns.current_path, id))}
   end
@@ -225,6 +232,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   # Render
   # ============================================
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-background">
@@ -343,8 +351,8 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           <!-- Image Gallery -->
           <.image_gallery
             images={
-              if Streamix.Catalog.has_images?(@movie),
-                do: Streamix.Catalog.image_urls(@movie),
+              if Catalog.has_images?(@movie),
+                do: Catalog.image_urls(@movie),
                 else: []
             }
             alt="Imagem do filme"
@@ -371,7 +379,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   # ============================================
 
   defp og_image_url(movie) do
-    case Streamix.Catalog.backdrop_urls(movie) do
+    case Catalog.backdrop_urls(movie) do
       [url | _] -> url
       _ -> og_image_url_fallback(movie)
     end
@@ -389,23 +397,8 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   defp detail_base_path(:provider, provider, movie),
     do: ~p"/providers/#{provider.id}/movies/#{movie.id}"
 
-  defp with_return_to(path, return_to) when is_binary(return_to) do
-    separator = if String.contains?(path, "?"), do: "&", else: "?"
-    path <> separator <> "return_to=" <> URI.encode_www_form(return_to)
-  end
-
-  defp with_return_to(path, _return_to), do: path
-
   defp with_provider_filter(path, nil), do: path
   defp with_provider_filter(path, provider_filter), do: path <> "?provider=" <> provider_filter
-
-  defp safe_return_path(path) when is_binary(path) do
-    if String.starts_with?(path, "/") and not String.starts_with?(path, "//") do
-      path
-    end
-  end
-
-  defp safe_return_path(_), do: nil
 
   defp provider_query_param(value) when value in ["all", "global"], do: value
 
@@ -445,13 +438,13 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
   defp watch_path(%{provider_type: :torrent}, movie, return_to) do
     case Detail.best_torrent_stream(movie.id) do
-      %{id: stream_id} -> with_return_to(~p"/watch/torrent/#{stream_id}", return_to)
-      _ -> with_return_to(~p"/watch/movie/#{movie.id}", return_to)
+      %{id: stream_id} -> ReturnPath.append(~p"/watch/torrent/#{stream_id}", return_to)
+      _ -> ReturnPath.append(~p"/watch/movie/#{movie.id}", return_to)
     end
   end
 
   defp watch_path(_provider, movie, return_to),
-    do: with_return_to(~p"/watch/movie/#{movie.id}", return_to)
+    do: ReturnPath.append(~p"/watch/movie/#{movie.id}", return_to)
 
   defp build_watch_paths(variants, return_to) do
     Map.new(variants, fn variant ->
@@ -505,7 +498,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   # Same presentation as the series and episode pages: only what tells the
   # copies apart.
   defp source_options(variants, user) do
-    statuses = Streamix.Providers.provider_health_statuses(Enum.map(variants, & &1.provider))
+    statuses = Providers.provider_health_statuses(Enum.map(variants, & &1.provider))
 
     variants
     |> Enum.with_index()

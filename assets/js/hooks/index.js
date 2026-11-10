@@ -1,42 +1,25 @@
-import { createLazyHook } from "../core/lazy_hook";
-import BrowseScrollRestoration from "./browse_scroll_restoration";
-import ClientTelemetry from "./client_telemetry";
-import HeaderSearch from "./header_search";
-import ImageFallback from "./image_fallback";
-import Modal from "./modal";
-import ProgressBar from "./progress_bar";
-import ScrollHeader from "./scroll_header";
-import ThemeToggle from "./theme_toggle";
-
-const sharedModule = (loader) => {
-  let modulePromise;
-
-  return () => {
-    modulePromise ||= loader().catch((error) => {
-      modulePromise = null;
-      throw error;
-    });
-
-    return modulePromise;
-  };
-};
+import { memoizeImport } from "../core/async_primitives.js";
+import { canHover } from "../core/browser_environment.js";
+import { createLazyHook } from "../core/lazy_hook.js";
+import BrowseScrollRestoration from "./browse_scroll_restoration.js";
+import ClientTelemetry from "./client_telemetry.js";
+import HeaderSearch from "./header_search.js";
+import ImageFallback from "./image_fallback.js";
+import Modal from "./modal.js";
+import ProgressBar from "./progress_bar.js";
+import ScrollHeader from "./scroll_header.js";
 
 const namedHook = (loadModule, exportName) => async () => ({
   default: (await loadModule())[exportName],
 });
 
-const supportsHoverPreview = () => {
-  const hoverQuery = window.matchMedia?.("(hover: hover) and (pointer: fine)");
-  return hoverQuery ? hoverQuery.matches : !("ontouchstart" in window);
-};
+const loadCatalogHooks = memoizeImport(() => import("./catalog_hooks.js"));
+const loadPlaybackHooks = memoizeImport(() => import("./playback_hooks.js"));
+const loadPwaHooks = memoizeImport(() => import("./pwa_hooks.js"));
+const loadWatchPartyHooks = memoizeImport(() => import("./watch_party_hooks.js"));
 
-const loadCatalogHooks = sharedModule(() => import("./catalog_hooks"));
-const loadPlaybackHooks = sharedModule(() => import("./playback_hooks"));
-const loadPwaHooks = sharedModule(() => import("./pwa_hooks"));
-const loadWatchPartyHooks = sharedModule(() => import("./watch_party_hooks"));
-
-const ContentCard = createLazyHook("ContentCard", () => import("./content_card"), {
-  shouldLoad: supportsHoverPreview,
+const ContentCard = createLazyHook("ContentCard", () => import("./content_card.js"), {
+  shouldLoad: canHover,
 });
 const EpgRefresh = createLazyHook("EpgRefresh", namedHook(loadCatalogHooks, "EpgRefresh"));
 const InfiniteScroll = createLazyHook(
@@ -63,7 +46,6 @@ const WatchPartySync = createLazyHook(
 export default {
   BrowseScrollRestoration,
   ClientTelemetry,
-  ThemeToggle,
   TorrentSwarmGate,
   VideoPlayer,
   ProgressBar,

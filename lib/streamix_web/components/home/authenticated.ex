@@ -12,7 +12,33 @@ defmodule StreamixWeb.Home.Authenticated do
   import StreamixWeb.Home.Carousel
   import StreamixWeb.Home.Hero
 
-  def render_authenticated_home(assigns) do
+  attr :featured, :any, default: nil
+  attr :current_scope, :any, default: nil
+  attr :featured_favorite, :boolean, default: false
+  attr :home_loading, :map, default: %{}
+  attr :stats, :map, required: true
+  attr :history, :list, required: true
+  attr :favorites, :list, required: true
+  attr :recommendations, :list, required: true
+  attr :trending, :list, required: true
+  attr :genre_filters, :list, required: true
+  attr :period_filters, :list, required: true
+  attr :new_releases, :list, required: true
+  attr :top_10, :list, required: true
+  attr :movies, :list, required: true
+  attr :series, :list, required: true
+  attr :channels, :list, required: true
+  attr :channel_filters, :list, required: true
+  attr :trending_genre, :any, default: nil
+  attr :trending_period, :any, default: nil
+  attr :series_genre, :any, default: nil
+  attr :channels_category, :any, default: nil
+  attr :movie_progress, :map, default: %{}
+  attr :series_progress, :map, default: %{}
+  attr :movie_favorites_map, :any, default: MapSet.new()
+  attr :series_favorites_map, :any, default: MapSet.new()
+
+  def authenticated_home(assigns) do
     assigns =
       assigns
       |> assign(:catalog_loading, group_loading?(assigns.home_loading, :catalog))
@@ -20,7 +46,7 @@ defmodule StreamixWeb.Home.Authenticated do
       |> assign(:library_loading, group_loading?(assigns.home_loading, :library))
 
     ~H"""
-    <.render_hero_section
+    <.hero_section
       featured={@featured}
       stats={@stats}
       current_scope={@current_scope}
@@ -38,14 +64,14 @@ defmodule StreamixWeb.Home.Authenticated do
         <.skeleton_carousel count={3} />
       </div>
 
-      <.render_content_carousel
+      <.content_carousel
         :if={@history != []}
         title="Continue Assistindo"
         items={@history}
         type={:history}
       />
 
-      <.render_content_carousel
+      <.content_carousel
         :if={@favorites != []}
         title="Minha lista"
         items={@favorites}
@@ -62,7 +88,7 @@ defmodule StreamixWeb.Home.Authenticated do
 
       <.for_you_section :if={@recommendations != []} recommendations={@recommendations} />
 
-      <.render_ai_trending_section
+      <.ai_trending_section
         :if={@trending != []}
         items={@trending}
         genre_filters={@genre_filters}
@@ -82,7 +108,7 @@ defmodule StreamixWeb.Home.Authenticated do
         <.skeleton_carousel count={5} />
       </div>
 
-      <.render_content_carousel
+      <.content_carousel
         :if={@new_releases != []}
         title="Lançamentos"
         items={@new_releases}
@@ -93,9 +119,9 @@ defmodule StreamixWeb.Home.Authenticated do
         see_more_path={~p"/browse/movies?sort=new"}
       />
 
-      <.render_top_10 :if={@top_10 != []} title="Top 10 Filmes" items={@top_10} />
+      <.top_10 :if={@top_10 != []} title="Top 10 Filmes" items={@top_10} />
 
-      <.render_content_carousel
+      <.content_carousel
         :if={@movies != []}
         title="Filmes em Destaque"
         items={@movies}
@@ -104,7 +130,7 @@ defmodule StreamixWeb.Home.Authenticated do
         favorites_map={@movie_favorites_map}
       />
 
-      <.render_ai_series_section
+      <.ai_series_section
         :if={@series != []}
         items={@series}
         genre_filters={@genre_filters}
@@ -114,7 +140,7 @@ defmodule StreamixWeb.Home.Authenticated do
         favorites_map={@series_favorites_map}
       />
 
-      <.render_ai_channels_section
+      <.ai_channels_section
         :if={@channels != []}
         items={@channels}
         category_filters={@channel_filters}

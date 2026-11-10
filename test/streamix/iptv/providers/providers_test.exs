@@ -1,7 +1,7 @@
 defmodule Streamix.Iptv.ProvidersTest do
   use Streamix.DataCase, async: true
 
-  alias Streamix.{Billing, Iptv}
+  alias Streamix.Billing
 
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
@@ -10,7 +10,7 @@ defmodule Streamix.Iptv.ProvidersTest do
     test "create_provider/2 assigns ownership server-side" do
       user = user_fixture()
 
-      assert {:ok, provider} = Iptv.create_provider(user.id, valid_provider_attrs())
+      assert {:ok, provider} = Streamix.Providers.create_provider(user.id, valid_provider_attrs())
       assert provider.user_id == user.id
     end
 
@@ -26,11 +26,11 @@ defmodule Streamix.Iptv.ProvidersTest do
           server_info: %{"forged" => true}
         })
 
-      assert {:error, changeset} = Iptv.create_provider(user.id, attrs)
+      assert {:error, changeset} = Streamix.Providers.create_provider(user.id, attrs)
       assert "is invalid" in errors_on(changeset).visibility
 
       safe_attrs = Map.delete(attrs, :visibility)
-      assert {:ok, provider} = Iptv.create_provider(user.id, safe_attrs)
+      assert {:ok, provider} = Streamix.Providers.create_provider(user.id, safe_attrs)
       refute provider.is_system
       assert provider.provider_type == :xtream
       assert provider.visibility == :private
@@ -42,7 +42,7 @@ defmodule Streamix.Iptv.ProvidersTest do
       user = user_fixture()
 
       assert {:error, changeset} =
-               Iptv.create_provider(valid_provider_attrs(%{user_id: user.id}))
+               Streamix.Providers.create_provider(valid_provider_attrs(%{user_id: user.id}))
 
       assert "can't be blank" in errors_on(changeset).user_id
     end
@@ -53,7 +53,10 @@ defmodule Streamix.Iptv.ProvidersTest do
       provider = provider_fixture(owner)
 
       assert {:ok, updated_provider} =
-               Iptv.update_provider(provider, %{name: "Renamed", user_id: other_user.id})
+               Streamix.Providers.update_provider(provider, %{
+                 name: "Renamed",
+                 user_id: other_user.id
+               })
 
       assert updated_provider.name == "Renamed"
       assert updated_provider.user_id == owner.id
@@ -65,12 +68,12 @@ defmodule Streamix.Iptv.ProvidersTest do
       provider = provider_fixture(owner)
 
       assert {:error, changeset} =
-               Iptv.update_user_provider(other_user.id, provider, %{name: "Stolen"})
+               Streamix.Providers.update_user_provider(other_user.id, provider, %{name: "Stolen"})
 
       assert "provider does not belong to current user" in errors_on(changeset).base
 
       assert {:error, changeset} =
-               Iptv.update_user_provider(owner.id, provider, %{
+               Streamix.Providers.update_user_provider(owner.id, provider, %{
                  name: "Safe rename",
                  is_system: true,
                  provider_type: :gindex,
@@ -80,7 +83,7 @@ defmodule Streamix.Iptv.ProvidersTest do
       assert "is invalid" in errors_on(changeset).visibility
 
       assert {:ok, updated} =
-               Iptv.update_user_provider(owner.id, provider, %{
+               Streamix.Providers.update_user_provider(owner.id, provider, %{
                  name: "Safe rename",
                  is_system: true,
                  provider_type: :gindex
@@ -114,10 +117,11 @@ defmodule Streamix.Iptv.ProvidersTest do
         starts_at: DateTime.utc_now(:second)
       })
 
-      assert {:ok, _provider} = Iptv.create_provider(user.id, valid_provider_attrs())
+      assert {:ok, _provider} =
+               Streamix.Providers.create_provider(user.id, valid_provider_attrs())
 
       assert {:error, changeset} =
-               Iptv.create_provider(
+               Streamix.Providers.create_provider(
                  user.id,
                  valid_provider_attrs(%{name: "Second", username: "second"})
                )

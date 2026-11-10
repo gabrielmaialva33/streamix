@@ -27,6 +27,7 @@ defmodule Streamix.Workers.SyncEpgWorker do
     unique: [period: 300, keys: [:provider_id]]
 
   alias Streamix.{Guide, Providers}
+  alias Streamix.SafeLog
 
   require Logger
 
@@ -78,7 +79,10 @@ defmodule Streamix.Workers.SyncEpgWorker do
   end
 
   defp snooze(reason) do
-    Logger.warning("[SyncEpgWorker] Transient failure (#{inspect(reason)}), snoozing 5 min")
+    Logger.warning("[SyncEpgWorker] Transient failure, snoozing 5 min",
+      reason: SafeLog.redact_inspect(reason)
+    )
+
     {:snooze, 300}
   end
 

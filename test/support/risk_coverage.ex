@@ -18,8 +18,8 @@ defmodule Streamix.TestSupport.RiskCoverage do
     {Streamix.Providers, 65.0},
     {Streamix.Search, 70.0},
     {Streamix.Iptv.Streaming.ResponsePolicy, 95.0},
-    {StreamixWeb.PlayerLifecycleTelemetry, 65.0},
-    {StreamixWeb.PlayerQoeTelemetry, 85.0},
+    {StreamixWeb.Telemetry.PlayerLifecycle, 65.0},
+    {StreamixWeb.Telemetry.PlayerQoe, 85.0},
     {Streamix.Torrent.Catalog, 70.0},
     {Streamix.Torrent.StatsRefresher, 70.0}
   ]

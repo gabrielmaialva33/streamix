@@ -16,9 +16,11 @@ defmodule Streamix.Iptv.Sync.Normalizers.LiveChannel do
       tv_archive_duration: stream["tv_archive_duration"],
       direct_source: stream["direct_source"],
       provider_id: provider_id,
-      # If the upstream is listing the channel again, give it a fresh
-      # chance at playback; the lazy 404 marker will re-flag it if still dead.
-      dead_since: nil,
+      # No dead_since: panels keep listing channels whose stream is gone, so
+      # clearing it on every sync (every few hours) brought a dead channel
+      # straight back and viewers into a retry loop on it. The upsert only
+      # replaces keys present here, so a 404 marker survives the sync and the
+      # 24-hour recheck window in Channels decides when it is tried again.
       inserted_at: now,
       updated_at: now
     }

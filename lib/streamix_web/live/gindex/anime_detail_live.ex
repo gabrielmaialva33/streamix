@@ -4,12 +4,14 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
   Releases are stored as "seasons" but displayed as quality variants.
   """
   use StreamixWeb, :live_view
+  alias Streamix.Catalog
   alias Streamix.Library
   alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.Content.SourceBadges
   alias StreamixWeb.Gindex.DetailHelpers, as: DH
 
   import StreamixWeb.CoreComponents, only: [badge: 1, icon: 1]
+  import StreamixWeb.Gindex.EpisodeComponents, only: [episode_item: 1]
 
   import StreamixWeb.Content.DetailComponents,
     only: [detail_hero: 1, detail_title: 1, synopsis_section: 1]
@@ -18,12 +20,16 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
   import StreamixWeb.Content.DetailComponents.Badges, only: [rating_badge: 1, year_badge: 1]
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
-  def mount(%{"id" => anime_id}, _session, socket) do
-    user_id = socket.assigns.current_scope.user.id
+  @impl true
+  def mount(_params, _session, socket) do
+    {:ok, assign(socket, user_id: socket.assigns.current_scope.user.id)}
+  end
 
-    case Streamix.Catalog.get_gindex_anime_with_seasons(anime_id) do
+  @impl true
+  def handle_params(%{"id" => anime_id}, _uri, socket) do
+    case Catalog.get_gindex_anime_with_seasons(anime_id) do
       nil ->
-        {:ok,
+        {:noreply,
          socket
          |> put_flash(:error, "Anime não encontrado")
          |> push_navigate(to: ~p"/browse/animes?source=gindex")}
@@ -55,12 +61,12 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
               if(first_release_id, do: MapSet.new([first_release_id]), else: MapSet.new())
           )
           |> assign(is_favorite: is_favorite)
-          |> assign(user_id: user_id)
 
-        {:ok, socket}
+        {:noreply, socket}
     end
   end
 
+  @impl true
   def handle_event("toggle_release", %{"id" => release_id}, socket) do
     case parse_positive_integer(release_id) do
       {:ok, release_id} ->
@@ -107,6 +113,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
     {:noreply, assign(socket, is_favorite: FavoriteState.preserve_boolean(is_favorite, result))}
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-background">
@@ -237,49 +244,6 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
             episode={episode}
             season_number={@release.season_number}
           />
-        </div>
-      </div>
-    </div>
-    """
-  end
-
-  defp episode_item(assigns) do
-    ~H"""
-    <div
-      class="flex gap-2 sm:gap-4 p-3 sm:p-4 hover:bg-surface-hover cursor-pointer transition-colors group touch-manipulation"
-      phx-click="play_episode"
-      phx-value-id={@episode.id}
-    >
-      <div class="flex-shrink-0 w-6 sm:w-8 text-center">
-        <span class="text-lg sm:text-2xl font-bold text-text-secondary/30">
-          {@episode.episode_num}
-        </span>
-      </div>
-
-      <div class="relative flex-shrink-0 w-24 sm:w-36 aspect-video bg-surface-hover rounded-lg overflow-hidden">
-        <div class="w-full h-full flex items-center justify-center bg-surface">
-          <.icon name="hero-play-circle" class="size-6 sm:size-10 text-text-secondary/30" />
-        </div>
-
-        <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white flex items-center justify-center">
-            <.icon name="hero-play-solid" class="size-4 sm:size-5 text-black ml-0.5" />
-          </div>
-        </div>
-      </div>
-
-      <div class="flex-1 min-w-0">
-        <h4 class="font-medium text-sm sm:text-base text-text-primary group-hover:text-brand truncate">
-          {DH.episode_title(@episode, @season_number)}
-        </h4>
-        <div class="flex items-center gap-2 mt-1">
-          <.badge
-            :if={@episode.container_extension}
-            variant="surface"
-            size="sm"
-          >
-            {String.upcase(@episode.container_extension)}
-          </.badge>
         </div>
       </div>
     </div>

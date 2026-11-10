@@ -19,7 +19,7 @@ defmodule Streamix.Workers.SyncProviderWorker do
     max_attempts: 3,
     unique: [period: 300, keys: [:provider_id]]
 
-  alias Streamix.Iptv
+  alias Streamix.Providers
   alias Streamix.Workers.SyncGindexProviderWorker
   alias Streamix.Workers.SyncTorrentProviderWorker
 
@@ -175,7 +175,7 @@ defmodule Streamix.Workers.SyncProviderWorker do
   end
 
   defp iptv_module do
-    Application.get_env(:streamix, :sync_provider_worker_iptv_module, Iptv)
+    Application.get_env(:streamix, :sync_provider_worker_iptv_module, Providers)
   end
 
   defp broadcast_sync_status(provider, status, extra \\ %{}) do

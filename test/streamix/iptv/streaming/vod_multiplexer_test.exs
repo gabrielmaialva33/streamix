@@ -3,6 +3,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
 
   import Plug.Test
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias Streamix.Iptv.ProviderCapabilities
   alias Streamix.Iptv.Streaming.ProviderRuntime
   alias Streamix.Iptv.Streaming.VodMultiplexer
@@ -320,6 +321,18 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
       assert warmed?(key, 1), "expected block 1 to have been prefetched"
     end
 
+    test "warms more blocks ahead for a provider that is slow to answer", %{url: url} do
+      opts = [provider_id: 7_015, content_id: 15]
+      key = VodMultiplexer.content_key(opts ++ [url: url])
+      for _sample <- 1..5, do: ProviderRuntime.record_success(7_015, :vod, 2_400)
+
+      conn(:get, "/proxy")
+      |> Plug.Conn.put_req_header("range", "bytes=0-1023")
+      |> pipe(url, opts)
+
+      for index <- 1..3, do: assert(warmed?(key, index), "expected block #{index} to be warm")
+    end
+
     test "does not warm past the end of the resource", %{url: url} do
       opts = [provider_id: 7_014, content_id: 14]
       key = VodMultiplexer.content_key(opts ++ [url: url])
@@ -406,6 +419,199 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
     end
   end
 
+  describe "streaming a block while it downloads" do
+    test "answers the viewer before the provider finishes sending the block" do
+      {:ok, port} = start_plug(__MODULE__.HalfwayPlug, test: self())
+      url = "http://127.0.0.1:#{port}/slow.mp4"
+
+      # Built here so this process owns it and sees the response go out.
+      conn =
+        conn(:get, "/proxy")
+        |> Plug.Conn.put_req_header("range", "bytes=0-#{@block_size - 1}")
+
+      task = Task.async(fn -> pipe(conn, url, provider_id: 7_100, content_id: 1) end)
+
+      # The provider has sent the length and half the block, and is holding
+      # the rest back. Waiting for the whole block before answering is what
+      # kept viewers of slow providers on a black screen.
+      assert_receive {:halfway, stub}, 2_000
+      assert_receive {:plug_conn, :sent}, 2_000
+
+      send(stub, :finish)
+      conn = Task.await(task)
+
+      assert conn.status == 206
+      assert conn.resp_body == binary_part(expected_body(), 0, @block_size)
+    end
+
+    test "resumes from the first missing byte when the provider drops the connection" do
+      # No readahead, so every upstream request counted is for block 0.
+      previous = Application.get_env(:streamix, :vod_readahead_blocks)
+      Application.put_env(:streamix, :vod_readahead_blocks, 0)
+      on_exit(fn -> restore(:vod_readahead_blocks, previous) end)
+
+      requests = :counters.new(1, [:atomics])
+      {:ok, port} = start_plug(__MODULE__.DroppingPlug, requests: requests)
+      url = "http://127.0.0.1:#{port}/flaky.mp4"
+
+      conn =
+        conn(:get, "/proxy")
+        |> Plug.Conn.put_req_header("range", "bytes=0-#{@block_size - 1}")
+        |> pipe(url, provider_id: 7_101, content_id: 1)
+
+      assert conn.status == 206
+      assert conn.resp_body == binary_part(expected_body(), 0, @block_size)
+      # One request that dropped, one that asked only for the missing bytes.
+      assert :counters.get(requests, 1) == 2
+
+      # The viewer can get the last byte before the fetcher has written the
+      # block to disk; its answer to `:await` comes after the write.
+      content_key = VodMultiplexer.content_key(provider_id: 7_101, content_id: 1)
+
+      case Registry.lookup(Streamix.StreamRegistry, {:vod_block, content_key, 0}) do
+        [{fetcher, _}] -> assert {:ok, _block} = GenServer.call(fetcher, :await)
+        [] -> :ok
+      end
+
+      assert {:ok, _path} = BlockStore.lookup({content_key, 0})
+    end
+  end
+
+  describe "warming a title's start before the play" do
+    setup do
+      owner = Sandbox.start_owner!(Streamix.Repo, shared: true)
+      on_exit(fn -> Sandbox.stop_owner(owner) end)
+      :ok
+    end
+
+    test "a personal provider leaves no disk block or upstream warm-up request" do
+      previous = Application.get_env(:streamix, :vod_multiplexer_enabled)
+      Application.put_env(:streamix, :vod_multiplexer_enabled, true)
+      on_exit(fn -> restore(:vod_multiplexer_enabled, previous) end)
+
+      user = Streamix.AccountsFixtures.user_fixture()
+      provider = Streamix.IptvFixtures.provider_fixture(user, %{visibility: :private})
+      movie = Streamix.IptvFixtures.movie_fixture(provider)
+      counter = :counters.new(1, [:atomics])
+      {:ok, port} = start_stub(counter)
+      url = "http://127.0.0.1:#{port}/private.mp4"
+
+      opts = [
+        provider_id: provider.id,
+        content_id: movie.id,
+        media_type: "movie",
+        domain_policy: nil
+      ]
+
+      assert :ok = Streamix.Playback.warm_vod_start(url, opts)
+      key = VodMultiplexer.content_key(Keyword.put(opts, :url, url))
+      assert Registry.lookup(Streamix.StreamRegistry, {:vod_block, key, 0}) == []
+      assert BlockStore.lookup({key, 0}) == :miss
+      assert :counters.get(counter, 1) == 0
+    end
+
+    test "the first block is served from the cache the warm-up filled" do
+      for {key, value} <- [vod_multiplexer_enabled: true, vod_readahead_blocks: 0] do
+        previous = Application.get_env(:streamix, key)
+        Application.put_env(:streamix, key, value)
+        on_exit(fn -> restore(key, previous) end)
+      end
+
+      counter = :counters.new(1, [:atomics])
+      {:ok, port} = start_stub(counter)
+      url = "http://127.0.0.1:#{port}/movie.mp4"
+      opts = [provider_id: 7_600, content_id: 60, media_type: "movie"]
+
+      # No X-Domain policy for the stub; given explicitly so the provider is
+      # not looked up.
+      assert :ok = Streamix.Playback.warm_vod_start(url, [domain_policy: nil] ++ opts)
+
+      key = VodMultiplexer.content_key(Keyword.put(opts, :url, url))
+
+      case Registry.lookup(Streamix.StreamRegistry, {:vod_block, key, 0}) do
+        [{fetcher, _}] -> assert {:ok, _block} = GenServer.call(fetcher, :await)
+        [] -> :ok
+      end
+
+      assert :counters.get(counter, 1) == 1
+
+      conn =
+        conn(:get, "/proxy")
+        |> Plug.Conn.put_req_header("range", "bytes=0-#{@block_size - 1}")
+        |> pipe(url, opts)
+
+      assert conn.status == 206
+      assert conn.resp_body == binary_part(expected_body(), 0, @block_size)
+      # The play itself asked the provider for nothing.
+      assert :counters.get(counter, 1) == 1
+    end
+  end
+
+  describe "readahead_blocks/1" do
+    test "follows the provider's measured latency, within the configured bounds" do
+      assert VodMultiplexer.readahead_blocks(nil) == 1
+      assert VodMultiplexer.readahead_blocks(7_500) == 1
+
+      for _sample <- 1..5, do: ProviderRuntime.record_success(7_501, :vod, 1_000)
+      assert VodMultiplexer.readahead_blocks(7_501) == 2
+
+      for _sample <- 1..5, do: ProviderRuntime.record_success(7_502, :vod, 3_000)
+      assert VodMultiplexer.readahead_blocks(7_502) == 3
+
+      previous = Application.get_env(:streamix, :vod_readahead_blocks)
+      Application.put_env(:streamix, :vod_readahead_blocks, 0)
+      on_exit(fn -> restore(:vod_readahead_blocks, previous) end)
+      assert VodMultiplexer.readahead_blocks(7_502) == 0
+    end
+  end
+
+  describe "evidence for choosing between providers" do
+    test "a served block tells source selection how fast the provider answered" do
+      counter = :counters.new(1, [:atomics])
+      {:ok, port} = start_stub(counter)
+      url = "http://127.0.0.1:#{port}/movie.mp4"
+
+      conn(:get, "/proxy")
+      |> Plug.Conn.put_req_header("range", "bytes=0-#{@block_size - 1}")
+      |> pipe(url, provider_id: 7_300, content_id: 1)
+
+      vod = ProviderRuntime.snapshot(7_300).dimensions.vod
+      assert vod.successes >= 1
+      assert is_number(vod.ewma_latency_ms)
+    end
+
+    test "a failing provider is recorded, a title it no longer has is not" do
+      {:ok, port} = start_plug(__MODULE__.StatusPlug, [])
+
+      for {provider_id, path} <- [{7_301, "/503.mp4"}, {7_302, "/404.mp4"}] do
+        conn(:get, "/proxy")
+        |> Plug.Conn.put_req_header("range", "bytes=0-#{@block_size - 1}")
+        |> pipe("http://127.0.0.1:#{port}#{path}", provider_id: provider_id, content_id: 1)
+      end
+
+      assert ProviderRuntime.snapshot(7_301).dimensions.vod.failures >= 1
+      assert ProviderRuntime.snapshot(7_302).dimensions.vod.failures == 0
+    end
+  end
+
+  defmodule StatusPlug do
+    @moduledoc false
+
+    import Plug.Conn
+
+    def init(opts), do: opts
+
+    # The redirect resolver probes without a Range and must see media to
+    # accept the URL; the block fetch carries a Range and gets the status.
+    def call(conn, _opts) do
+      case {get_req_header(conn, "range"), conn.request_path} do
+        {[], _path} -> conn |> put_resp_content_type("video/mp4") |> send_resp(200, "media")
+        {_range, "/503.mp4"} -> send_resp(conn, 503, "")
+        {_range, "/404.mp4"} -> send_resp(conn, 404, "")
+      end
+    end
+  end
+
   defp pipe(conn, url, opts) do
     VodMultiplexer.pipe(conn, url, opts, fn conn ->
       Plug.Conn.send_resp(conn, 555, "fallback")
@@ -459,6 +665,100 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
         :release_stalled_request -> conn
       after
         2_000 -> conn
+      end
+    end
+  end
+
+  defp start_plug(plug, opts) do
+    {:ok, server} =
+      start_supervised({Bandit, plug: {plug, opts}, port: 0, startup_log: false}, id: plug)
+
+    {:ok, {_address, port}} = ThousandIsland.listener_info(server)
+    {:ok, port}
+  end
+
+  defmodule HalfwayPlug do
+    @moduledoc false
+
+    import Plug.Conn
+
+    @body_size 4_096
+
+    def init(opts), do: opts
+
+    # Sends the length and the first half of the requested range, then waits
+    # for the test before sending the rest — a provider slower than the
+    # viewer's patience.
+    def call(conn, opts) do
+      body = for index <- 0..(@body_size - 1), into: <<>>, do: <<rem(index, 256)>>
+
+      case get_req_header(conn, "range") do
+        ["bytes=" <> spec] ->
+          [range_start, range_end] = spec |> String.split("-") |> Enum.map(&String.to_integer/1)
+          slice = binary_part(body, range_start, range_end - range_start + 1)
+          half = div(byte_size(slice), 2)
+
+          conn =
+            conn
+            |> put_resp_header("content-range", "bytes #{range_start}-#{range_end}/#{@body_size}")
+            |> send_chunked(206)
+
+          {:ok, conn} = chunk(conn, binary_part(slice, 0, half))
+          send(Keyword.fetch!(opts, :test), {:halfway, self()})
+
+          receive do
+            :finish -> :ok
+          after
+            2_000 -> :ok
+          end
+
+          {:ok, conn} = chunk(conn, binary_part(slice, half, byte_size(slice) - half))
+          conn
+
+        _ ->
+          send_resp(conn, 200, body)
+      end
+    end
+  end
+
+  defmodule DroppingPlug do
+    @moduledoc false
+
+    import Plug.Conn
+
+    @body_size 4_096
+    @dropped_after 300
+
+    def init(opts), do: opts
+
+    # The first ranged request sends a few hundred bytes and then the socket
+    # dies, the way an overloaded provider sheds connections; every later
+    # request is served normally.
+    def call(conn, opts) do
+      body = for index <- 0..(@body_size - 1), into: <<>>, do: <<rem(index, 256)>>
+
+      case get_req_header(conn, "range") do
+        ["bytes=" <> spec] ->
+          requests = Keyword.fetch!(opts, :requests)
+          :counters.add(requests, 1, 1)
+          [range_start, range_end] = spec |> String.split("-") |> Enum.map(&String.to_integer/1)
+          slice = binary_part(body, range_start, range_end - range_start + 1)
+
+          conn =
+            conn
+            |> put_resp_header("content-range", "bytes #{range_start}-#{range_end}/#{@body_size}")
+            |> send_chunked(206)
+
+          if :counters.get(requests, 1) == 1 do
+            {:ok, _conn} = chunk(conn, binary_part(slice, 0, @dropped_after))
+            Process.exit(self(), :kill)
+          end
+
+          {:ok, conn} = chunk(conn, slice)
+          conn
+
+        _ ->
+          send_resp(conn, 200, body)
       end
     end
   end

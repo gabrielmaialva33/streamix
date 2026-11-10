@@ -12,6 +12,7 @@ defmodule Streamix.Workers.SyncGlobalProviderWorker do
   use Oban.Worker, queue: :sync, max_attempts: 3
 
   alias Streamix.Providers
+  alias Streamix.SafeLog
   alias Streamix.Workers.SyncProviderWorker
 
   require Logger
@@ -31,7 +32,10 @@ defmodule Streamix.Workers.SyncGlobalProviderWorker do
           :ok
 
         {:error, reason} ->
-          Logger.error("[IPTV] Failed to ensure global provider exists: #{inspect(reason)}")
+          Logger.error("[IPTV] Failed to ensure global provider exists",
+            reason: SafeLog.redact_inspect(reason)
+          )
+
           {:error, reason}
       end
     else
@@ -47,7 +51,10 @@ defmodule Streamix.Workers.SyncGlobalProviderWorker do
         :ok
 
       {:error, reason} ->
-        Logger.error("[IPTV] Failed to enqueue global provider sync: #{inspect(reason)}")
+        Logger.error("[IPTV] Failed to enqueue global provider sync",
+          reason: SafeLog.redact_inspect(reason)
+        )
+
         {:error, {:enqueue_failed, reason}}
     end
   end

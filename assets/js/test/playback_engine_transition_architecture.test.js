@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readSource as readFile } from "./support/player_hook_source.js";
 
 const controllerUrl = new URL(
   "../player/playback_engine_transition_controller.js",
@@ -22,11 +22,12 @@ function methodIndex(hook, methodName, fromIndex = 0) {
   return indexes.length > 0 ? Math.min(...indexes) : -1;
 }
 
-function methodSlice(hook, methodName, nextMethodName) {
+function methodSlice(hook, methodName) {
   const start = methodIndex(hook, methodName);
-  const end = methodIndex(hook, nextMethodName, start + 1);
+  const closing = /^ {2}},?$/m.exec(hook.slice(start));
+  const end = closing ? start + closing.index + closing[0].length : -1;
   assert.notEqual(start, -1, `missing ${methodName}()`);
-  assert.notEqual(end, -1, `missing boundary after ${methodName}()`);
+  assert.ok(end > start, `missing closing brace for ${methodName}()`);
   return hook.slice(start, end);
 }
 
@@ -49,12 +50,9 @@ test("VideoPlayer composes one transition controller with narrow lifecycle bound
 
   assert.match(
     hook,
-    /import \{ createPlaybackEngineTransitionController \} from "\.\.\/player\/playback_engine_transition_controller\.js";/,
+    /import \{ createPlaybackEngineTransitionController \} from "(?:\.\.\/player|\.)\/playback_engine_transition_controller\.js";/,
   );
-  assert.match(
-    hook,
-    /this\.playbackEngineTransitionController = createPlaybackEngineTransitionController\(\{/,
-  );
+  assert.match(hook, /const controller = createPlaybackEngineTransitionController\(\{/);
   assert.match(hook, /beginSession: \(\) => this\.beginPlaybackSession\(\)/);
   assert.match(
     hook,
@@ -106,15 +104,15 @@ test("initial AVPlayer selection reuses the initPlayer session without fallback 
 
   assert.match(
     initPlayer,
-    /void this\.playbackEngineActivation\.activate\(engine, \{ sessionId \}\);/,
+    /void this\.playbackEngineActivation\.activate\(engine, \{ sessionId, reason, fallback \}\);/,
   );
   assert.match(hook, /\[ENGINE_SELECTION\.AVPLAYER\]: this\.avPlayerEngineActivation,/);
   assert.doesNotMatch(initPlayer, /tryAVPlayerFallback\(|startWithAVPlayer\(/);
 
   assert.match(startup, /key: "startup-avplayer"/);
   assert.match(startup, /sessionId,/);
-  assert.match(startup, /initializeEngine: true/);
-  assert.match(startup, /recordSuccess: true/);
+  assert.match(transaction, /initializeEngine: \(\{ engine \}\) => engine\.init\(\)/);
+  assert.doesNotMatch(activation, /recordPlayerSuccess|recordSuccess/);
   assert.match(startup, /this\.host\.markAVPlayerAttempted\(\)/);
   assert.doesNotMatch(
     startup,
@@ -144,7 +142,7 @@ test("fallback and track-switch entrypoints retain policy but delegate transacti
   assert.match(fallback, /return this\.transition\(\{/);
 
   assert.match(trackSwitch, /key: `native-to-avplayer-\$\{trackType\}-track`/);
-  assert.match(trackSwitch, /initializeEngine: true/);
+  assert.match(activation, /initializeEngine: \(\{ engine \}\) => engine\.init\(\)/);
   assert.match(trackSwitch, /return this\.transition\(\{/);
 
   for (const entrypoint of [fallback, trackSwitch]) {
@@ -158,7 +156,7 @@ test("fallback and track-switch entrypoints retain policy but delegate transacti
   assert.match(hook, /canAttemptFallback\(\) \{/, "circuit-breaker policy stays on the hook");
   assert.match(
     hook,
-    /tryAVPlayerFallback\(\) \{\s*return this\.avPlayerEngineActivation\?\.tryFallback\(\)/,
+    /tryAVPlayerFallback\(reason = "fallback_codec"\) \{\s*return this\.avPlayerEngineActivation\?\.tryFallback\(reason\)/,
   );
   assert.doesNotMatch(hook, /this\._switchingToAVPlayer = true/);
 });
@@ -222,7 +220,10 @@ test("native restart consumes the recovery session instead of creating a second 
   const hook = await source(hookUrl);
   const initPlayer = methodSlice(hook, "initPlayer", "playNative");
 
-  assert.match(initPlayer, /initPlayer\(\{ sessionId: providedSessionId = null \} = \{\}\)/);
+  assert.match(
+    initPlayer,
+    /initPlayer\(\{ sessionId: providedSessionId = null, forcedEngine = null, fallback = false \} = \{\}\)/,
+  );
 
   // A supplied session is reused; only the unsupplied case begins a new one.
   assert.match(

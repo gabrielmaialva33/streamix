@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import test from "node:test";
+import { readSource as readFile } from "./support/player_hook_source.js";
 
 const hookUrl = new URL("../hooks/watch_party_sync.js", import.meta.url);
 const modulesDirUrl = new URL("../watch_party/", import.meta.url);
@@ -144,12 +145,16 @@ test("the player hook delegates Watch Party policy to the shared module", async 
   assert.match(player, /this\.watchPartyPolicy = createWatchPartyPlayerPolicy\(\{/);
   for (const delegate of [
     "applyPartyControlPolicy() { return this.watchPartyPolicy?.applyControlPolicy() ?? false; }",
-    "setWatchPartySyncHold(held) { return this.watchPartyPolicy?.setSyncHold(held) ?? true; }",
     "canControlPartyTransport(options = {}) { return this.watchPartyPolicy?.canControlTransport(options) ?? true; }",
     "rejectViewerTransportControl(options = {}) { return this.watchPartyPolicy?.rejectViewerTransportControl(options) ?? false; }",
   ]) {
     assert.ok(player.replace(/\s+/g, " ").includes(delegate), `missing thin delegate: ${delegate}`);
   }
+
+  assert.match(
+    player,
+    /setWatchPartySyncHold\(held\) \{[\s\S]*?return this\.watchPartyPolicy\?\.setSyncHold\(held\) \?\? true;/,
+  );
 
   for (const leaked of [
     "_watchPartySyncHold",

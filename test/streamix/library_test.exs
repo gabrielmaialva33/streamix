@@ -1,13 +1,13 @@
 defmodule Streamix.LibraryTest do
   use Streamix.DataCase, async: true
 
-  alias Streamix.{Accounts, Iptv, Library}
+  alias Streamix.{Accounts, Library}
   alias Streamix.Iptv.{Favorite, WatchProgress}
 
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
-  test "manages favorites through the focused boundary while preserving Iptv compatibility" do
+  test "manages sealed favorites through the focused boundary" do
     user = user_fixture()
     key = library_key_fixture(user)
     provider = provider_fixture(user)
@@ -17,14 +17,12 @@ defmodule Streamix.LibraryTest do
 
     assert favorite.catalog_item_id == channel.catalog_item_id
     assert Library.favorite?(key, "live_channel", channel.id)
-    assert Iptv.favorite?(key, "live_channel", channel.id)
 
     assert [%{content_id: content_id}] = Library.list_favorites(key)
     assert content_id == channel.id
-    assert Iptv.list_favorites(key) == Library.list_favorites(key)
   end
 
-  test "records history and remains available through Iptv" do
+  test "records sealed history through the focused boundary" do
     user = user_fixture()
     key = library_key_fixture(user)
     provider = provider_fixture(user)
@@ -38,7 +36,6 @@ defmodule Streamix.LibraryTest do
 
     assert [%{id: entry_id, duration_seconds: 300}] = Library.list_watch_history(key)
     assert entry_id == entry.id
-    assert Iptv.list_watch_history(key) == Library.list_watch_history(key)
   end
 
   describe "what the database holds" do

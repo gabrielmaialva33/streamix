@@ -9,7 +9,7 @@ defmodule StreamixWeb.SearchLive do
   - Recent searches history
   """
   use StreamixWeb, :live_view
-  import StreamixWeb.App.Filters, only: [filter_chip: 1, filter_strip: 1]
+  import StreamixWeb.App.Filters, only: [filter_button: 1, filter_strip: 1]
   import StreamixWeb.Content.NavigationComponents, only: [section_header: 1]
 
   import StreamixWeb.App.Feedback
@@ -20,11 +20,13 @@ defmodule StreamixWeb.SearchLive do
   alias Streamix.Library
   alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.Content.HelperComponents
+  alias StreamixWeb.ReturnPath
 
   @page_size 24
   @result_types %{"channels" => :channels, "movies" => :movies, "series" => :series}
 
   @doc false
+  @impl true
   def mount(_params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
 
@@ -47,6 +49,7 @@ defmodule StreamixWeb.SearchLive do
   end
 
   @doc false
+  @impl true
   def handle_params(%{"q" => query}, _url, socket) when query != "" do
     socket =
       socket
@@ -67,6 +70,7 @@ defmodule StreamixWeb.SearchLive do
   # ============================================
 
   @doc false
+  @impl true
   def handle_event("search", %{"query" => query}, socket) do
     if String.trim(query) == "" do
       socket =
@@ -104,7 +108,7 @@ defmodule StreamixWeb.SearchLive do
     {:noreply,
      push_navigate(socket,
        to:
-         with_return_to(
+         ReturnPath.append(
            ~p"/providers/#{provider_id}/movies/#{id}",
            socket.assigns.current_path
          )
@@ -114,14 +118,14 @@ defmodule StreamixWeb.SearchLive do
   def handle_event("show_details", %{"id" => id}, socket) do
     {:noreply,
      push_navigate(socket,
-       to: with_return_to(~p"/browse/movies/#{id}", socket.assigns.current_path)
+       to: ReturnPath.append(~p"/browse/movies/#{id}", socket.assigns.current_path)
      )}
   end
 
   def handle_event("view_series", %{"id" => id}, socket) do
     {:noreply,
      push_navigate(socket,
-       to: with_return_to(~p"/browse/series/#{id}", socket.assigns.current_path)
+       to: ReturnPath.append(~p"/browse/series/#{id}", socket.assigns.current_path)
      )}
   end
 
@@ -140,15 +144,12 @@ defmodule StreamixWeb.SearchLive do
     FavoriteState.toggle(library_key, type, content_id)
   end
 
-  defp with_return_to(path, return_to) do
-    path <> "?return_to=" <> URI.encode_www_form(return_to)
-  end
-
   # ============================================
   # Render
   # ============================================
 
   @doc false
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="py-6 sm:py-8 space-y-6 sm:space-y-8">
@@ -191,6 +192,8 @@ defmodule StreamixWeb.SearchLive do
       <div :if={@searched && has_results?(@result_counts)} class="space-y-8">
         <.filter_strip id="search-filter-strip">
           <.filter_button
+            prefix="search"
+            hide_zero={false}
             type="all"
             label="Todos"
             current={@filter}
@@ -198,6 +201,8 @@ defmodule StreamixWeb.SearchLive do
             has_more={Enum.any?(Map.values(@has_more))}
           />
           <.filter_button
+            prefix="search"
+            hide_zero={false}
             type="channels"
             label="Canais"
             current={@filter}
@@ -205,6 +210,8 @@ defmodule StreamixWeb.SearchLive do
             has_more={@has_more.channels}
           />
           <.filter_button
+            prefix="search"
+            hide_zero={false}
             type="movies"
             label="Filmes"
             current={@filter}
@@ -212,6 +219,8 @@ defmodule StreamixWeb.SearchLive do
             has_more={@has_more.movies}
           />
           <.filter_button
+            prefix="search"
+            hide_zero={false}
             type="series"
             label="Séries"
             current={@filter}
@@ -263,20 +272,6 @@ defmodule StreamixWeb.SearchLive do
 
       <.search_hints :if={!@searched} />
     </div>
-    """
-  end
-
-  defp filter_button(assigns) do
-    ~H"""
-    <.filter_chip
-      id={"search-filter-#{@type}"}
-      active={@current == @type}
-      label={@label}
-      count={@count}
-      count_suffix={if @has_more, do: "+", else: ""}
-      phx-click="filter"
-      phx-value-type={@type}
-    />
     """
   end
 

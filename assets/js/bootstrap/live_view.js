@@ -1,9 +1,9 @@
 import { Socket } from "phoenix";
 import { LiveSocket } from "phoenix_live_view";
 import { hooks as colocatedHooks } from "phoenix-colocated/streamix";
-import topbar from "../../vendor/topbar";
+import topbar from "../../vendor/topbar.js";
 import { getClientId } from "../core/client_identity.js";
-import customHooks from "../hooks";
+import customHooks from "../hooks/index.js";
 
 const themeColor = (name, fallback) => {
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();

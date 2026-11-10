@@ -3,7 +3,7 @@ defmodule Streamix.Iptv.Sync.ContentUpsertPreservationTest do
 
   import Streamix.IptvFixtures
 
-  alias Streamix.Iptv.{Genres, LiveChannel, Movie, Series}
+  alias Streamix.Iptv.{Channels, Genres, LiveChannel, Movie, Series}
   alias Streamix.Iptv.Sync.ContentUpsert
   alias Streamix.Iptv.Sync.Normalizers.LiveChannel, as: ChannelNormalizer
   alias Streamix.Iptv.Sync.Normalizers.Movie, as: MovieNormalizer
@@ -247,6 +247,26 @@ defmodule Streamix.Iptv.Sync.ContentUpsertPreservationTest do
     assert reloaded.epg_channel_id == nil
     assert reloaded.direct_source == ""
     refute reloaded.tv_archive
+  end
+
+  test "a sync keeps a live channel's 404 marker; the recheck window decides", %{
+    provider: provider
+  } do
+    channel = channel_fixture(provider, %{stream_id: 7272, name: "Canal"})
+    dead_at = DateTime.utc_now(:second)
+    :ok = Channels.mark_dead(channel.id)
+
+    # The panel keeps listing a channel whose stream is gone.
+    sync(
+      [%{"stream_id" => 7272, "name" => "Canal", "tv_archive" => 0}],
+      provider,
+      LiveChannel,
+      ChannelNormalizer,
+      :stream_id,
+      "live"
+    )
+
+    assert DateTime.compare(Repo.get!(LiveChannel, channel.id).dead_since, dead_at) != :lt
   end
 
   defp extra_metadata(Movie), do: %{duration_secs: 7200, imdb_id: "tt0137523"}

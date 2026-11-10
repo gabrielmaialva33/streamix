@@ -15,10 +15,12 @@ defmodule StreamixWeb.Content.SeriesLive do
   alias StreamixWeb.Content.Browse
 
   # Mount for /browse/series (global provider or gindex)
+  @impl true
   def mount(%{}, _session, socket) when not is_map_key(socket.assigns, :provider) do
     {:ok, Browse.init_socket(socket, :series)}
   end
 
+  @impl true
   def handle_params(params, _url, socket) do
     case Browse.assign_params(socket, :series, params) do
       {:ok, socket} ->
@@ -33,6 +35,7 @@ defmodule StreamixWeb.Content.SeriesLive do
   # Event Handlers
   # ============================================
 
+  @impl true
   def handle_event("filter_category", %{"category" => category}, socket) do
     category = if category == "", do: nil, else: category
 
@@ -72,6 +75,7 @@ defmodule StreamixWeb.Content.SeriesLive do
   # Render
   # ============================================
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div id="series-browse" phx-hook="BrowseScrollRestoration" class="space-y-4 sm:space-y-5">

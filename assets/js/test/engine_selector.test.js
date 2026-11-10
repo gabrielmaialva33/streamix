@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import * as selector from "../player/engine_selector.js";
 
 import { selectEngine } from "../player/engine_selector.js";
 
@@ -110,3 +111,34 @@ for (const { name, context, expected } of cases) {
     assert.equal(selectEngine(context), expected);
   });
 }
+test("engine decision explains policy precedence without attributing HLS or hardware paths to memory", () => {
+  assert.equal(typeof selector.selectEngineDecision, "function");
+  for (const [context, expected] of [
+    [
+      { streamType: "mp4", recommendedPlayer: "avplayer" },
+      { engine: "avplayer", reason: "provider_memory" },
+    ],
+    [
+      { streamType: "mkv", preferAVPlayer: true },
+      { engine: "avplayer", reason: "user_choice" },
+    ],
+    [
+      { streamType: "hls", recommendedPlayer: "avplayer", capabilities: { hlsJs: true } },
+      { engine: "hls-js", reason: "capability" },
+    ],
+    [
+      {
+        streamType: "mp4",
+        recommendedPlayer: "avplayer",
+        isUhdHevc: true,
+        capabilities: { avbridge: true },
+      },
+      { engine: "avbridge", reason: "capability" },
+    ],
+    [
+      { streamType: "mp4", recommendedPlayer: "avplayer", avPlayerAttempted: true },
+      { engine: "native", reason: "capability" },
+    ],
+  ])
+    assert.deepEqual(selector.selectEngineDecision(context), expected);
+});

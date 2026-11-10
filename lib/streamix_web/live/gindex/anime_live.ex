@@ -11,14 +11,16 @@ defmodule StreamixWeb.Gindex.AnimeLive do
   import StreamixWeb.Content.NavigationComponents
   import StreamixWeb.CoreComponents, only: [icon: 1]
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
+  alias Streamix.Catalog
   alias Streamix.Library
   alias StreamixWeb.Content.FavoriteState
 
   @per_page 48
 
+  @impl true
   def mount(_params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    gindex_counts = Streamix.Catalog.gindex_counts()
+    gindex_counts = Catalog.gindex_counts()
 
     socket =
       socket
@@ -37,6 +39,7 @@ defmodule StreamixWeb.Gindex.AnimeLive do
     {:ok, socket}
   end
 
+  @impl true
   def handle_params(params, _url, socket) do
     search = params["search"] || ""
 
@@ -55,6 +58,7 @@ defmodule StreamixWeb.Gindex.AnimeLive do
   # Event Handlers
   # ============================================
 
+  @impl true
   def handle_event("search", %{"search" => search}, socket) do
     path =
       if search == "",
@@ -87,7 +91,7 @@ defmodule StreamixWeb.Gindex.AnimeLive do
 
     case parse_positive_integer(id) do
       {:ok, anime_id} ->
-        anime = Streamix.Catalog.get_series!(anime_id)
+        anime = Catalog.get_series!(anime_id)
 
         case FavoriteState.toggle(library_key, "series", anime_id, %{
                content_name: anime.title || anime.name,
@@ -112,6 +116,7 @@ defmodule StreamixWeb.Gindex.AnimeLive do
   # Render
   # ============================================
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="space-y-6">
@@ -184,7 +189,7 @@ defmodule StreamixWeb.Gindex.AnimeLive do
     page = socket.assigns.page
 
     animes =
-      Streamix.Catalog.list_gindex_animes(
+      Catalog.list_gindex_animes(
         search: search,
         limit: @per_page,
         offset: (page - 1) * @per_page

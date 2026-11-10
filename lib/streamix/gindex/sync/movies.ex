@@ -12,6 +12,7 @@ defmodule Streamix.Gindex.Sync.Movies do
   alias Streamix.Gindex.Scraper
   alias Streamix.Gindex.Sync.DiscoveryCursor
   alias Streamix.Gindex.Sync.Normalizers.Movie, as: MovieNormalizer
+  alias Streamix.SafeLog
 
   require Logger
 
@@ -33,7 +34,7 @@ defmodule Streamix.Gindex.Sync.Movies do
     end
   rescue
     error ->
-      Logger.error("[GIndex Sync] Error during movie sync: #{inspect(error)}")
+      Logger.error("[GIndex Sync] Error during movie sync", reason: SafeLog.redact_inspect(error))
       {:error, error}
   end
 
@@ -491,12 +492,15 @@ defmodule Streamix.Gindex.Sync.Movies do
         {:ok, count}
 
       {:error, reason} ->
-        Logger.error("[GIndex Sync] Failed to upsert movies: #{inspect(reason)}")
+        Logger.error("[GIndex Sync] Failed to upsert movies",
+          reason: SafeLog.redact_inspect(reason)
+        )
+
         {:error, reason}
     end
   rescue
     error ->
-      Logger.error("[GIndex Sync] Failed to upsert movies: #{inspect(error)}")
+      Logger.error("[GIndex Sync] Failed to upsert movies", reason: SafeLog.redact_inspect(error))
       {:error, error}
   end
 end

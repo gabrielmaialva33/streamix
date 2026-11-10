@@ -1,6 +1,7 @@
 defmodule StreamixWeb.Api.V1.RecommendationsControllerTest do
   use StreamixWeb.ConnCase, async: false
 
+  import OpenApiSpex.TestAssertions, only: [assert_operation_response: 2]
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
@@ -23,6 +24,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsControllerTest do
       conn
       |> authenticated(user)
       |> get(~p"/api/v1/recommendations/channels")
+      |> assert_operation_response("recommendations.channels")
       |> json_response(200)
 
     assert [%{"id" => id, "category" => nil, "categories" => []}] = response["channels"]
@@ -101,6 +103,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsControllerTest do
       conn
       |> authenticated(user)
       |> get(~p"/api/v1/recommendations?type=movies")
+      |> assert_operation_response("recommendations.index")
       |> json_response(200)
 
     [rec_movie] = Enum.filter(movie_resp["recommendations"], &(&1["id"] == movie.id))
@@ -115,6 +118,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsControllerTest do
       conn
       |> authenticated(user)
       |> get(~p"/api/v1/recommendations?type=series")
+      |> assert_operation_response("recommendations.index")
       |> json_response(200)
 
     [rec_series] = Enum.filter(series_resp["recommendations"], &(&1["id"] == series.id))

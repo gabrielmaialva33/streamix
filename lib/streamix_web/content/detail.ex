@@ -9,7 +9,10 @@ defmodule StreamixWeb.Content.Detail do
 
   alias Streamix.Access
   alias Streamix.AI
+  alias Streamix.Catalog
   alias Streamix.Library
+  alias Streamix.Providers
+  alias Streamix.SafeLog
   alias Streamix.Torrent
   alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.Content.TitleIdentity
@@ -47,10 +50,10 @@ defmodule StreamixWeb.Content.Detail do
     end
   end
 
-  def global_provider, do: Streamix.Providers.get_global_provider()
+  def global_provider, do: Providers.get_global_provider()
 
   def playable_provider(user_id, provider_id),
-    do: Streamix.Providers.get_playable_provider(user_id, provider_id)
+    do: Providers.get_playable_provider(user_id, provider_id)
 
   def premium_access?(user, provider), do: Access.plays_global_content?(user, provider)
 
@@ -64,7 +67,7 @@ defmodule StreamixWeb.Content.Detail do
   asset when present, otherwise the proxied fallback URL.
   """
   def hero_image(content, fallback_url) do
-    case Streamix.Catalog.backdrop_urls(content) do
+    case Catalog.backdrop_urls(content) do
       [url | _] -> ImageProxy.proxy(url)
       _ -> ImageProxy.proxy(fallback_url)
     end
@@ -103,10 +106,10 @@ defmodule StreamixWeb.Content.Detail do
   def get_playable_series(user_id, series_id),
     do: Streamix.Playback.get_playable_series(user_id, series_id)
 
-  def get_series_with_sync!(series_id), do: Streamix.Catalog.get_series_with_sync!(series_id)
+  def get_series_with_sync!(series_id), do: Catalog.get_series_with_sync!(series_id)
 
   def get_episode_with_context!(episode_id),
-    do: Streamix.Catalog.get_episode_with_context!(episode_id)
+    do: Catalog.get_episode_with_context!(episode_id)
 
   def movie_variants(movie, user_id), do: Streamix.Playback.list_movie_variants(movie, user_id)
 
@@ -115,7 +118,7 @@ defmodule StreamixWeb.Content.Detail do
 
   def maybe_fetch_movie_info(movie) do
     if needs_detailed_info?(movie) do
-      case Streamix.Catalog.fetch_movie_info(movie) do
+      case Catalog.fetch_movie_info(movie) do
         {:ok, updated_movie} -> updated_movie
         {:error, _reason} -> movie
       end
@@ -126,7 +129,7 @@ defmodule StreamixWeb.Content.Detail do
 
   def maybe_fetch_series_info(series) do
     if needs_detailed_info?(series) do
-      case Streamix.Catalog.fetch_series_info(series) do
+      case Catalog.fetch_series_info(series) do
         {:ok, updated_series} -> updated_series
         {:error, _reason} -> series
       end
@@ -136,17 +139,17 @@ defmodule StreamixWeb.Content.Detail do
   end
 
   def maybe_fetch_episode_info(episode) do
-    case Streamix.Catalog.fetch_episode_info(episode) do
+    case Catalog.fetch_episode_info(episode) do
       {:ok, updated_episode} -> updated_episode
       {:error, _reason} -> episode
     end
   end
 
   def similar_movies(movie),
-    do: similar(movie, :movies, &Streamix.Catalog.get_movies_by_ids/1, "MovieDetail")
+    do: similar(movie, :movies, &Catalog.get_movies_by_ids/1, "MovieDetail")
 
   def similar_series(series),
-    do: similar(series, :series, &Streamix.Catalog.get_series_by_ids/1, "SeriesDetail")
+    do: similar(series, :series, &Catalog.get_series_by_ids/1, "SeriesDetail")
 
   def seasons_with_episodes(series) do
     (series.seasons || [])
@@ -159,7 +162,7 @@ defmodule StreamixWeb.Content.Detail do
 
   def episode_navigation(episode) do
     season = episode.season
-    episodes = Streamix.Catalog.list_season_episodes(season.id)
+    episodes = Catalog.list_season_episodes(season.id)
     current_index = Enum.find_index(episodes, &(&1.id == episode.id))
 
     prev_episode = if current_index && current_index > 0, do: Enum.at(episodes, current_index - 1)
@@ -197,12 +200,18 @@ defmodule StreamixWeb.Content.Detail do
         |> Enum.take(@similar_limit)
 
       {:error, reason} ->
-        Logger.debug("[#{log_context}] SemanticSearch unavailable: #{inspect(reason)}")
+        Logger.debug("[#{log_context}] SemanticSearch unavailable",
+          reason: SafeLog.redact_inspect(reason)
+        )
+
         []
     end
   rescue
     error ->
-      Logger.warning("[#{log_context}] Unexpected error in similar lookup: #{inspect(error)}")
+      Logger.warning("[#{log_context}] Unexpected error in similar lookup",
+        reason: SafeLog.redact_inspect(error)
+      )
+
       []
   end
 end

@@ -25,6 +25,24 @@ defmodule Streamix.Playback do
 
   @type stream_error_code :: StreamErrors.code()
 
+  @doc "Records only a definitive upstream not-found response for a VOD file, asynchronously."
+  defdelegate record_vod_failure(type, id, provider_id, reason),
+    to: Streamix.Iptv.Content.VodAvailability,
+    as: :record_failure
+
+  @doc "Whether a VOD item is quarantined until sync changes it or the recheck window expires."
+  defdelegate vod_dead?(content), to: Streamix.Iptv.Content.VodAvailability, as: :dead?
+
+  @doc """
+  Whether `content` of `type` answered not-found recently enough to skip it:
+  live channels use their 24-hour recheck window, VOD its seven-day quarantine.
+  """
+  @spec content_dead?(String.t() | atom(), map()) :: boolean()
+  def content_dead?(type, content) when type in ["live_channel", :live_channel],
+    do: Channels.dead?(content)
+
+  def content_dead?(_type, content), do: vod_dead?(content)
+
   # Playability and canonical stream targets
 
   defdelegate get_episode_for_stream(id), to: SeriesOps
@@ -65,8 +83,35 @@ defmodule Streamix.Playback do
   Resolves a stream URL using the source proxy credential-exchange policy.
   """
   def resolve_stream_url_for_proxy(url, opts \\ []) do
-    RedirectResolver.resolve_for_proxy(url, UpstreamPolicy.with_domain_policy(opts))
+    urls = Keyword.get(opts, :url_chain, [url])
+    resolve_proxy_chain(urls, UpstreamPolicy.with_domain_policy(opts), true)
   end
+
+  defp resolve_proxy_chain([], _opts, _all_missing?), do: {:error, :stream_resolution_failed}
+
+  defp resolve_proxy_chain([url | rest], opts, all_missing?) do
+    case RedirectResolver.resolve_for_proxy(url, opts) do
+      {:ok, _url} = result ->
+        result
+
+      {:error, reason} = error ->
+        all_missing? =
+          all_missing? and StreamErrors.code_from_reason(reason) == :upstream_not_found
+
+        if rest == [] do
+          complete_proxy_failure(error, opts, all_missing?)
+        else
+          resolve_proxy_chain(rest, opts, all_missing?)
+        end
+    end
+  end
+
+  defp complete_proxy_failure(error, opts, true) do
+    record_resolution_failure(error, opts)
+    error
+  end
+
+  defp complete_proxy_failure(error, _opts, false), do: error
 
   @doc "Prewarms without fetching a single-use token target."
   def prewarm_stream_url(url, opts \\ []) when is_binary(url) and is_list(opts) do
@@ -111,6 +156,36 @@ defmodule Streamix.Playback do
 
   defp private_provider?(_provider_id), do: false
 
+  @doc """
+  Starts fetching the first block of a VOD title into the block cache, so
+  the play that usually follows (a title page, or the player mounting just
+  before the browser's first range) begins from disk instead of waiting on
+  the provider. The provider CDNs measured here take ~2 s to answer any
+  request. Same cache key as `pipe_vod_stream/3`; a no-op when the
+  multiplexer is off or the block is already cached or in flight.
+
+  `opts` takes `:provider_id`, `:content_id` and `:media_type`.
+  """
+  @spec warm_vod_start(String.t(), keyword()) :: :ok
+  def warm_vod_start(url, opts) when is_binary(url) do
+    if Application.get_env(:streamix, :vod_multiplexer_enabled, false) and
+         not private_provider?(Keyword.get(opts, :provider_id)) do
+      opts = UpstreamPolicy.with_domain_policy(opts)
+      key = VodMultiplexer.content_key(Keyword.put(opts, :url, url))
+      size = VodMultiplexer.block_size()
+
+      VodMultiplexer.BlockFetcher.prefetch({key, 0},
+        url: url,
+        domain_policy: Keyword.get(opts, :domain_policy),
+        provider_id: Keyword.get(opts, :provider_id),
+        range_start: 0,
+        range_end: size - 1
+      )
+    end
+
+    :ok
+  end
+
   def head_stream(conn, url, opts \\ []) do
     VodProxy.head(conn, url, UpstreamPolicy.with_domain_policy(opts))
   end
@@ -140,13 +215,38 @@ defmodule Streamix.Playback do
   defdelegate xtream_route(provider, type, content, opts \\ []), to: XtreamDelivery, as: :route
 
   @doc """
+  Where an Xtream item stands with the delivery probe, without probing:
+  `:not_probed`, `:pending`, `:decided` or `:failed`.
+  """
+  defdelegate xtream_probe_state(provider, type, content), to: XtreamDelivery, as: :probe_state
+
+  @doc """
   The upstream a gateway serves an Xtream item from: `{:ok, {:hls, root_url}}`
   (credential-bearing, server-side only) or `{:ok, {:direct, client_url,
   extension}}` (safe to hand to the client).
   """
-  defdelegate resolve_xtream_delivery(provider, type, content),
-    to: XtreamDelivery,
-    as: :resolve
+  def resolve_xtream_delivery(provider, type, content) do
+    result = XtreamDelivery.resolve(provider, type, content)
+
+    record_resolution_failure(result,
+      media_type: type,
+      content_id: content.id,
+      provider_id: provider.id
+    )
+
+    result
+  end
+
+  defp record_resolution_failure({:error, reason}, opts) do
+    record_vod_failure(
+      Keyword.get(opts, :media_type),
+      Keyword.get(opts, :content_id),
+      Keyword.get(opts, :provider_id),
+      reason
+    )
+  end
+
+  defp record_resolution_failure(_result, _opts), do: :ok
 
   @doc """
   Opens (or reuses) the HLS gateway session for an Xtream item, rooted at its

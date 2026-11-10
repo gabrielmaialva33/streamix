@@ -1,3 +1,4 @@
+<% visible_rows = TvGuide.filter(@rows, @selected_category, @favorites_only, @favorite_ids) %>
 <div id="tv-guide" class="space-y-3 sm:space-y-5">
   <.page_header
     id="guide-page-header"
@@ -93,7 +94,7 @@
         {TvGuide.window_label(@starts_at, @ends_at)}
       </span>
     </p>
-    <p :if={!@loading}>{ngettext("%{count} canal", "%{count} canais", length(@rows))}</p>
+    <p :if={!@loading}>{ngettext("%{count} canal", "%{count} canais", length(visible_rows))}</p>
   </div>
 
   <div :if={@loading} id="guide-loading" class="space-y-2" aria-label={gettext("Carregando guia")}>
@@ -108,7 +109,7 @@
     </div>
   </div>
 
-  <div :if={!@loading && @rows != []} id="guide-rows" class="space-y-1.5 sm:space-y-2.5">
+  <div :if={!@loading && visible_rows != []} id="guide-rows" class="space-y-1.5 sm:space-y-2.5">
     <div class="guide-time-axis" aria-hidden="true">
       <span>Canal</span>
       <div class="flex justify-between min-w-0">
@@ -116,7 +117,7 @@
       </div>
     </div>
     <article
-      :for={row <- @rows}
+      :for={row <- visible_rows}
       id={"guide-channel-#{row.channel.id}"}
       data-guide-row
       class="guide-timeline-row grid gap-1.5 rounded-xl border border-border bg-surface/92 p-2 sm:grid-cols-[minmax(180px,220px)_minmax(0,1fr)] sm:items-stretch sm:gap-3 sm:p-3"
@@ -244,7 +245,7 @@
   </div>
 
   <.empty_state
-    :if={!@loading && @rows == []}
+    :if={!@loading && visible_rows == []}
     id="guide-empty"
     icon="hero-calendar-days"
     title={gettext("Nenhum canal no guia")}
