@@ -320,7 +320,12 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
               <!-- Action Buttons -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2 sm:gap-3 pt-2">
-                <.play_button event="play_movie" label="Assistir" />
+                <.play_button
+                  event="play_movie"
+                  label="Assistir"
+                  stream_type={@selected_movie.container_extension}
+                  provider_id={@selected_movie.provider_id}
+                />
 
                 <div class="title-secondary-actions">
                   <StreamixWeb.WatchPartyComponents.create_party_button

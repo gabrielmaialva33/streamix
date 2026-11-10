@@ -50,6 +50,11 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Changed
 
+- Fewer titles start on the slow WASM engine: the browser capability check asks about file playback for progressive
+  MP4/MKV (it asked about Media Source Extensions, which made iPhones reject files Safari plays natively), and only
+  "not supported" rules the native player out; "not smooth" now just lowers the resolution.
+- A title page warms the engine its "Assistir" button will use as soon as the page is idle, so phones, which never
+  hover, no longer pay the whole AVPlayer runtime load on the first tap.
 - A production deploy recreates only the app container. It used to start and recreate dependencies whose image
   changed, so merging an infrastructure image bump restarted the shared Postgres and Redis.
 - Production app logs go to journald (`journalctl -t streamix`), so they survive the container being recreated on

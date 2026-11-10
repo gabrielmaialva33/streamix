@@ -173,7 +173,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
               </div>
 
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2 sm:gap-3 pt-2">
-                <.play_button event="play_first_episode" label="Assistir" />
+                <.play_button event="play_first_episode" label="Assistir" source_type="gindex" />
                 <div class="title-secondary-actions">
                   <.favorite_button favorite?={@is_favorite} />
                 </div>

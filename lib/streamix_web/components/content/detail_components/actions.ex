@@ -10,9 +10,26 @@ defmodule StreamixWeb.Content.DetailComponents.Actions do
   attr :event, :string, required: true
   attr :label, :string, required: true
 
+  attr :stream_type, :string,
+    default: nil,
+    doc: "container or stream type, so the browser warms the engine that will play it"
+
+  attr :source_type, :string, default: nil
+  attr :provider_id, :integer, default: nil
+
   def play_button(assigns) do
     ~H"""
-    <.button type="button" phx-click={@event} variant="primary" size="lg" class="w-full sm:w-auto">
+    <.button
+      type="button"
+      phx-click={@event}
+      variant="primary"
+      size="lg"
+      class="w-full sm:w-auto"
+      data-playback-warm
+      data-stream-type={@stream_type}
+      data-source-type={@source_type}
+      data-provider-id={@provider_id}
+    >
       <.icon name="hero-play-solid" class="size-4 sm:size-5" /> {@label}
     </.button>
     """

@@ -4,6 +4,7 @@ import {
   consumePlaybackIntent,
   createEngineWarmup,
   installPlaybackIntent,
+  warmPrimaryPlayback,
 } from "../player/playback_intent.js";
 import { recordPlayerSuccess } from "../player/player_preferences.js";
 
@@ -106,4 +107,56 @@ test("hover/focus warm code without recording a click; matched click is consumed
   assert.equal(consumePlaybackIntent({ now: () => now }), null);
   dispose();
   assert.equal(listeners.size, 0);
+});
+
+test("a title page warms its play button's engine once idle, again after each navigation", () => {
+  const primary = button({ streamType: "mkv", sourceType: "gindex", providerId: "2" });
+  let current = primary;
+  const documentRef = {
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    querySelector: (selector) => (selector === "[data-playback-warm]" ? current : null),
+  };
+  const windowListeners = new Map();
+  const windowRef = {
+    addEventListener: (name, fn) => windowListeners.set(name, fn),
+    removeEventListener: (name) => windowListeners.delete(name),
+  };
+  const idle = [];
+  const warmed = [];
+
+  const dispose = installPlaybackIntent({
+    documentRef,
+    windowRef,
+    warm: (element) => warmed.push(element),
+    schedule: (callback) => idle.push(callback),
+  });
+
+  // Nothing heavy runs before the page is idle.
+  assert.deepEqual(warmed, []);
+  idle.shift()();
+  assert.deepEqual(warmed, [primary]);
+
+  // A LiveView navigation to another title warms that title's button.
+  const next = button({ streamType: "mp4", providerId: "3" });
+  current = next;
+  windowListeners.get("phx:page-loading-stop")();
+  idle.shift()();
+  assert.deepEqual(warmed, [primary, next]);
+
+  dispose();
+  assert.equal(windowListeners.size, 0);
+});
+
+test("a page without a marked play button warms nothing", () => {
+  const scheduled = [];
+  assert.equal(
+    warmPrimaryPlayback({
+      documentRef: { querySelector: () => null },
+      warm: () => assert.fail("must not warm"),
+      schedule: (callback) => scheduled.push(callback),
+    }),
+    false,
+  );
+  assert.deepEqual(scheduled, []);
 });

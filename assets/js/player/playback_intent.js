@@ -58,11 +58,42 @@ export function createEngineWarmup({
 
 const warmEngine = createEngineWarmup();
 
+const WARM_SELECTOR = "[data-playback-warm]";
+
+const onIdle = (callback, windowRef = globalThis) =>
+  typeof windowRef.requestIdleCallback === "function"
+    ? windowRef.requestIdleCallback(callback, { timeout: 2_000 })
+    : windowRef.setTimeout(callback, 200);
+
+/**
+ * Warms the engine for a page's main play button once the page is idle.
+ *
+ * Hover and focus warm on desktop, but a phone never hovers: the first tap
+ * paid the whole AVPlayer runtime load (scripts and WASM decoders). A title
+ * page marks its "Assistir" button with data-playback-warm and its stream
+ * hints, so the predicted engine is ready before the tap. Speculative work is
+ * still skipped on Save-Data or a slow connection (see preloadAVPlayerRuntime).
+ */
+export function warmPrimaryPlayback({
+  documentRef = globalThis.document,
+  warm = warmEngine,
+  schedule = onIdle,
+} = {}) {
+  const element = documentRef?.querySelector?.(WARM_SELECTOR);
+  if (!element) return false;
+  schedule(() => {
+    if (element.isConnected !== false) void warm(element);
+  });
+  return true;
+}
+
 /** Ephemeral same-document intent only: no URLs/titles are persisted or requested. */
 export function installPlaybackIntent({
   documentRef = globalThis.document,
+  windowRef = globalThis,
   now = nowDefault,
   warm = warmEngine,
+  schedule = onIdle,
 } = {}) {
   const find = (event) => event.target?.closest?.(PLAY_SELECTOR);
   const warmOnIntent = (event) => {
@@ -87,13 +118,18 @@ export function installPlaybackIntent({
         null,
     };
   };
+  const warmPage = () => warmPrimaryPlayback({ documentRef, warm, schedule });
   documentRef.addEventListener("pointerover", warmOnIntent, true);
   documentRef.addEventListener("focusin", warmOnIntent, true);
   documentRef.addEventListener("click", click, true);
+  // LiveView navigation swaps pages without a load event.
+  windowRef?.addEventListener?.("phx:page-loading-stop", warmPage);
+  warmPage();
   return () => {
     documentRef.removeEventListener("pointerover", warmOnIntent, true);
     documentRef.removeEventListener("focusin", warmOnIntent, true);
     documentRef.removeEventListener("click", click, true);
+    windowRef?.removeEventListener?.("phx:page-loading-stop", warmPage);
     intent = null;
   };
 }
