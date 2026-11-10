@@ -402,7 +402,7 @@ defmodule StreamixWeb.E2E.WatchPartySyncTest do
       """,
       [is_function: true],
       fn state ->
-        IO.inspect(state, label: "Watch Party host failure diagnostics", limit: :infinity)
+        IO.puts("Watch Party host failure diagnostics: " <> Jason.encode!(state))
       end
     )
   end
