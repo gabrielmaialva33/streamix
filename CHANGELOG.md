@@ -47,6 +47,11 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   provider is selected.
 - Response-contract tests covering success, validation, not-found, and authentication responses against the published
   schemas.
+- Discovery search (`Streamix.AI.discover/3`): a query such as "terror dos anos 80 leve" is parsed, without a model
+  call, into the genres it names, decades (released then, or set then) and tags. Genres, decades and the viewer's
+  providers filter in Qdrant; tags and the genres a subgenre implies only add to the score, so titles still awaiting
+  classification are ranked lower, never hidden. Qdrant collections now index their filterable payload fields.
+  `Streamix.AI.DiscoveryEval` scores 30 reference queries by precision@10 against catalog facts.
 - Fine-grained title tags from a closed vocabulary (`Streamix.Iptv.Tags.Vocabulary`): about 150 subgenres
   (slasher, possession, heist, space opera, isekai, dorama...), mood, pace, the era the story is set in, setting,
   audience, themes and source material. Gemini (`TAG_CLASSIFIER_MODEL`, default `gemini-3.5-flash-lite`) classifies

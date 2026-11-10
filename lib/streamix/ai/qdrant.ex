@@ -70,9 +70,60 @@ defmodule Streamix.AI.Qdrant do
   Ensures all required collections exist with proper configuration.
   """
   def setup_collections do
-    with :ok <- ensure_collections() do
+    with :ok <- ensure_collections(),
+         :ok <- ensure_payload_indexes() do
       drop_retired_collections()
     end
+  end
+
+  # Payload fields discovery filters on. Without an index Qdrant scans every
+  # point's payload; creating one that exists is skipped.
+  @payload_indexes [
+    {"provider_id", "integer"},
+    {"year", "integer"},
+    {"genres", "keyword"},
+    {"variant_key", "keyword"},
+    {"subgenres", "keyword"},
+    {"moods", "keyword"},
+    {"pace", "keyword"},
+    {"eras", "keyword"},
+    {"settings", "keyword"},
+    {"audience", "keyword"},
+    {"themes", "keyword"},
+    {"origins", "keyword"}
+  ]
+
+  defp ensure_payload_indexes do
+    Enum.reduce_while(@collections, :ok, fn collection, :ok ->
+      case ensure_payload_indexes(collection) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, {:index_setup_failed, collection, reason}}}
+      end
+    end)
+  end
+
+  defp ensure_payload_indexes(collection) do
+    existing =
+      case req_get("#{base_url()}/collections/#{collection}") do
+        {:ok, %Req.Response{status: 200, body: %{"result" => %{"payload_schema" => schema}}}}
+        when is_map(schema) ->
+          Map.keys(schema)
+
+        _other ->
+          []
+      end
+
+    @payload_indexes
+    |> Enum.reject(fn {field, _type} -> field in existing end)
+    |> Enum.reduce_while(:ok, fn {field, type}, :ok ->
+      body = Jason.encode!(%{field_name: field, field_schema: type})
+
+      case req_put("#{base_url()}/collections/#{collection}/index?wait=true", body) do
+        {:ok, %Req.Response{status: status}} when status in 200..299 -> {:cont, :ok}
+        {:ok, %Req.Response{status: status}} -> {:halt, {:error, {field, status}}}
+        {:error, reason} -> {:halt, {:error, {field, reason}}}
+      end
+    end)
   end
 
   defp ensure_collections do

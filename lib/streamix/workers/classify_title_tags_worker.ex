@@ -2,8 +2,9 @@ defmodule Streamix.Workers.ClassifyTitleTagsWorker do
   @moduledoc """
   Classifies titles that still need tags (`Streamix.Catalog.pending_tag_documents/2`)
   with `Streamix.AI.classify_titles/2`, `:batch_size` titles per request and
-  `:concurrency` requests at a time, until `:limit` titles were handled or
-  nothing is pending. A job's `"limit"` arg overrides the configured one.
+  `:concurrency` requests at a time, movies then series, until `:limit`
+  titles of each kind were handled or none is pending. A job's `"limit"` arg
+  overrides the configured one.
 
   A spent daily quota, a rate limit, a missing or rejected key and transport
   or server failures end the run quietly: the next run continues where this

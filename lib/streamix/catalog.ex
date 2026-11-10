@@ -242,6 +242,14 @@ defmodule Streamix.Catalog do
     to: Streamix.Iptv.Tags,
     as: :put
 
+  @doc "Reads a discovery query into genres, decades and tags; see `Streamix.Iptv.Tags.QueryParser`."
+  defdelegate parse_discovery_query(query), to: Streamix.Iptv.Tags.QueryParser, as: :parse
+
+  @doc "True when a parsed discovery query has anything to filter or rank on."
+  defdelegate discovery_query_structured?(parsed),
+    to: Streamix.Iptv.Tags.QueryParser,
+    as: :structured?
+
   @doc "Titles classified so far, per stored kind."
   defdelegate title_tag_counts(), to: Streamix.Iptv.Tags, as: :counts
 

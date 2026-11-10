@@ -32,6 +32,10 @@ defmodule Streamix.Search do
     to: Streamix.Iptv.SearchDocuments,
     as: :list
 
+  defdelegate search_documents_for_ids(kind, ids),
+    to: Streamix.Iptv.SearchDocuments,
+    as: :for_ids
+
   def search_tmdb(:movie, query, opts),
     do: TmdbClient.search_movie(query, opts)
 

@@ -44,15 +44,21 @@ defmodule Streamix.AI.QdrantTest do
 
     assert Qdrant.setup_collections() == :ok
 
-    assert Agent.get(requests, &Enum.reverse/1) == [
-             {"GET", "/collections/movies"},
-             {"PUT", "/collections/movies"},
-             {"GET", "/collections/series"},
-             {"PUT", "/collections/series"},
-             {"GET", "/collections/animes"},
-             {"PUT", "/collections/animes"},
-             {"DELETE", "/collections/user_profiles"}
-           ]
+    assert Agent.get(requests, &Enum.reverse/1) ==
+             [
+               {"GET", "/collections/movies"},
+               {"PUT", "/collections/movies"},
+               {"GET", "/collections/series"},
+               {"PUT", "/collections/series"},
+               {"GET", "/collections/animes"},
+               {"PUT", "/collections/animes"}
+             ] ++
+               Enum.flat_map(~w(movies series animes), fn collection ->
+                 # Then every filterable payload field gets its index.
+                 [{"GET", "/collections/#{collection}"}] ++
+                   List.duplicate({"PUT", "/collections/#{collection}/index"}, 12)
+               end) ++
+               [{"DELETE", "/collections/user_profiles"}]
   end
 
   # The default floors are calibrated per embedding model; a hard-coded 0.7

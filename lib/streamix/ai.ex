@@ -22,6 +22,9 @@ defmodule Streamix.AI do
   @doc "Classifies search documents into the catalog's tag vocabulary; see `Streamix.AI.TagClassifier`."
   defdelegate classify_titles(documents, opts \\ []), to: Streamix.AI.TagClassifier, as: :classify
 
+  @doc "Hybrid discovery search (filters plus meaning); see `Streamix.AI.Discovery`."
+  defdelegate discover(query, collection, opts \\ []), to: Streamix.AI.Discovery
+
   @doc "The model titles are classified with."
   defdelegate tag_classifier_model(), to: Streamix.AI.TagClassifier, as: :model
   defdelegate semantic_search_info(), to: SemanticSearch, as: :info

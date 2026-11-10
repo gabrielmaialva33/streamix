@@ -228,7 +228,7 @@ config :gettext, :default_locale, "pt_BR"
 config :streamix, StreamixWeb.Gettext, default_locale: "pt_BR"
 
 # Oban - Background jobs
-# Titles per run, titles per Gemini request, requests in flight. Hourly runs
+# Titles per kind per run, titles per Gemini request, requests in flight. Hourly runs
 # let a free-tier key work through the catalog a daily quota at a time.
 config :streamix, Streamix.Workers.ClassifyTitleTagsWorker,
   limit: 2_000,
