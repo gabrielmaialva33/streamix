@@ -50,10 +50,25 @@ defmodule StreamixWeb.Api.V1.Response do
     end)
   end
 
+  # Only placeholders the message names are filled in. Validation options also
+  # carry values that are not text (unsafe_validate_unique adds
+  # `fields: [:email]`), and stringifying every option crashed a duplicate
+  # email registration into a 500.
   defp interpolate_changeset_error({message, opts}) do
-    replacements = Map.new(opts, fn {key, value} -> {Atom.to_string(key), to_string(value)} end)
-    Regex.replace(~r"%{(\w+)}", message, fn _, key -> Map.get(replacements, key, key) end)
+    Regex.replace(~r"%{(\w+)}", message, fn placeholder, key ->
+      case Enum.find(opts, fn {name, _value} -> Atom.to_string(name) == key end) do
+        {_name, value} -> interpolation_value(value)
+        nil -> placeholder
+      end
+    end)
   end
+
+  defp interpolation_value(value) when is_binary(value), do: value
+
+  defp interpolation_value(value) when is_number(value) or is_atom(value),
+    do: to_string(value)
+
+  defp interpolation_value(value), do: inspect(value)
 
   defp reason_kind(reason) when is_atom(reason), do: reason
   defp reason_kind({tag, _value}) when is_atom(tag), do: tag
