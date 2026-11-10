@@ -50,4 +50,16 @@ defmodule Streamix.AI.UserAnalytics.FormatterTest do
 
     assert recommendation.genre == "Ação"
   end
+
+  test "collapses provider copies of one title into the best-scored one" do
+    results = [
+      %{id: 1, score: 0.9, payload: %{"variant_key" => "tmdb:550"}},
+      %{id: 2, score: 0.8, payload: %{"variant_key" => "tmdb:550"}},
+      %{id: 3, score: 0.7, payload: %{"variant_key" => "tmdb:13"}},
+      %{id: 4, score: 0.6, payload: %{}},
+      %{id: 5, score: 0.5, payload: %{}}
+    ]
+
+    assert Enum.map(Formatter.recommendations(results), & &1.id) == [1, 3, 4, 5]
+  end
 end

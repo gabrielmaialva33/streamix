@@ -55,6 +55,10 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Changed
 
+- Semantic search embeds each title as labelled lines (genres, TMDB keywords, directors, writers, billed cast,
+  tagline, synopsis) through one text builder shared by both embedding providers, instead of title, genres and plot.
+  Results and "similar titles" list each title once instead of once per provider copy, and "similar to X" no longer
+  answers with X's other copies. Points carry their `variant_key`; the next nightly index run re-embeds everything.
 - Title pages warm the copy their play button opens: the movie page warmed the requested movie even when the source
   ranking picked another provider's copy, and now re-warms when the viewer switches source; the episode page warms the
   first block too (it lacked the provider, so only the redirect was warmed); the series page warms the episode

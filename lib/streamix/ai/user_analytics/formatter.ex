@@ -1,8 +1,11 @@
 defmodule Streamix.AI.UserAnalytics.Formatter do
   @moduledoc false
 
+  # Results arrive best-first; provider copies of one title collapse into the best.
   def recommendations(results) do
-    Enum.map(results, fn %{id: id, score: score, payload: payload} ->
+    results
+    |> Enum.uniq_by(fn %{id: id, payload: payload} -> payload["variant_key"] || {:id, id} end)
+    |> Enum.map(fn %{id: id, score: score, payload: payload} ->
       %{
         id: id,
         score: Float.round(score, 3),

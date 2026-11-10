@@ -21,6 +21,7 @@ defmodule Streamix.AI.Nvidia do
 
   require Logger
 
+  alias Streamix.AI.ContentText
   alias Streamix.SafeLog
 
   # 2026-06: NVIDIA migrated their embedding endpoints from the legacy
@@ -136,7 +137,7 @@ defmodule Streamix.AI.Nvidia do
   for embedding generation.
   """
   def embed_content(%{title: _title} = content) do
-    text = build_content_text(content)
+    text = ContentText.build(content)
     embed(text)
   end
 
@@ -147,7 +148,7 @@ defmodule Streamix.AI.Nvidia do
   the content ID and its embedding vector.
   """
   def embed_contents(contents) when is_list(contents) do
-    texts = Enum.map(contents, &build_content_text/1)
+    texts = Enum.map(contents, &ContentText.build/1)
 
     case embed_batch(texts) do
       {:ok, embeddings} ->
@@ -209,32 +210,6 @@ defmodule Streamix.AI.Nvidia do
         Logger.error("[NVIDIA] Request failed", reason: SafeLog.redact_inspect(reason))
         {:error, {:request_failed, reason}}
     end
-  end
-
-  defp build_content_text(%{title: title} = content) do
-    parts = [title]
-
-    parts =
-      if Map.get(content, :year),
-        do: parts ++ ["(#{content.year})"],
-        else: parts
-
-    parts =
-      if Map.get(content, :genres) && content.genres != [],
-        do: parts ++ ["Genres: #{Enum.join(content.genres, ", ")}"],
-        else: parts
-
-    parts =
-      if Map.get(content, :description) && content.description != "",
-        do: parts ++ [content.description],
-        else: parts
-
-    parts =
-      if Map.get(content, :plot) && content.plot != "",
-        do: parts ++ [content.plot],
-        else: parts
-
-    Enum.join(parts, " | ")
   end
 
   defp api_key do

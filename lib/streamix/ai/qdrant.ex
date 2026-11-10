@@ -246,11 +246,10 @@ defmodule Streamix.AI.Qdrant do
   """
   def find_similar(collection, content_id, opts \\ []) do
     case get_point(collection, content_id) do
-      {:ok, %{vector: vector}} ->
-        # Exclude the source content from results
-        filter = %{
-          must_not: [%{has_id: [content_id]}]
-        }
+      {:ok, %{vector: vector} = point} ->
+        # Exclude the source and, when known, every other provider copy of the
+        # same title: "similar to X" should never answer X again.
+        filter = %{must_not: [%{has_id: [content_id]} | same_title(point)]}
 
         opts =
           opts
@@ -263,6 +262,11 @@ defmodule Streamix.AI.Qdrant do
         {:error, reason}
     end
   end
+
+  defp same_title(%{payload: %{"variant_key" => key}}) when is_binary(key) and key != "",
+    do: [%{key: "variant_key", match: %{value: key}}]
+
+  defp same_title(_point), do: []
 
   @doc """
   Gets a single point by ID.

@@ -25,6 +25,7 @@ defmodule Streamix.AI.Gemini do
 
   require Logger
 
+  alias Streamix.AI.ContentText
   alias Streamix.SafeLog
 
   @base_url "https://generativelanguage.googleapis.com/v1beta"
@@ -95,7 +96,7 @@ defmodule Streamix.AI.Gemini do
   for embedding generation. Uses RETRIEVAL_DOCUMENT task type.
   """
   def embed_content(%{title: _title} = content) do
-    text = build_content_text(content)
+    text = ContentText.build(content)
     embed(text, task_type: "RETRIEVAL_DOCUMENT")
   end
 
@@ -106,7 +107,7 @@ defmodule Streamix.AI.Gemini do
   the content ID and its embedding vector.
   """
   def embed_contents(contents) when is_list(contents) do
-    texts = Enum.map(contents, &build_content_text/1)
+    texts = Enum.map(contents, &ContentText.build/1)
 
     case embed_batch(texts, task_type: "RETRIEVAL_DOCUMENT") do
       {:ok, embeddings} ->
@@ -194,32 +195,6 @@ defmodule Streamix.AI.Gemini do
         Logger.error("[Gemini] Batch request failed", reason: SafeLog.redact_inspect(reason))
         {:error, {:request_failed, reason}}
     end
-  end
-
-  defp build_content_text(%{title: title} = content) do
-    parts = [title]
-
-    parts =
-      if Map.get(content, :year),
-        do: parts ++ ["(#{content.year})"],
-        else: parts
-
-    parts =
-      if Map.get(content, :genres) && content.genres != [],
-        do: parts ++ ["Genres: #{Enum.join(content.genres, ", ")}"],
-        else: parts
-
-    parts =
-      if Map.get(content, :description) && content.description != "",
-        do: parts ++ [content.description],
-        else: parts
-
-    parts =
-      if Map.get(content, :plot) && content.plot != "",
-        do: parts ++ [content.plot],
-        else: parts
-
-    Enum.join(parts, " | ")
   end
 
   defp api_key do

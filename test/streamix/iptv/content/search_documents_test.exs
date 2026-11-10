@@ -22,6 +22,30 @@ defmodule Streamix.Iptv.SearchDocumentsTest do
     assert document.genres == nil
   end
 
+  test "carries keywords, credits and the title's variant key" do
+    provider = provider_fixture(user_fixture())
+    tmdb_id = Integer.to_string(System.unique_integer([:positive]))
+    movie = movie_fixture(provider, %{title: "Interestelar", tmdb_id: tmdb_id})
+
+    {:ok, _} =
+      Streamix.Catalog.apply_tmdb_metadata(:movies, tmdb_id, %{
+        keywords: [%{id: 4379, name: "time travel"}, %{id: 3801, name: "space travel"}],
+        credits: [
+          %{name: "Matthew McConaughey", role: "cast", position: 0},
+          %{name: "Christopher Nolan", role: "director", position: 0},
+          %{name: "Jonathan Nolan", role: "writer", position: 0}
+        ]
+      })
+
+    assert [document] = Streamix.Search.list_search_documents(:movies, provider.id)
+    assert document.id == movie.id
+    assert document.keywords == ["time travel", "space travel"]
+    assert document.directors == ["Christopher Nolan"]
+    assert document.writers == ["Jonathan Nolan"]
+    assert document.cast == ["Matthew Mcconaughey"]
+    assert document.variant_key == "tmdb:" <> tmdb_id
+  end
+
   test "pages through the whole catalog in short queries" do
     provider = provider_fixture(user_fixture())
     movies = for n <- 1..5, do: movie_fixture(provider, %{title: "Filme #{n}"})

@@ -34,6 +34,24 @@ defmodule Streamix.AI.SemanticSearch do
   @requests_per_minute 40
   @rate_limit_delay div(60_000, @requests_per_minute)
 
+  @document_keys [
+    :id,
+    :title,
+    :description,
+    :plot,
+    :tagline,
+    :year,
+    :genre,
+    :genres,
+    :keywords,
+    :directors,
+    :writers,
+    :cast,
+    :rating,
+    :provider_id,
+    :variant_key
+  ]
+
   # Public API
 
   @doc """
@@ -341,7 +359,7 @@ defmodule Streamix.AI.SemanticSearch do
   defp content_to_map(%{__struct__: _} = struct) do
     struct
     |> Map.from_struct()
-    |> Map.take([:id, :title, :description, :plot, :year, :genre, :genres, :rating, :provider_id])
+    |> Map.take(@document_keys)
     |> normalize_genres()
   end
 
@@ -364,7 +382,8 @@ defmodule Streamix.AI.SemanticSearch do
       year: content[:year],
       genres: content[:genres] || [],
       rating: normalize_rating(content[:rating]),
-      provider_id: content[:provider_id]
+      provider_id: content[:provider_id],
+      variant_key: content[:variant_key]
     }
   end
 
@@ -385,8 +404,12 @@ defmodule Streamix.AI.SemanticSearch do
     end
   end
 
+  # Each provider copy of a title is its own point, so one title can come back
+  # several times. Results arrive best-first; keep the best copy per title.
   defp format_results(results) do
-    Enum.map(results, fn %{id: id, score: score, payload: payload} ->
+    results
+    |> Enum.uniq_by(fn %{id: id, payload: payload} -> payload["variant_key"] || {:id, id} end)
+    |> Enum.map(fn %{id: id, score: score, payload: payload} ->
       %{
         id: id,
         score: Float.round(score, 3),

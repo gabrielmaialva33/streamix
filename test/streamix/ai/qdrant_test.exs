@@ -78,13 +78,37 @@ defmodule Streamix.AI.QdrantTest do
     assert thresholds == [ScoreThresholds.similar(), 0.9, ScoreThresholds.similar()]
   end
 
-  defp start_qdrant_stub(mode) do
+  test "similar excludes the source and every other copy of the same title" do
+    {:ok, port, requests} = start_qdrant_stub(:search, %{"variant_key" => "tmdb:550"})
+    prior = Application.get_env(:streamix, :qdrant)
+    Application.put_env(:streamix, :qdrant, enabled: true, url: "http://127.0.0.1:#{port}")
+    on_exit(fn -> Application.put_env(:streamix, :qdrant, prior) end)
+
+    assert {:ok, []} = Qdrant.find_similar("movies", 123)
+
+    assert [filter] =
+             requests
+             |> Agent.get(&Enum.reverse/1)
+             |> Enum.flat_map(fn
+               {"POST", _path, body} -> [body["filter"]]
+               _request -> []
+             end)
+
+    assert filter == %{
+             "must_not" => [
+               %{"has_id" => [123]},
+               %{"key" => "variant_key", "match" => %{"value" => "tmdb:550"}}
+             ]
+           }
+  end
+
+  defp start_qdrant_stub(mode, payload \\ %{}) do
     {:ok, requests} = Agent.start_link(fn -> [] end)
 
     {:ok, server} =
       start_supervised(
         {Bandit,
-         plug: {__MODULE__.StubPlug, requests: requests, mode: mode},
+         plug: {__MODULE__.StubPlug, requests: requests, mode: mode, payload: payload},
          scheme: :http,
          port: 0,
          ip: :loopback,
@@ -105,10 +129,10 @@ defmodule Streamix.AI.QdrantTest do
       requests = Keyword.fetch!(opts, :requests)
       mode = Keyword.fetch!(opts, :mode)
 
-      record(conn, requests, mode)
+      record(conn, requests, mode, Keyword.get(opts, :payload, %{}))
     end
 
-    defp record(conn, requests, :search) do
+    defp record(conn, requests, :search, payload) do
       {:ok, raw, conn} = read_body(conn)
 
       entry =
@@ -120,7 +144,7 @@ defmodule Streamix.AI.QdrantTest do
 
       result =
         if conn.method == "GET",
-          do: %{"id" => 123, "vector" => [0.1, 0.2], "payload" => %{}},
+          do: %{"id" => 123, "vector" => [0.1, 0.2], "payload" => payload},
           else: []
 
       conn
@@ -128,7 +152,7 @@ defmodule Streamix.AI.QdrantTest do
       |> send_resp(200, Jason.encode!(%{"result" => result}))
     end
 
-    defp record(conn, requests, mode) do
+    defp record(conn, requests, mode, _payload) do
       Agent.update(requests, &[{conn.method, conn.request_path} | &1])
       send_resp(conn, response_status(mode, conn.method), Jason.encode!(%{"status" => "ok"}))
     end

@@ -12,7 +12,7 @@ defmodule Streamix.Iptv.SearchDocuments do
 
   alias Streamix.Helpers
   alias Streamix.Iptv.Content.GindexSeries
-  alias Streamix.Iptv.{Movie, Provider, Series}
+  alias Streamix.Iptv.{Movie, Provider, Series, TmdbMetadata}
   alias Streamix.Repo
 
   @type kind :: :movies | :series | :animes
@@ -51,10 +51,10 @@ defmodule Streamix.Iptv.SearchDocuments do
           |> Repo.all()
 
         next = if length(page) == page_size, do: List.last(page).id, else: nil
-        if page == [], do: nil, else: {page, next}
+        if page == [], do: nil, else: {with_keyword_names(page), next}
     end)
     |> Stream.flat_map(& &1)
-    |> Enum.map(&to_document/1)
+    |> Enum.map(fn {content, keywords} -> to_document(content, keywords) end)
   end
 
   defp schema_for(:movies), do: Movie
@@ -77,7 +77,8 @@ defmodule Streamix.Iptv.SearchDocuments do
       where: not is_nil(content.title) and content.id > ^after_id,
       where: provider.is_active == true,
       order_by: [asc: content.id],
-      preload: [:genres]
+      select_merge: %{variant_key: content.variant_key},
+      preload: [:genres, credits: :person]
     )
   end
 
@@ -87,15 +88,46 @@ defmodule Streamix.Iptv.SearchDocuments do
     from([content: content] in query, where: content.provider_id == ^provider_id)
   end
 
-  defp to_document(content) do
+  # One lookup per page for every keyword the page's titles carry.
+  defp with_keyword_names(page) do
+    names =
+      page
+      |> Enum.flat_map(&(&1.tmdb_keyword_ids || []))
+      |> Enum.uniq()
+      |> TmdbMetadata.keyword_names()
+
+    Enum.map(page, fn content ->
+      {content, Enum.flat_map(content.tmdb_keyword_ids || [], &List.wrap(names[&1]))}
+    end)
+  end
+
+  defp to_document(content, keywords) do
     %{
       id: content.id,
       title: content.title,
       plot: content.plot,
+      tagline: content.tagline,
       year: content.year,
       genres: Helpers.genre_names(content.genres),
+      keywords: keywords,
+      directors: people(content.credits, "director"),
+      writers: people(content.credits, "writer"),
+      cast: people(content.credits, "cast"),
       rating: content.rating,
-      provider_id: content.provider_id
+      provider_id: content.provider_id,
+      variant_key: content.variant_key
     }
+  end
+
+  # Names are stored lowercased; title-case them back for the embedding text.
+  defp people(credits, role) do
+    credits
+    |> Enum.filter(&(&1.role == role))
+    |> Enum.sort_by(& &1.position)
+    |> Enum.map(&display_name(&1.person.name))
+  end
+
+  defp display_name(name) do
+    name |> String.split(" ") |> Enum.map_join(" ", &String.capitalize/1)
   end
 end
