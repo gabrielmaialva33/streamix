@@ -4,10 +4,8 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
   require Logger
 
   alias Streamix.Accounts
-  alias Streamix.AI.Embeddings
   alias Streamix.AI.Qdrant
   alias Streamix.AI.ScoreThresholds
-  alias Streamix.AI.UserAnalytics.Content
   alias Streamix.AI.UserAnalytics.Formatter
   alias Streamix.AI.UserAnalytics.Profile
   alias Streamix.Cache
@@ -81,36 +79,6 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
 
       {:error, reason} ->
         {:error, reason}
-    end
-  end
-
-  @doc """
-  Gets "You might also like" based on a specific content.
-
-  Uses the content's embedding to find similar items.
-  """
-  def get_more_like_this(content, collection) do
-    if collection in @content_collections do
-      do_get_more_like_this(content, collection)
-    else
-      {:error, :invalid_collection}
-    end
-  end
-
-  defp do_get_more_like_this(content, collection) do
-    text = Content.text(content)
-
-    case Embeddings.embed(text) do
-      {:ok, vector} ->
-        filter = %{must_not: [%{has_id: [content.id]}]}
-
-        case Qdrant.search(collection, vector, limit: 10, filter: filter) do
-          {:ok, results} -> {:ok, Formatter.recommendations(results)}
-          error -> error
-        end
-
-      error ->
-        error
     end
   end
 

@@ -1,7 +1,6 @@
 defmodule Streamix.AI.UserAnalyticsTest do
   use Streamix.DataCase, async: false
 
-  import ExUnit.CaptureLog
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
@@ -11,7 +10,6 @@ defmodule Streamix.AI.UserAnalyticsTest do
     Channels,
     Context,
     Filters,
-    Indexing,
     Insights,
     PersonalizedContent,
     Profile,
@@ -540,19 +538,6 @@ defmodule Streamix.AI.UserAnalyticsTest do
              ) == cached
     end
 
-    test "get_more_like_this returns the embedding failure without searching Qdrant" do
-      user = user_fixture()
-      provider = provider_fixture(user)
-      movie = movie_fixture(provider, %{name: "No Embedding Movie", plot: "Local only"})
-
-      capture_log(fn ->
-        assert UserAnalytics.get_more_like_this(movie, "movies") ==
-                 Recommendations.get_more_like_this(movie, "movies")
-
-        assert UserAnalytics.get_more_like_this(movie, "movies") == {:error, :not_configured}
-      end)
-    end
-
     test "channel recommendations fall back to public popular channels for new users" do
       user = user_fixture()
       owner = user_fixture()
@@ -602,34 +587,6 @@ defmodule Streamix.AI.UserAnalyticsTest do
                )
 
       assert channel.id == sports_channel.id
-    end
-  end
-
-  describe "indexing facade" do
-    test "index_content returns embedding errors without attempting vector upsert" do
-      user = user_fixture()
-      provider = provider_fixture(user)
-      movie = movie_fixture(provider, %{name: "Indexing Contract", plot: "No external embedding"})
-
-      capture_log(fn ->
-        assert UserAnalytics.index_content(movie, "movies") ==
-                 Indexing.index_content(movie, "movies")
-
-        assert UserAnalytics.index_content(movie, "movies") == {:error, :not_configured}
-      end)
-    end
-
-    test "index_contents returns batch embedding errors without attempting vector upsert" do
-      user = user_fixture()
-      provider = provider_fixture(user)
-      movie = movie_fixture(provider, %{name: "Batch Indexing Contract"})
-
-      capture_log(fn ->
-        assert UserAnalytics.index_contents([movie], "movies") ==
-                 Indexing.index_contents([movie], "movies")
-
-        assert UserAnalytics.index_contents([movie], "movies") == {:error, :not_configured}
-      end)
     end
   end
 

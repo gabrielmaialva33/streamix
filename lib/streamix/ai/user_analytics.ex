@@ -30,7 +30,6 @@ defmodule Streamix.AI.UserAnalytics do
   alias Streamix.AI.UserAnalytics.Channels
   alias Streamix.AI.UserAnalytics.Context
   alias Streamix.AI.UserAnalytics.Filters
-  alias Streamix.AI.UserAnalytics.Indexing
   alias Streamix.AI.UserAnalytics.Insights
   alias Streamix.AI.UserAnalytics.PersonalizedContent
   alias Streamix.AI.UserAnalytics.Profile
@@ -42,7 +41,6 @@ defmodule Streamix.AI.UserAnalytics do
 
   defdelegate get_recommendations(key, opts \\ []), to: Recommendations
   defdelegate get_similar_to(content_id, collection, opts \\ []), to: Recommendations
-  defdelegate get_more_like_this(content, collection), to: Recommendations
 
   defdelegate get_channel_recommendations(key, opts \\ []), to: Channels
   defdelegate get_personalized_channels(key, opts \\ []), to: Channels
@@ -55,7 +53,4 @@ defmodule Streamix.AI.UserAnalytics do
   defdelegate get_channel_category_filters(), to: Filters
 
   defdelegate get_user_insights(key), to: Insights
-
-  defdelegate index_content(content, collection), to: Indexing
-  defdelegate index_contents(contents, collection), to: Indexing
 end
