@@ -98,11 +98,10 @@ defmodule StreamixWeb.E2E.WatchPartySyncTest do
     assert_viewer_transport_locked(guest_session)
 
     host_pause_seek_play(host_session, 33)
-    wait_for_playback(guest_session, false, 33)
-
-    host_pause(host_session)
 
     try do
+      wait_for_playback(guest_session, false, 33)
+      host_pause(host_session)
       wait_for_playback(guest_session, true, 33)
     rescue
       error ->
