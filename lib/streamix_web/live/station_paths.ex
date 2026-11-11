@@ -44,6 +44,16 @@ defmodule StreamixWeb.StationPaths do
   defp year_suffix(year) when is_integer(year) and year > 0, do: " (#{year})"
   defp year_suffix(_year), do: ""
 
+  # Brazil has kept UTC-3 all year since 2019, and the release has no time
+  # zone database, so Brasília time is a fixed offset.
+  @brasilia_offset -3 * 3600
+
+  @doc "A UTC instant as Brasília wall-clock time, \"17:05\"."
+  @spec clock(DateTime.t()) :: String.t()
+  def clock(%DateTime{} = at) do
+    at |> DateTime.add(@brasilia_offset, :second) |> Calendar.strftime("%H:%M")
+  end
+
   @doc "The Presence topic of a station's viewers."
   @spec viewers_topic(String.t()) :: String.t()
   def viewers_topic(slug), do: "station_viewers:" <> slug

@@ -1,9 +1,14 @@
 defmodule StreamixWeb.StationsLive do
   @moduledoc """
-  The 24h stations: what each one plays right now, how far into it, what
-  follows and how many people are watching.
+  The 24h stations, laid out like a TV guide.
 
-  Cards update themselves: each station's server announces a new film on
+  Streamix's own stations come first: a featured one with what plays, from
+  when to when, and what follows, next to a numbered channel list. On a wide
+  screen picking a channel previews it in the feature; on a phone it tunes
+  straight in. Below sit the providers' own 24h channels ("24H | Séries",
+  "24H | Desenhos"...), grouped by kind.
+
+  Everything updates itself: each station's server announces a new title on
   its PubSub topic, viewer counts arrive as Presence diffs, and a coarse
   tick moves the progress bars. `/stations/:slug` tunes in, computing the
   offset at the moment of the tap.
@@ -13,7 +18,7 @@ defmodule StreamixWeb.StationsLive do
 
   import StreamixWeb.App.Feedback, only: [empty_state: 1]
 
-  alias Streamix.Programming
+  alias Streamix.{Catalog, Programming}
   alias StreamixWeb.Presence
   alias StreamixWeb.StationPaths
 
@@ -35,6 +40,7 @@ defmodule StreamixWeb.StationsLive do
 
   def mount(_params, _session, socket) do
     playing = Programming.list_now_playing()
+    scope = socket.assigns.current_scope
 
     if connected?(socket) do
       for %{station: station} <- playing do
@@ -45,20 +51,62 @@ defmodule StreamixWeb.StationsLive do
       :timer.send_interval(@tick, :tick)
     end
 
-    cards = Enum.map(playing, &card/1)
+    numbers = playing |> Enum.with_index(1) |> Map.new(fn {%{station: s}, n} -> {s.slug, n} end)
+    cards = Enum.map(playing, &card(&1, numbers))
+    selected = featured_slug(cards)
+    cards = Enum.map(cards, &%{&1 | selected: &1.id == selected})
     {series, movies} = Enum.split_with(cards, &(&1.kind == "series"))
+
+    groups =
+      Catalog.list_round_the_clock_channels(scope.user.id,
+        show_adult: scope.user.show_adult_content
+      )
+
+    tab = groups |> List.first() |> then(&(&1 && &1.label))
 
     {:ok,
      socket
      |> assign(
        page_title: "Canais 24h",
        current_path: "/stations",
-       count: length(cards),
+       numbers: numbers,
+       selected: selected,
+       hero: Enum.find(cards, &(&1.id == selected)),
+       station_count: length(cards),
        movie_count: length(movies),
-       series_count: length(series)
+       series_count: length(series),
+       groups: Map.new(groups, &{&1.label, &1.channels}),
+       tabs: Enum.map(groups, &{&1.label, length(&1.channels)}),
+       tab: tab
      )
      |> stream(:movie_stations, movies)
-     |> stream(:series_stations, series)}
+     |> stream(:series_stations, series)
+     |> stream(:list_channels, channels_for(groups, tab))}
+  end
+
+  @impl true
+  def handle_event("select", %{"slug" => slug}, socket) do
+    if Map.has_key?(socket.assigns.numbers, slug) do
+      previous = socket.assigns.selected
+
+      {:noreply,
+       socket
+       |> assign(selected: slug)
+       |> refresh(previous)
+       |> refresh(slug)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("tab", %{"label" => label}, socket) do
+    case Map.fetch(socket.assigns.groups, label) do
+      {:ok, channels} ->
+        {:noreply, socket |> assign(tab: label) |> stream(:list_channels, channels, reset: true)}
+
+      :error ->
+        {:noreply, socket}
+    end
   end
 
   @impl true
@@ -71,8 +119,7 @@ defmodule StreamixWeb.StationsLive do
   def handle_info(:tick, socket) do
     socket =
       Enum.reduce(Programming.list_now_playing(), socket, fn playing, socket ->
-        card = card(playing)
-        stream_insert(socket, stream_for(card), card)
+        insert_card(socket, card(playing, socket.assigns.numbers))
       end)
 
     {:noreply, socket}
@@ -83,8 +130,7 @@ defmodule StreamixWeb.StationsLive do
   defp refresh(socket, slug) do
     case Programming.now_playing(slug) do
       {:ok, playing} ->
-        card = card(playing)
-        stream_insert(socket, stream_for(card), card)
+        insert_card(socket, card(playing, socket.assigns.numbers))
 
       {:error, _reason} ->
         socket
@@ -93,111 +139,319 @@ defmodule StreamixWeb.StationsLive do
     end
   end
 
+  defp insert_card(socket, card) do
+    card = %{card | selected: card.id == socket.assigns.selected}
+    socket = if card.selected, do: assign(socket, hero: card), else: socket
+    stream_insert(socket, stream_for(card), card)
+  end
+
   defp stream_for(%{kind: "series"}), do: :series_stations
   defp stream_for(_card), do: :movie_stations
 
-  defp card(%{station: station, slot: slot}) do
+  # The most watched station leads; with nobody watching, the first one.
+  defp featured_slug([]), do: nil
+
+  defp featured_slug(cards) do
+    cards |> Enum.max_by(& &1.viewers, fn -> hd(cards) end) |> Map.fetch!(:id)
+  end
+
+  defp channels_for(_groups, nil), do: []
+
+  defp channels_for(groups, tab) do
+    Enum.find_value(groups, [], fn group -> if group.label == tab, do: group.channels end)
+  end
+
+  defp card(%{station: station, slot: slot}, numbers) do
+    {headline, detail} = headline(slot.item)
+
     %{
       id: station.slug,
+      number:
+        numbers |> Map.get(station.slug, 0) |> Integer.to_string() |> String.pad_leading(2, "0"),
       kind: station.kind,
       name: station.name,
-      description: station.description,
       poster: slot.item["poster"],
+      headline: headline,
+      detail: detail,
       now: StationPaths.label(slot.item),
       next: StationPaths.label(slot.next),
+      starts: StationPaths.clock(slot.started_at),
+      ends: StationPaths.clock(slot.ends_at),
       progress: round(Programming.progress(slot) * 100),
-      remaining: div(DateTime.diff(slot.ends_at, DateTime.utc_now(), :second), 60),
-      viewers: StationPaths.viewers_topic(station.slug) |> Presence.list() |> map_size()
+      viewers: StationPaths.viewers_topic(station.slug) |> Presence.list() |> map_size(),
+      selected: false
     }
   end
+
+  # The feature's two lines: the film and its year, or the series and the
+  # episode ("T4:E2 · A limpeza do pátio").
+  defp headline(%{"subtitle" => subtitle} = item) when is_binary(subtitle) do
+    case String.split(StationPaths.label(item), " · ", parts: 2) do
+      [title, rest] -> {title, rest}
+      [title] -> {title, nil}
+    end
+  end
+
+  defp headline(item), do: {StationPaths.label(item), nil}
 
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="space-y-8 py-6 sm:py-8">
-      <div class="space-y-2">
-        <.page_header id="stations-page-header" title="Canais 24h" icon="hero-signal" />
-        <p class="max-w-2xl text-sm text-text-secondary">
-          Passando agora, como na TV: entre e caia no mesmo minuto que todo mundo.
-        </p>
+    <div class="space-y-10 py-6 sm:py-8">
+      <.page_header
+        id="stations-page-header"
+        title="Canais 24h"
+        icon="hero-signal"
+        subtitle="Programação contínua: entre e caia no mesmo minuto que todo mundo."
+      />
+
+      <div
+        :if={@station_count > 0}
+        class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_26rem]"
+      >
+        <.feature :if={@hero} station={@hero} />
+
+        <nav
+          id="station-list"
+          aria-label="Canais Streamix"
+          class="space-y-4 lg:max-h-[34rem] lg:overflow-y-auto lg:pr-1"
+        >
+          <.station_rows
+            :if={@movie_count > 0}
+            id="movie-stations"
+            title="Filmes"
+            stations={@streams.movie_stations}
+          />
+          <.station_rows
+            :if={@series_count > 0}
+            id="series-stations"
+            title="Séries"
+            stations={@streams.series_stations}
+          />
+        </nav>
       </div>
 
-      <.station_grid
-        :if={@movie_count > 0}
-        id="movie-stations"
-        title="Filmes"
-        stations={@streams.movie_stations}
-      />
-      <.station_grid
-        :if={@series_count > 0}
-        id="series-stations"
-        title="Séries"
-        stations={@streams.series_stations}
-      />
-
-      <div :if={@count == 0} id="stations-empty">
+      <div :if={@station_count == 0} id="stations-empty">
         <.empty_state
           icon="hero-signal"
           title="Nenhum canal no ar"
           message="A programação está sendo montada. Volte em alguns minutos."
         />
       </div>
+
+      <section :if={@tabs != []} id="list-channels" class="space-y-4">
+        <div>
+          <h2 class="text-xl font-semibold text-text-primary">Das suas listas IPTV</h2>
+          <p class="mt-1 text-sm text-text-secondary">
+            Canais dos provedores que passam a mesma série, desenho ou tema o dia todo.
+          </p>
+        </div>
+
+        <div
+          role="tablist"
+          class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0"
+        >
+          <button
+            :for={{label, count} <- @tabs}
+            id={"list-tab-#{slug(label)}"}
+            type="button"
+            role="tab"
+            aria-selected={to_string(label == @tab)}
+            phx-click="tab"
+            phx-value-label={label}
+            class={[
+              "inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-brand",
+              if(label == @tab,
+                do: "border-brand bg-brand text-white",
+                else: "border-border bg-surface text-text-secondary hover:text-text-primary"
+              )
+            ]}
+          >
+            {label} <span class="tabular-nums opacity-70">{count}</span>
+          </button>
+        </div>
+
+        <div
+          id="list-channel-grid"
+          phx-update="stream"
+          class="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8"
+        >
+          <.link
+            :for={{dom_id, channel} <- @streams.list_channels}
+            id={dom_id}
+            navigate={~p"/watch/live_channel/#{channel.id}"}
+            class="group flex flex-col items-center gap-2 rounded-xl border border-border bg-surface p-3 text-center transition-colors hover:border-brand/60 hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-brand"
+          >
+            <div class="flex h-14 w-full items-center justify-center">
+              <img
+                :if={channel.stream_icon not in [nil, ""]}
+                src={channel.stream_icon}
+                alt=""
+                loading="lazy"
+                class="max-h-14 max-w-full object-contain"
+              />
+              <.icon
+                :if={channel.stream_icon in [nil, ""]}
+                name="hero-tv"
+                class="size-8 text-text-muted"
+              />
+            </div>
+            <span class="line-clamp-2 text-xs font-medium text-text-primary">{channel.name}</span>
+          </.link>
+        </div>
+      </section>
     </div>
     """
   end
 
-  defp station_grid(assigns) do
+  # The selected station, large: its picture undimmed on the right, the
+  # text on a gradient that keeps it readable on any poster.
+  defp feature(assigns) do
     ~H"""
-    <section class="space-y-3">
-      <h2 class="text-lg font-semibold text-text-primary">{@title}</h2>
-      <div
-        id={@id}
-        phx-update="stream"
-        class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3"
-      >
-        <.link
-          :for={{dom_id, station} <- @stations}
-          id={dom_id}
-          navigate={~p"/stations/#{station.id}"}
-          class="group relative flex min-h-56 flex-col justify-end overflow-hidden rounded-xl border border-border bg-surface focus:outline-none focus:ring-2 focus:ring-brand"
-        >
-          <img
-            :if={station.poster}
-            src={station.poster}
-            alt=""
-            loading="lazy"
-            class="absolute inset-0 size-full object-cover opacity-40 transition-opacity group-hover:opacity-60"
-          />
-          <div class="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-transparent"></div>
+    <section
+      id="station-feature"
+      aria-live="polite"
+      class="relative isolate flex min-h-[22rem] overflow-hidden rounded-2xl border border-border bg-surface sm:min-h-[26rem] lg:min-h-[34rem]"
+    >
+      <img
+        :if={@station.poster}
+        src={@station.poster}
+        alt=""
+        class="absolute inset-0 -z-10 size-full object-cover sm:left-1/3 sm:w-2/3"
+      />
+      <div class="absolute inset-0 -z-10 bg-gradient-to-t from-surface via-surface/85 to-surface/10 sm:bg-gradient-to-r sm:from-surface sm:via-surface/90 sm:to-transparent">
+      </div>
 
-          <div class="absolute left-4 right-4 top-4 flex items-center justify-between">
-            <span class="rounded bg-brand px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">
-              Ao vivo
-            </span>
-            <span
-              :if={station.viewers > 0}
-              class="flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-xs text-white"
-            >
-              <.icon name="hero-eye" class="size-3.5" /> {station.viewers} assistindo
-            </span>
-          </div>
+      <div class="flex w-full flex-col justify-end gap-4 p-5 sm:max-w-xl sm:p-8">
+        <div class="flex flex-wrap items-center gap-3 text-sm">
+          <span class="inline-flex items-center gap-1.5 rounded bg-brand px-2 py-0.5 text-xs font-bold text-white">
+            <span class="size-1.5 rounded-full bg-white motion-safe:animate-pulse"></span> Ao vivo
+          </span>
+          <span class="font-medium text-text-secondary">
+            <span class="tabular-nums">{@station.number}</span> {@station.name}
+          </span>
+        </div>
 
-          <div class="relative space-y-2 p-4">
-            <h3 class="text-lg font-semibold text-white">{station.name}</h3>
-            <p class="truncate text-sm text-white/90">
-              <span class="text-white/60">Agora:</span> {station.now}
-            </p>
-            <div class="h-1 w-full overflow-hidden rounded-full bg-white/20">
-              <div class="h-full rounded-full bg-brand" style={"width: #{station.progress}%"}></div>
-            </div>
-            <div class="flex items-center justify-between gap-3 text-xs text-white/60">
-              <span class="truncate">A seguir: {station.next}</span>
-              <span class="shrink-0">faltam {max(station.remaining, 1)} min</span>
-            </div>
+        <div class="space-y-1">
+          <h2
+            id="station-feature-title"
+            class="text-3xl font-bold leading-tight text-text-primary sm:text-4xl"
+          >
+            {@station.headline}
+          </h2>
+          <p :if={@station.detail} class="text-base text-text-secondary sm:text-lg">
+            {@station.detail}
+          </p>
+        </div>
+
+        <div class="flex items-center gap-3 text-sm tabular-nums text-text-secondary">
+          <span>{@station.starts}</span>
+          <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-text-primary/15">
+            <div class="h-full rounded-full bg-brand" style={"width: #{@station.progress}%"}></div>
           </div>
-        </.link>
+          <span>{@station.ends}</span>
+        </div>
+
+        <p class="truncate text-sm text-text-secondary">
+          <span class="text-text-muted">A seguir</span> {@station.next}
+        </p>
+
+        <div class="flex flex-wrap items-center gap-4 pt-1">
+          <.link
+            id="station-feature-watch"
+            navigate={~p"/stations/#{@station.id}"}
+            class="inline-flex min-h-11 items-center gap-2 rounded-lg bg-brand px-5 font-semibold text-white transition-colors hover:bg-brand/90 focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-surface"
+          >
+            <.icon name="hero-play-solid" class="size-5" /> Assistir ao vivo
+          </.link>
+          <span
+            :if={@station.viewers > 0}
+            class="flex items-center gap-1.5 text-sm text-text-secondary"
+          >
+            <.icon name="hero-eye" class="size-4" /> {@station.viewers} assistindo
+          </span>
+        </div>
       </div>
     </section>
     """
+  end
+
+  # Numbered like TV channels. On a phone a row tunes in; on a wide screen it
+  # previews the channel in the feature and the play button tunes in.
+  defp station_rows(assigns) do
+    ~H"""
+    <section class="space-y-1">
+      <h3 class="px-3 text-sm font-semibold text-text-muted">{@title}</h3>
+      <ul id={@id} phx-update="stream" class="space-y-1">
+        <li
+          :for={{dom_id, station} <- @stations}
+          id={dom_id}
+          data-selected={to_string(station.selected)}
+          class={[
+            "group relative flex items-center gap-3 rounded-xl px-3 py-2 transition-colors",
+            if(station.selected,
+              do: "bg-surface-hover ring-1 ring-brand/50",
+              else: "hover:bg-surface-hover/60"
+            )
+          ]}
+        >
+          <.link
+            navigate={~p"/stations/#{station.id}"}
+            class="absolute inset-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand lg:hidden"
+            aria-label={"Assistir #{station.name}"}
+          ></.link>
+          <button
+            type="button"
+            phx-click="select"
+            phx-value-slug={station.id}
+            class="absolute inset-0 hidden rounded-xl focus:outline-none focus:ring-2 focus:ring-brand lg:block"
+            aria-label={"Ver o que passa em #{station.name}"}
+          ></button>
+
+          <span class="w-6 shrink-0 text-right text-sm font-semibold tabular-nums text-text-muted">
+            {station.number}
+          </span>
+          <div class="h-12 w-20 shrink-0 overflow-hidden rounded-md bg-background">
+            <img
+              :if={station.poster}
+              src={station.poster}
+              alt=""
+              loading="lazy"
+              class="size-full object-cover"
+            />
+          </div>
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-sm font-semibold text-text-primary">{station.name}</p>
+            <p class="truncate text-xs text-text-secondary">{station.now}</p>
+            <div class="mt-1.5 h-0.5 overflow-hidden rounded-full bg-text-primary/10">
+              <div class="h-full bg-brand" style={"width: #{station.progress}%"}></div>
+            </div>
+          </div>
+          <span
+            :if={station.viewers > 0}
+            class="flex shrink-0 items-center gap-1 text-xs tabular-nums text-text-secondary"
+            title={"#{station.viewers} assistindo"}
+          >
+            <.icon name="hero-eye" class="size-3.5" />{station.viewers}
+          </span>
+          <.link
+            navigate={~p"/stations/#{station.id}"}
+            class="relative z-10 hidden size-9 shrink-0 items-center justify-center rounded-full text-text-secondary transition-colors hover:bg-brand hover:text-white focus:outline-none focus:ring-2 focus:ring-brand lg:flex"
+            aria-label={"Assistir #{station.name}"}
+          >
+            <.icon name="hero-play-solid" class="size-4" />
+          </.link>
+        </li>
+      </ul>
+    </section>
+    """
+  end
+
+  defp slug(label) do
+    label
+    |> String.normalize(:nfd)
+    |> String.replace(~r/\p{M}/u, "")
+    |> String.replace(~r/[^a-zA-Z0-9]+/u, "-")
+    |> String.downcase()
   end
 end

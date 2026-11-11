@@ -9,6 +9,12 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Added
 
+- `/stations` reads like a TV guide: a numbered channel list beside a featured station (its picture undimmed, the
+  title or series and episode large, a bar between start and end times in Brasília time, what follows, "Assistir ao
+  vivo"). On a wide screen picking a channel previews it in the feature; on a phone a row tunes straight in. Below,
+  the providers' own 24h channels ("24H | Séries", "24HRS I SHOWS"...) are grouped into tabs (Séries, Desenhos,
+  Filmes, Documentários, Shows, Fé) as a logo grid, adult categories left out and duplicates across providers shown
+  once (`Catalog.list_round_the_clock_channels/2`).
 - Station cards and the player's "A seguir" read cleanly: "Chaves · T4:E2 · A limpeza do pátio" instead of
   "Chaves (1973) · T4:E2 · Temporada 04 Episodio 02 (A limpeza do pátio)". `DisplayTitle.episode_name/2` drops the
   series title, a year, "S02 E14"/"S02E14", "Temporada X Episodio Y" and a generic "Episódio N", and the cleaning

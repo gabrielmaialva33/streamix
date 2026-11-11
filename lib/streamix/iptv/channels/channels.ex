@@ -113,6 +113,74 @@ defmodule Streamix.Iptv.Channels do
   @doc false
   def visible_query(user_id, opts), do: build_visible_query(user_id, opts)
 
+  # "24H | Séries", "24HRS I SHOWS", "24HRS ✝️ Caminho da Fé": providers'
+  # own around-the-clock channels, filed under a 24h category.
+  @round_the_clock_category ~r/^\W*24\s*(?:h|hrs|horas)\b/iu
+  @round_the_clock_prefix ~r/^\W*24\s*(?:hrs|horas|h)\b[\s|I:\-–\p{So}\x{FE0F}]*/iu
+  @round_the_clock_labels %{
+    "series" => "Séries",
+    "desenhos" => "Desenhos",
+    "filmes" => "Filmes",
+    "documentarios" => "Documentários",
+    "shows" => "Shows",
+    "caminho da fe" => "Fé"
+  }
+
+  @doc """
+  The providers' own 24h live channels a user may watch ("24H | Séries",
+  "24HRS I SHOWS"...), grouped under one label per kind across providers,
+  largest group first. Adult categories and dead channels are left out
+  (adult unless `show_adult: true`); a name repeated across providers is
+  listed once, as its oldest channel.
+  """
+  @spec list_round_the_clock(integer() | nil, keyword()) :: [
+          %{label: String.t(), channels: [map()]}
+        ]
+  def list_round_the_clock(user_id, opts \\ []) do
+    show_adult = Keyword.get(opts, :show_adult, false)
+
+    user_id
+    |> build_visible_query(show_adult: show_adult)
+    |> join(:inner, [c, _p], ic in "item_categories", on: ic.catalog_item_id == c.catalog_item_id)
+    |> join(:inner, [_c, _p, ic], k in Category, on: k.id == ic.category_id)
+    |> where(
+      [_c, _p, _ic, k],
+      k.type == "live" and fragment("? ~* ?", k.name, "^\\W*24\\s*(h|hrs|horas)\\M")
+    )
+    |> where([_c, _p, _ic, k], ^show_adult or not k.is_adult)
+    |> select([c, _p, _ic, k], %{
+      id: c.id,
+      name: c.name,
+      stream_icon: c.stream_icon,
+      category: k.name
+    })
+    |> Repo.all()
+    |> Enum.filter(&Regex.match?(@round_the_clock_category, &1.category))
+    |> Enum.group_by(&round_the_clock_label(&1.category))
+    |> Enum.map(fn {label, channels} ->
+      %{
+        label: label,
+        channels:
+          channels
+          |> Enum.sort_by(& &1.id)
+          |> Enum.uniq_by(&(&1.name |> String.trim() |> String.downcase()))
+          |> Enum.sort_by(&String.downcase(&1.name))
+          |> Enum.map(&Map.delete(&1, :category))
+      }
+    end)
+    |> Enum.sort_by(&{-length(&1.channels), &1.label})
+  end
+
+  @doc false
+  def round_the_clock_label(category) do
+    rest = category |> String.replace(@round_the_clock_prefix, "") |> String.trim()
+    key = rest |> String.normalize(:nfd) |> String.replace(~r/\p{M}/u, "") |> String.downcase()
+
+    Map.get_lazy(@round_the_clock_labels, key, fn ->
+      if rest == "", do: "Outros", else: rest |> String.downcase() |> String.capitalize()
+    end)
+  end
+
   defp build_visible_query(user_id, opts) do
     LiveChannel
     |> Access.visible_to_user(user_id)

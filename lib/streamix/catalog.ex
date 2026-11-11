@@ -110,6 +110,11 @@ defmodule Streamix.Catalog do
   defdelegate list_public_channels(opts \\ []), to: Channels, as: :list_public
   defdelegate list_visible_live_channels(user_id, opts \\ []), to: Channels, as: :list_visible
 
+  @doc "The providers' own 24h live channels a user may watch, grouped by kind."
+  defdelegate list_round_the_clock_channels(user_id, opts \\ []),
+    to: Channels,
+    as: :list_round_the_clock
+
   # GIndex-backed catalog views
 
   defdelegate get_gindex_anime_with_seasons(id), to: SeriesOps
