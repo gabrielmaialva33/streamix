@@ -4,10 +4,18 @@ defmodule StreamixWeb.Content.TvGuide do
 
   The guide keeps provider visibility in the IPTV context, batches program
   windows per provider, and returns presentation-neutral rows for LiveView.
+  Only channels with a program in the window are listed: a channel without a
+  guide has nothing to show here. Times are Brasília wall-clock
+  (`StreamixWeb.Content.LocalTime`).
   """
 
-  @default_limit 100
+  alias StreamixWeb.Content.LocalTime
+
+  # Enough for every guided channel a user sees; the page shows them a page
+  # at a time.
+  @max_channels 1_500
   @window_hours 3
+  @tick_minutes 30
 
   @type row :: %{
           channel: map(),
@@ -40,9 +48,10 @@ defmodule StreamixWeb.Content.TvGuide do
 
     channel_opts =
       [
-        limit: Keyword.get(opts, :limit, @default_limit),
+        limit: Keyword.get(opts, :limit, @max_channels),
         search: search,
-        show_adult: user.show_adult_content
+        show_adult: user.show_adult_content,
+        airing_between: {starts_at, ends_at}
       ]
       |> maybe_put(:provider_id, provider_id)
 
@@ -85,20 +94,74 @@ defmodule StreamixWeb.Content.TvGuide do
     |> List.first()
   end
 
-  @doc "Formats one DateTime in the application guide timezone."
-  def format_time(nil), do: ""
-
-  def format_time(%DateTime{} = datetime) do
-    datetime
-    |> DateTime.shift_zone!("America/Sao_Paulo")
-    |> Calendar.strftime("%H:%M")
-  rescue
-    _ -> Calendar.strftime(datetime, "%H:%M")
+  @doc """
+  Guide order: favorites first, then channels with a real schedule in the
+  window (more than one program, or one that does not fill it, unlike a
+  provider's all-day "Programação Esportiva" placeholder), then by name.
+  """
+  @spec rank([row()], MapSet.t(), DateTime.t(), DateTime.t()) :: [row()]
+  def rank(rows, favorite_ids, starts_at, ends_at) do
+    Enum.sort_by(rows, fn row ->
+      {
+        if(MapSet.member?(favorite_ids, row.channel.id), do: 0, else: 1),
+        if(scheduled?(row.programs, starts_at, ends_at), do: 0, else: 1),
+        String.downcase(row.channel.name || "")
+      }
+    end)
   end
 
-  @doc "Formats the selected timeline window."
-  def window_label(starts_at, ends_at) do
-    "#{format_time(starts_at)}–#{format_time(ends_at)}"
+  defp scheduled?([_, _ | _], _starts_at, _ends_at), do: true
+
+  defp scheduled?([program], starts_at, ends_at) do
+    DateTime.compare(program.start_time, starts_at) == :gt or
+      DateTime.compare(program.end_time, ends_at) == :lt
+  end
+
+  defp scheduled?([], _starts_at, _ends_at), do: false
+
+  @doc "Where a program sits relative to `now`: `:past`, `:current` or `:upcoming`."
+  @spec program_state(map(), DateTime.t()) :: :past | :current | :upcoming
+  def program_state(program, now) do
+    cond do
+      DateTime.compare(program.end_time, now) != :gt -> :past
+      DateTime.compare(program.start_time, now) == :gt -> :upcoming
+      true -> :current
+    end
+  end
+
+  @doc "The window a guide opens on: from the half hour before `now`."
+  @spec default_start(DateTime.t()) :: DateTime.t()
+  def default_start(now \\ DateTime.utc_now()), do: LocalTime.floor_half_hour(now)
+
+  @doc "The end of a window starting at `starts_at`."
+  @spec window_end(DateTime.t()) :: DateTime.t()
+  def window_end(starts_at), do: DateTime.add(starts_at, @window_hours, :hour)
+
+  @doc "The time ruler: each half hour in the window with its position in percent."
+  @spec ticks(DateTime.t(), DateTime.t()) :: [{DateTime.t(), float()}]
+  def ticks(starts_at, ends_at) do
+    first = LocalTime.floor_half_hour(starts_at)
+
+    first =
+      if DateTime.compare(first, starts_at) == :lt,
+        do: DateTime.add(first, @tick_minutes, :minute),
+        else: first
+
+    span = max(DateTime.diff(ends_at, starts_at), 1)
+
+    first
+    |> Stream.iterate(&DateTime.add(&1, @tick_minutes, :minute))
+    |> Enum.take_while(&(DateTime.compare(&1, ends_at) == :lt))
+    |> Enum.map(&{&1, DateTime.diff(&1, starts_at) * 100 / span})
+  end
+
+  @doc "Formats one instant as Brasília wall-clock time."
+  def format_time(nil), do: ""
+  def format_time(%DateTime{} = datetime), do: LocalTime.clock(datetime)
+
+  @doc "The selected window: \"Hoje, 13:30–16:30\"."
+  def window_label(starts_at, ends_at, now \\ DateTime.utc_now()) do
+    "#{LocalTime.day_label(starts_at, now)}, #{format_time(starts_at)}–#{format_time(ends_at)}"
   end
 
   defp rows_with_programs(channels, provider_names, starts_at, ends_at) do
@@ -155,10 +218,4 @@ defmodule StreamixWeb.Content.TvGuide do
 
   defp maybe_put(opts, _key, nil), do: opts
   defp maybe_put(opts, key, value), do: Keyword.put(opts, key, value)
-
-  defp default_start do
-    DateTime.utc_now()
-    |> DateTime.add(-15, :minute)
-    |> DateTime.truncate(:second)
-  end
 end

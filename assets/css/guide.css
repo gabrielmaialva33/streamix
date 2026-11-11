@@ -58,13 +58,36 @@
     font-weight: 650;
 }
 
+/* --- Channel grid -------------------------------------------------------
+   Phones: each channel is a card with its programs from "now" on in a
+   swipeable strip. From lg: one table, a channel column next to a timeline
+   where programs sit at their real start and length, a half-hour ruler on
+   top and a single "now" line across every row. */
+
+.guide-grid {
+    --guide-channel-col: 15rem;
+    --guide-gap: 0.75rem;
+    --guide-pad: 0.625rem;
+    position: relative;
+}
+
+.guide-ruler,
+.guide-now-overlay {
+    display: none;
+}
+
+.guide-rows {
+    display: grid;
+    gap: 0.5rem;
+}
+
 .guide-row {
     display: grid;
-    gap: 0.625rem;
+    gap: 0.5rem;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-xl);
     background: color-mix(in srgb, var(--color-surface) 92%, transparent);
-    padding: 0.625rem;
+    padding: var(--guide-pad);
 }
 
 .guide-channel {
@@ -75,50 +98,110 @@
     gap: 0.5rem;
 }
 
-.guide-favorite-button {
+.guide-channel__logo {
+    display: flex;
+    width: 2.75rem;
+    height: 2.75rem;
     flex: 0 0 auto;
-    border-color: transparent;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: var(--radius-md);
     background: var(--color-surface-hover);
 }
 
-.guide-programs {
+.guide-favorite-button {
+    flex: 0 0 auto;
+    border-color: transparent;
+    background: transparent;
+    color: var(--text-muted);
+}
+
+.guide-favorite-button--on {
+    color: var(--color-brand);
+}
+
+.guide-timeline {
     display: grid;
-    grid-auto-columns: minmax(150px, 72vw);
+    grid-auto-columns: minmax(150px, 68vw);
     grid-auto-flow: column;
-    gap: 0.5rem;
+    gap: 0.375rem;
     overflow-x: auto;
     overscroll-behavior-inline: contain;
-    padding-bottom: 0.15rem;
     scroll-snap-type: x proximity;
     scrollbar-width: none;
 }
 
-.guide-programs::-webkit-scrollbar {
+.guide-timeline::-webkit-scrollbar {
     display: none;
 }
 
 .guide-program {
-    min-height: 72px;
+    min-width: 0;
     scroll-snap-align: start;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     background: var(--color-surface-hover);
-    padding: 0.625rem;
 }
 
-.guide-program--current {
-    border-color: color-mix(in srgb, var(--color-brand) 55%, var(--color-border));
-    background: color-mix(in srgb, var(--color-brand) 10%, var(--color-surface-hover));
+/* What already aired is only useful on the wide timeline. */
+.guide-program[data-state="past"] {
+    display: none;
+}
+
+.guide-program[data-state="current"] {
+    background: color-mix(in srgb, var(--color-brand) 14%, var(--color-surface-hover));
     box-shadow: inset 3px 0 0 var(--color-brand);
 }
 
-.guide-program--empty {
+.guide-program__body {
+    display: flex;
+    height: 100%;
+    min-height: 4.25rem;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.5rem 0.625rem;
+}
+
+.guide-program__time {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.375rem;
+    font-size: 0.6875rem;
+    line-height: 1;
     color: var(--text-muted);
-    font-size: 0.75rem;
-    font-style: italic;
+}
+
+.guide-program__live {
+    border-radius: 999px;
+    background: var(--color-brand);
+    padding: 0.15rem 0.4rem;
+    font-size: 0.625rem;
+    font-weight: 700;
+    color: white;
+}
+
+.guide-program__title {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--text-primary);
+}
+
+.guide-program__category {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+}
+
+.guide-program__progress {
+    margin-top: auto;
+    padding-top: 0.25rem;
 }
 
 @media (min-width: 640px) {
@@ -130,85 +213,144 @@
         flex: 0 0 auto;
     }
 
-    .guide-row {
-        grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
-        align-items: stretch;
-        gap: 0.75rem;
-        padding: 0.75rem;
-    }
-
-    .guide-channel {
-        border-right: 1px solid var(--color-border);
-        padding-right: 0.75rem;
-    }
-
-    .guide-programs {
-        grid-auto-columns: minmax(180px, 230px);
+    .guide-timeline {
+        grid-auto-columns: minmax(180px, 240px);
     }
 }
 
-.guide-time-axis, .guide-now-line { display: none; }
-
 @media (min-width: 1024px) {
-    .guide-timeline-row, .guide-time-axis {
-        grid-template-columns: 260px minmax(0, 1fr);
+    .guide-grid {
+        overflow: clip;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-xl);
+        background: color-mix(in srgb, var(--color-surface) 92%, transparent);
     }
-    .guide-time-axis {
+
+    .guide-ruler {
+        position: sticky;
+        top: calc(4rem + env(safe-area-inset-top));
+        z-index: 3;
         display: grid;
-        gap: 0.75rem;
-        padding: 0 0.75rem;
+        grid-template-columns: var(--guide-channel-col) minmax(0, 1fr);
+        gap: var(--guide-gap);
+        height: 2.25rem;
+        align-items: center;
+        border-bottom: 1px solid var(--color-border);
+        background: var(--color-surface);
+        padding-inline: var(--guide-pad);
         font-size: 0.75rem;
         color: var(--text-muted);
     }
-    .guide-timeline {
-        display: block;
+
+    .guide-ruler__label {
+        font-weight: 600;
+        color: var(--text-secondary);
+    }
+
+    .guide-ruler__track {
         position: relative;
-        min-width: 0;
-        height: 84px;
+        height: 100%;
+    }
+
+    .guide-ruler__tick {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        border-left: 1px solid var(--color-border);
+        padding-left: 0.375rem;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .guide-rows {
+        gap: 0;
+    }
+
+    .guide-row {
+        grid-template-columns: var(--guide-channel-col) minmax(0, 1fr);
+        gap: var(--guide-gap);
+        align-items: stretch;
+        border: 0;
+        border-bottom: 1px solid var(--color-border);
+        border-radius: 0;
+        background: transparent;
+    }
+
+    .guide-row:last-child {
+        border-bottom: 0;
+    }
+
+    .guide-row:hover {
+        background: color-mix(in srgb, var(--color-surface-hover) 40%, transparent);
+    }
+
+    .guide-favorite-button {
+        min-width: 36px;
+        min-height: 36px;
+    }
+
+    .guide-timeline {
+        position: relative;
+        display: block;
+        height: 4.5rem;
         overflow: hidden;
     }
-    .guide-timeline [data-guide-program] {
+
+    .guide-program,
+    .guide-program[data-state="past"] {
         position: absolute;
-        padding: 0;
-        border-width: 0;
+        top: 0;
+        bottom: 0;
+        display: block;
         left: var(--program-left);
         width: var(--program-width);
-        height: 100%;
-        min-width: 0;
+        /* A hairline between neighbours instead of a gap that would shift
+           the start times. */
+        border-right: 2px solid var(--color-surface);
+    }
+
+    .guide-program[data-state="past"] {
+        opacity: 0.45;
+    }
+
+    .guide-program__body {
+        min-height: 0;
         overflow: hidden;
     }
-    .guide-now-line {
+
+    .guide-program__title {
+        -webkit-line-clamp: 1;
+    }
+
+    .guide-now-overlay {
+        position: absolute;
+        top: 2.25rem;
+        bottom: 0;
+        left: calc(var(--guide-pad) + var(--guide-channel-col) + var(--guide-gap));
+        right: var(--guide-pad);
+        z-index: 2;
         display: block;
+        pointer-events: none;
+    }
+
+    .guide-now-line {
         position: absolute;
         top: 0;
         bottom: 0;
         width: 2px;
-        pointer-events: none;
-        z-index: 1;
+        background: var(--color-brand);
+        box-shadow: 0 0 8px color-mix(in srgb, var(--color-brand) 60%, transparent);
     }
-    /* Keep the time position visible inside the 10px content padding,
-       without drawing across programme titles, times or progress bars. */
-    .guide-now-line::before,
-    .guide-now-line::after {
+
+    .guide-now-line::before {
         content: "";
         position: absolute;
-        left: 0;
-        width: 100%;
-        height: 6px;
+        top: -4px;
+        left: -4px;
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
         background: var(--color-brand);
-    }
-    .guide-now-line::before { top: 0; }
-    .guide-now-line::after { bottom: 0; }
-}
-
-@media (min-width: 1024px) {
-    .guide-program-content {
-        height: 100%;
-        padding: 0.625rem;
-        box-shadow: inset 0 0 0 1px var(--color-border);
-        border-radius: inherit;
-    }
-    .guide-program--current .guide-program-content {
-        box-shadow: inset 0 0 0 1px var(--color-brand);
     }
 }

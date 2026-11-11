@@ -151,5 +151,82 @@ defmodule StreamixWeb.Content.GuideLiveTest do
       current_path = assert_patch(view)
       assert current_path =~ "/guide"
     end
+
+    test "lists only channels with programming, in Brasília time", %{
+      conn: conn,
+      provider: provider,
+      channel: channel,
+      current: current
+    } do
+      silent = channel_fixture(provider, %{name: "Canal Sem Guia", epg_channel_id: nil})
+
+      {:ok, view, _html} = live(conn, ~p"/guide")
+      render_async(view)
+
+      assert has_element?(view, "#guide-channel-#{channel.id}")
+      refute has_element?(view, "#guide-channel-#{silent.id}")
+      assert has_element?(view, "#guide-count", "1 canal com programação")
+      assert has_element?(view, "#guide-window", "Hoje,")
+
+      brasilia = current.start_time |> DateTime.add(-3, :hour) |> Calendar.strftime("%H:%M")
+      assert has_element?(view, "[data-current-program='true']", brasilia <> "–")
+    end
+
+    test "shows channels a page at a time, favorites and real schedules first", %{
+      conn: conn,
+      user: user,
+      provider: provider,
+      channel: channel
+    } do
+      now = DateTime.utc_now()
+
+      channels =
+        for n <- 1..34 do
+          epg_id = "page-#{n}-#{System.unique_integer([:positive])}"
+          name = "Canal #{String.pad_leading(Integer.to_string(n), 2, "0")}"
+          channel = channel_fixture(provider, %{name: name, epg_channel_id: epg_id})
+
+          # A placeholder: one program covering the whole window.
+          epg_program_fixture(provider, %{
+            epg_channel_id: epg_id,
+            title: "Programação #{n}",
+            start_time: DateTime.add(now, -6, :hour),
+            end_time: DateTime.add(now, 6, :hour)
+          })
+
+          channel
+        end
+
+      favorite = List.last(channels)
+
+      {:ok, :added} =
+        Streamix.Library.toggle_favorite(
+          library_key_fixture(user),
+          "live_channel",
+          favorite.id,
+          %{content_name: favorite.name, content_icon: nil}
+        )
+
+      {:ok, view, _html} = live(conn, ~p"/guide")
+      html = render_async(view)
+
+      # 35 channels: the favorite, the one with a real schedule ("Canal
+      # Notícias", two programs), then the placeholders by name.
+      assert has_element?(view, "#guide-count", "35 canais com programação")
+      rows = Regex.scan(~r/id="(guide-channel-\d+)"/, html) |> Enum.map(&List.last/1)
+      assert length(rows) == 30
+
+      assert Enum.take(rows, 3) == [
+               "guide-channel-#{favorite.id}",
+               "guide-channel-#{channel.id}",
+               "guide-channel-#{hd(channels).id}"
+             ]
+
+      assert has_element?(view, "#guide-load-more", "(5)")
+
+      view |> element("#guide-load-more") |> render_click()
+      assert has_element?(view, "#guide-channel-#{Enum.at(channels, 32).id}")
+      refute has_element?(view, "#guide-load-more")
+    end
   end
 end

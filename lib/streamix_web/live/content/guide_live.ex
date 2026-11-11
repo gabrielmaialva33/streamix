@@ -1,5 +1,11 @@
 defmodule StreamixWeb.Content.GuideLive do
-  @moduledoc "Authenticated, provider-aware TV program guide."
+  @moduledoc """
+  Authenticated, provider-aware TV program guide.
+
+  Lists the channels with programming in a three-hour window, favorites and
+  real schedules first, a page at a time (more load as the list scrolls).
+  Every few minutes the window reloads; the "now" line moves every minute.
+  """
 
   use StreamixWeb, :live_view
 
@@ -12,17 +18,22 @@ defmodule StreamixWeb.Content.GuideLive do
 
   alias Streamix.Library
   alias Streamix.SafeLog
-  alias StreamixWeb.Content.DisplayTitle
-  alias StreamixWeb.Content.TvGuide
+  alias StreamixWeb.Content.{DisplayTitle, LocalTime, TvGuide}
+  alias StreamixWeb.EpgComponents
   alias StreamixWeb.Helpers.ImageProxy
 
-  @refresh_interval :timer.minutes(1)
+  @refresh_interval :timer.minutes(3)
+  @tick_interval :timer.minutes(1)
   @shift_hours 2
+  @page_size 30
   @category_prefix ~r/^(?:canais(?:\s+ao\s+vivo)?|tv(?:\s+ao\s+vivo)?)\s*[|:–-]\s*/iu
 
   @impl true
   def mount(_params, _session, socket) do
     library_key = socket.assigns.current_scope.library_key
+    starts_at = TvGuide.default_start()
+
+    if connected?(socket), do: :timer.send_interval(@tick_interval, :tick)
 
     {:ok,
      socket
@@ -31,19 +42,23 @@ defmodule StreamixWeb.Content.GuideLive do
        page_title: gettext("Guia de TV"),
        current_path: "/guide",
        rows: [],
+       visible: [],
+       shown: 0,
        categories: [],
        providers: [],
        selected_category: "all",
        selected_provider: nil,
        favorites_only: false,
        search: "",
-       starts_at: default_start(),
-       ends_at: default_end(default_start()),
+       starts_at: starts_at,
+       ends_at: TvGuide.window_end(starts_at),
        loading: true,
        load_generation: 0,
        refresh_ref: nil,
        favorite_ids: Library.list_favorite_ids(library_key, "live_channel")
-     )}
+     )
+     |> stream_configure(:guide_rows, dom_id: &"guide-channel-#{&1.channel.id}")
+     |> stream(:guide_rows, [])}
   end
 
   @impl true
@@ -57,7 +72,8 @@ defmodule StreamixWeb.Content.GuideLive do
         favorites_only: params["favorites"] == "true",
         search: normalize_search(params["search"]),
         starts_at: starts_at,
-        ends_at: default_end(starts_at)
+        ends_at: TvGuide.window_end(starts_at),
+        shown: 0
       )
 
     {:noreply, start_guide_load(socket)}
@@ -66,7 +82,7 @@ defmodule StreamixWeb.Content.GuideLive do
   @impl true
   def handle_async({:load_guide, generation}, {:ok, result}, socket)
       when generation == socket.assigns.load_generation do
-    cleaned_rows = Enum.map(result.rows, &clean_row/1)
+    cleaned_rows = result.rows |> Enum.map(&clean_row/1) |> one_per_name()
     cleaned_categories = clean_categories(result.categories, cleaned_rows)
 
     {:noreply,
@@ -80,6 +96,7 @@ defmodule StreamixWeb.Content.GuideLive do
        ends_at: result.ends_at,
        loading: false
      )
+     |> restream(max(socket.assigns.shown, @page_size))
      |> schedule_refresh()}
   end
 
@@ -90,6 +107,7 @@ defmodule StreamixWeb.Content.GuideLive do
     {:noreply,
      socket
      |> assign(loading: false, rows: [])
+     |> restream(@page_size)
      |> put_flash(:error, gettext("Não foi possível atualizar o guia agora."))
      |> schedule_refresh()}
   end
@@ -141,6 +159,21 @@ defmodule StreamixWeb.Content.GuideLive do
     {:noreply, push_patch(socket, to: guide_path(socket, at: nil))}
   end
 
+  def handle_event("load_more", _params, socket) do
+    %{visible: visible, shown: shown} = socket.assigns
+
+    if shown < length(visible) do
+      page = visible |> Enum.drop(shown) |> Enum.take(@page_size)
+
+      {:noreply,
+       socket
+       |> assign(shown: shown + length(page))
+       |> stream(:guide_rows, Enum.map(page, &present(&1, socket.assigns)))}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_event("toggle_favorite", %{"id" => id}, socket) do
     with {channel_id, ""} <- Integer.parse(id),
          row when not is_nil(row) <-
@@ -161,7 +194,10 @@ defmodule StreamixWeb.Content.GuideLive do
           :removed -> MapSet.delete(socket.assigns.favorite_ids, channel_id)
         end
 
-      {:noreply, assign(socket, favorite_ids: favorite_ids)}
+      {:noreply,
+       socket
+       |> assign(favorite_ids: favorite_ids)
+       |> restream(socket.assigns.shown)}
     else
       _ -> {:noreply, socket}
     end
@@ -171,6 +207,9 @@ defmodule StreamixWeb.Content.GuideLive do
   def handle_info(:refresh_guide, socket) do
     {:noreply, start_guide_load(assign(socket, refresh_ref: nil))}
   end
+
+  # Moves the "now" line; the programs themselves move on the next reload.
+  def handle_info(:tick, socket), do: {:noreply, assign(socket, now: DateTime.utc_now())}
 
   @impl true
   def terminate(_reason, socket) do
@@ -199,6 +238,52 @@ defmodule StreamixWeb.Content.GuideLive do
     channel = Map.update(row.channel, :name, "", &DisplayTitle.channel/1)
 
     %{row | channel: channel, programs: programs, current_program: current, next_program: next}
+  end
+
+  # The same channel from two providers is listed once, the copy with the
+  # fuller guide.
+  defp one_per_name(rows) do
+    rows
+    |> Enum.sort_by(&(-length(&1.programs)))
+    |> Enum.uniq_by(&(&1.channel.name |> to_string() |> String.trim() |> String.downcase()))
+  end
+
+  # Filters and orders the loaded rows and shows the first `count` of them
+  # (at least a page), replacing what the list showed.
+  defp restream(socket, count) do
+    a = socket.assigns
+
+    visible =
+      a.rows
+      |> TvGuide.filter(a.selected_category, a.favorites_only, a.favorite_ids)
+      |> TvGuide.rank(a.favorite_ids, a.starts_at, a.ends_at)
+
+    page = Enum.take(visible, max(count, @page_size))
+
+    socket
+    |> assign(visible: visible, shown: length(page))
+    |> stream(:guide_rows, Enum.map(page, &present(&1, a)), reset: true)
+  end
+
+  # A row as the template draws it: favorite state and each program's place
+  # in time worked out here, so the stream item carries everything it needs.
+  defp present(row, assigns) do
+    now = DateTime.utc_now()
+
+    programs =
+      Enum.map(row.programs, fn program ->
+        program
+        |> Map.put(:state, TvGuide.program_state(program, now))
+        |> Map.put(
+          :style,
+          EpgComponents.program_style(program, assigns.starts_at, assigns.ends_at)
+        )
+      end)
+
+    row
+    |> Map.put(:programs, programs)
+    |> Map.put(:favorite?, MapSet.member?(assigns.favorite_ids, row.channel.id))
+    |> Map.put(:logo, ImageProxy.browser_image(row.channel.stream_icon))
   end
 
   defp clean_program(program) do
@@ -279,8 +364,8 @@ defmodule StreamixWeb.Content.GuideLive do
     if map_size(query) == 0, do: ~p"/guide", else: ~p"/guide?#{query}"
   end
 
-  defp parse_window_start(nil), do: default_start()
-  defp parse_window_start(""), do: default_start()
+  defp parse_window_start(nil), do: TvGuide.default_start()
+  defp parse_window_start(""), do: TvGuide.default_start()
 
   defp parse_window_start(value) do
     with {unix, ""} <- Integer.parse(to_string(value)),
@@ -288,17 +373,9 @@ defmodule StreamixWeb.Content.GuideLive do
          true <- abs(DateTime.diff(datetime, DateTime.utc_now(), :day)) <= 7 do
       datetime
     else
-      _ -> default_start()
+      _ -> TvGuide.default_start()
     end
   end
-
-  defp default_start do
-    DateTime.utc_now()
-    |> DateTime.add(-15, :minute)
-    |> DateTime.truncate(:second)
-  end
-
-  defp default_end(starts_at), do: DateTime.add(starts_at, 3, :hour)
 
   defp parse_positive_integer(nil), do: nil
   defp parse_positive_integer(""), do: nil

@@ -98,6 +98,13 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Changed
 
+- The TV guide (`/guide`) lists every channel with programming in the window, not the first 100 by name: favorites
+  first, then channels with a real schedule (not one all-day placeholder program), 30 at a time with more loading as
+  the list scrolls ("Mostrar mais canais"). Channels without a guide are left out (`airing_between:` on
+  `Catalog.list_visible_live_channels/2`), and the same channel from two providers is listed once. On a wide screen
+  it is one table under a sticky half-hour ruler, programs at their real start and length, past ones dimmed, the one
+  on air marked "No ar" with its progress, and a single "now" line across every row; on a phone each channel shows
+  its programs from now on. The window opens on the half hour and is named by day ("Hoje, 13:30–16:30").
 - Semantic search embeds each title as labelled lines (genres, TMDB keywords, directors, writers, billed cast,
   tagline, synopsis) through one text builder shared by both embedding providers, instead of title, genres and plot.
   Results and "similar titles" list each title once instead of once per provider copy, and "similar to X" no longer
@@ -233,6 +240,9 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- The TV guide and the EPG "now/next" lines showed times in UTC (three hours ahead): the release has no time zone
+  database, so `DateTime.shift_zone!/2` failed and the fallback printed UTC. Times are now Brasília's fixed UTC-3
+  (`StreamixWeb.Content.LocalTime`), shared with the stations' clock.
 - A GIndex scan slice could run past Oban's two-hour timeout and be killed mid-run: Worker folders that answer 500 on
   every attempt cost about ten minutes of capped retries each, so a 1,500-request slice never reached its budget.
   Slices now also yield after 90 minutes and resume from their saved progress.

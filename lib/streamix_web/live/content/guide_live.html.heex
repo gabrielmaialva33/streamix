@@ -1,10 +1,9 @@
-<% visible_rows = TvGuide.filter(@rows, @selected_category, @favorites_only, @favorite_ids) %>
-<div id="tv-guide" class="space-y-3 sm:space-y-5">
+<div id="tv-guide" class="space-y-3 sm:space-y-4">
   <.page_header
     id="guide-page-header"
     title={gettext("Guia de TV")}
     icon="hero-calendar-days"
-    subtitle={gettext("Veja o que está passando agora e a programação das próximas horas.")}
+    subtitle={gettext("O que está passando agora e nas próximas horas, no horário de Brasília.")}
   >
     <:actions>
       <div class="flex shrink-0 items-center gap-1.5 sm:gap-2">
@@ -63,13 +62,6 @@
         phx-click="filter_category"
         phx-value-category="all"
       />
-      <.filter_chip
-        :for={category <- @categories}
-        active={@selected_category == category}
-        label={category}
-        phx-click="filter_category"
-        phx-value-category={category}
-      />
       <button
         type="button"
         phx-click="toggle_favorites"
@@ -84,177 +76,182 @@
           class="size-3.5"
         /> {gettext("Favoritos")}
       </button>
+      <.filter_chip
+        :for={category <- @categories}
+        active={@selected_category == category}
+        label={category}
+        phx-click="filter_category"
+        phx-value-category={category}
+      />
     </.filter_strip>
   </section>
 
-  <div class="flex items-center justify-between gap-3 text-xs text-text-muted">
-    <p>
-      {gettext("Janela:")}
-      <span class="font-medium text-text-secondary">
-        {TvGuide.window_label(@starts_at, @ends_at)}
-      </span>
+  <div class="flex items-baseline justify-between gap-3">
+    <p id="guide-window" class="text-sm font-semibold text-text-primary tabular-nums">
+      {TvGuide.window_label(@starts_at, @ends_at, @now)}
     </p>
-    <p :if={!@loading}>{ngettext("%{count} canal", "%{count} canais", length(visible_rows))}</p>
+    <p :if={!@loading} id="guide-count" class="text-xs text-text-muted">
+      {ngettext(
+        "%{count} canal com programação",
+        "%{count} canais com programação",
+        length(@visible)
+      )}
+    </p>
   </div>
 
   <div :if={@loading} id="guide-loading" class="space-y-2" aria-label={gettext("Carregando guia")}>
     <div
       :for={_ <- 1..6}
-      class="grid gap-1.5 rounded-xl border border-border bg-surface/90 p-2 animate-pulse sm:grid-cols-[minmax(180px,220px)_minmax(0,1fr)] sm:gap-3 sm:p-3"
+      class="grid gap-2 rounded-xl border border-border bg-surface/90 p-2.5 animate-pulse lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-3"
     >
-      <div class="h-10 rounded-lg bg-surface-hover sm:h-14" />
-      <div class="grid grid-cols-2 gap-1.5 sm:grid-cols-3 sm:gap-2">
-        <div :for={_ <- 1..3} class="h-12 rounded-lg bg-surface-hover sm:h-14" />
+      <div class="h-10 rounded-lg bg-surface-hover lg:h-14" />
+      <div class="grid grid-cols-2 gap-1.5 lg:grid-cols-4">
+        <div :for={_ <- 1..3} class="h-14 rounded-lg bg-surface-hover" />
       </div>
     </div>
   </div>
 
-  <div :if={!@loading && visible_rows != []} id="guide-rows" class="space-y-1.5 sm:space-y-2.5">
-    <div class="guide-time-axis" aria-hidden="true">
-      <span>Canal</span>
-      <div class="flex justify-between min-w-0">
-        <span :for={step <- 0..3}>{TvGuide.format_time(DateTime.add(@starts_at, step, :hour))}</span>
+  <div :if={!@loading && @visible != []} id="guide-grid" class="guide-grid">
+    <div class="guide-ruler" aria-hidden="true">
+      <span class="guide-ruler__label">{LocalTime.day_label(@starts_at, @now)}</span>
+      <div class="guide-ruler__track">
+        <span
+          :for={{tick, left} <- TvGuide.ticks(@starts_at, @ends_at)}
+          class="guide-ruler__tick"
+          style={"left: #{left}%"}
+        >
+          {TvGuide.format_time(tick)}
+        </span>
       </div>
     </div>
-    <article
-      :for={row <- visible_rows}
-      id={"guide-channel-#{row.channel.id}"}
-      data-guide-row
-      class="guide-timeline-row grid gap-1.5 rounded-xl border border-border bg-surface/92 p-2 sm:grid-cols-[minmax(180px,220px)_minmax(0,1fr)] sm:items-stretch sm:gap-3 sm:p-3"
+
+    <ul
+      id="guide-rows"
+      phx-update="stream"
+      phx-viewport-bottom={@shown < length(@visible) && "load_more"}
+      class="guide-rows"
     >
-      <div class="flex min-w-0 items-center justify-between gap-2 sm:border-r sm:border-border sm:pr-3">
-        <.link
-          href={~p"/watch/live_channel/#{row.channel.id}?return_to=/guide"}
-          class="group flex min-w-0 flex-1 items-center gap-2 sm:gap-2.5"
-        >
-          <div class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-surface-hover sm:size-11 sm:rounded-lg">
-            <img
-              :if={ImageProxy.browser_image(row.channel.stream_icon)}
-              src={ImageProxy.browser_image(row.channel.stream_icon)}
-              alt=""
-              class="size-full object-contain p-0.5 sm:p-1"
-              loading="lazy"
-              decoding="async"
-            />
-            <.icon
-              :if={!ImageProxy.browser_image(row.channel.stream_icon)}
-              name="hero-tv"
-              class="size-4 text-text-muted sm:size-5"
-            />
-          </div>
-          <div class="min-w-0 flex-1">
-            <h2 class="line-clamp-2 text-xs font-semibold leading-tight text-text-primary group-hover:text-brand sm:text-sm">
-              {row.channel.name}
-            </h2>
-            <div class="mt-0.5 flex items-center gap-1.5 text-[10px] leading-none text-text-muted">
-              <span class="truncate">{row.provider_name}</span>
-              <span aria-hidden="true">·</span>
-              <span class="inline-flex shrink-0 items-center gap-0.5 font-medium text-brand">
-                <.icon name="hero-play-solid" class="size-2.5 sm:size-3" /> {gettext("Assistir")}
-              </span>
-            </div>
-          </div>
-        </.link>
-
-        <button
-          type="button"
-          phx-click="toggle_favorite"
-          phx-value-id={row.channel.id}
-          class="guide-favorite-button"
-          aria-label={
-            if MapSet.member?(@favorite_ids, row.channel.id),
-              do: gettext("Remover %{channel} dos favoritos", channel: row.channel.name),
-              else: gettext("Adicionar %{channel} aos favoritos", channel: row.channel.name)
-          }
-        >
-          <.icon
-            name={
-              if MapSet.member?(@favorite_ids, row.channel.id),
-                do: "hero-heart-solid",
-                else: "hero-heart"
-            }
-            class={[
-              "size-4",
-              MapSet.member?(@favorite_ids, row.channel.id) && "text-brand"
-            ]}
-          />
-        </button>
-      </div>
-
-      <div
-        class="guide-timeline grid auto-cols-[minmax(140px,62vw)] grid-flow-col gap-1.5 overflow-x-auto overscroll-x-contain pb-0.5 snap-x snap-proximity scrollbar-hide sm:auto-cols-[minmax(180px,230px)] sm:gap-2"
-        aria-label={gettext("Programação de %{channel}", channel: row.channel.name)}
+      <li
+        :for={{dom_id, row} <- @streams.guide_rows}
+        id={dom_id}
+        data-guide-row
+        class="guide-row"
       >
-        <div
-          :for={program <- row.programs}
-          style={StreamixWeb.EpgComponents.program_style(program, @starts_at, @ends_at)}
-          data-guide-program
-          data-current-program={
-            if row.current_program && row.current_program.id == program.id,
-              do: "true",
-              else: "false"
-          }
-          class={[
-            "min-h-12 snap-start rounded-lg border p-2 sm:min-h-[68px] sm:p-2.5",
-            row.current_program && row.current_program.id == program.id &&
-              "guide-program--current border-brand/60 bg-brand/10",
-            !(row.current_program && row.current_program.id == program.id) &&
-              "border-border bg-surface-hover"
-          ]}
-        >
-          <div class="guide-program-content">
-            <div class="flex items-center justify-between gap-2 text-[10px] leading-none text-text-muted">
-              <span class="tabular-nums">
-                {TvGuide.format_time(program.start_time)}–{TvGuide.format_time(program.end_time)}
+        <div class="guide-channel">
+          <.link
+            href={~p"/watch/live_channel/#{row.channel.id}?return_to=/guide"}
+            class="group flex min-w-0 flex-1 items-center gap-2.5"
+          >
+            <span class="guide-channel__logo">
+              <img
+                :if={row.logo}
+                src={row.logo}
+                alt=""
+                class="size-full object-contain p-1"
+                loading="lazy"
+                decoding="async"
+              />
+              <.icon :if={!row.logo} name="hero-tv" class="size-5 text-text-muted" />
+            </span>
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm font-semibold leading-tight text-text-primary group-hover:text-brand">
+                {row.channel.name}
               </span>
-              <span :if={program.category} class="truncate">{program.category}</span>
-            </div>
-            <p
-              class="mt-1 line-clamp-1 text-xs font-medium leading-snug text-text-primary sm:line-clamp-2"
-              title={program.title}
-            >
-              {program.title}
-            </p>
-            <div
-              :if={row.current_program && row.current_program.id == program.id}
-              class="mt-1"
-            >
-              <StreamixWeb.EpgComponents.epg_progress_bar program={program} />
+              <span class="mt-1 flex items-center gap-1.5 text-[11px] leading-none text-text-muted">
+                <span class="truncate">{row.provider_name}</span>
+                <span class="inline-flex shrink-0 items-center gap-0.5 font-medium text-brand">
+                  <.icon name="hero-play-solid" class="size-3" /> {gettext("Assistir")}
+                </span>
+              </span>
+            </span>
+          </.link>
+
+          <button
+            type="button"
+            phx-click="toggle_favorite"
+            phx-value-id={row.channel.id}
+            class={["guide-favorite-button", row.favorite? && "guide-favorite-button--on"]}
+            aria-pressed={to_string(row.favorite?)}
+            aria-label={
+              if row.favorite?,
+                do: gettext("Remover %{channel} dos favoritos", channel: row.channel.name),
+                else: gettext("Adicionar %{channel} aos favoritos", channel: row.channel.name)
+            }
+          >
+            <.icon
+              name={if row.favorite?, do: "hero-heart-solid", else: "hero-heart"}
+              class="size-4"
+            />
+          </button>
+        </div>
+
+        <div
+          class="guide-timeline"
+          aria-label={gettext("Programação de %{channel}", channel: row.channel.name)}
+        >
+          <div
+            :for={program <- row.programs}
+            style={program.style}
+            data-guide-program
+            data-state={program.state}
+            data-current-program={to_string(program.state == :current)}
+            class="guide-program"
+            title={"#{TvGuide.format_time(program.start_time)}–#{TvGuide.format_time(program.end_time)} · #{program.title}"}
+          >
+            <div class="guide-program__body">
+              <p class="guide-program__time">
+                <span :if={program.state == :current} class="guide-program__live">
+                  {gettext("No ar")}
+                </span>
+                <span class="tabular-nums">
+                  {TvGuide.format_time(program.start_time)}–{TvGuide.format_time(program.end_time)}
+                </span>
+              </p>
+              <p class="guide-program__title">{program.title}</p>
+              <p :if={program.category} class="guide-program__category">{program.category}</p>
+              <div :if={program.state == :current} class="guide-program__progress">
+                <StreamixWeb.EpgComponents.epg_progress_bar program={program} />
+              </div>
             </div>
           </div>
         </div>
+      </li>
+    </ul>
 
-        <span
-          :if={
-            DateTime.compare(@now, @starts_at) != :lt && DateTime.compare(@now, @ends_at) == :lt
-          }
-          class="guide-now-line"
-          style={"left: #{StreamixWeb.EpgComponents.window_position(@now, @starts_at, @ends_at)}%"}
-          aria-hidden="true"
-        />
-        <div
-          :if={row.programs == []}
-          class="flex min-h-12 items-center gap-2 rounded-lg border border-border bg-surface-hover p-2 text-xs italic text-text-muted sm:min-h-[68px] sm:p-2.5"
-        >
-          <.icon name="hero-clock" class="size-4 shrink-0" /> {gettext(
-            "Sem programação disponível nesta janela"
-          )}
-        </div>
-      </div>
-    </article>
+    <div
+      :if={DateTime.compare(@now, @starts_at) != :lt && DateTime.compare(@now, @ends_at) == :lt}
+      class="guide-now-overlay"
+      aria-hidden="true"
+    >
+      <span
+        class="guide-now-line"
+        style={"left: #{StreamixWeb.EpgComponents.window_position(@now, @starts_at, @ends_at)}%"}
+        aria-hidden="true"
+      />
+    </div>
+  </div>
+
+  <div :if={!@loading && @shown < length(@visible)} class="flex justify-center">
+    <button
+      id="guide-load-more"
+      type="button"
+      phx-click="load_more"
+      class="guide-now-button"
+    >
+      {gettext("Mostrar mais canais")}
+      <span class="text-text-muted tabular-nums">({length(@visible) - @shown})</span>
+    </button>
   </div>
 
   <.empty_state
-    :if={!@loading && visible_rows == []}
+    :if={!@loading && @visible == []}
     id="guide-empty"
     icon="hero-calendar-days"
-    title={gettext("Nenhum canal no guia")}
+    title={gettext("Nenhum canal com programação")}
     message={
-      gettext(
-        "Ajuste os filtros ou sincronize o EPG do seu provedor para preencher a programação."
-      )
+      gettext("Nada no guia nesta janela. Ajuste a busca e os filtros, ou volte para agora.")
     }
-    cta_label={gettext("Explorar catálogo")}
+    cta_label={gettext("Explorar canais")}
     cta_navigate={~p"/browse"}
   />
 </div>

@@ -57,6 +57,10 @@ defmodule Streamix.Iptv.Channels do
 
   @doc """
   Lists live channels across all Xtream providers visible to a user.
+
+  Takes `:limit`, `:offset`, `:search`, `:provider_id`, `:show_adult` and
+  `:airing_between` (`{starts_at, ends_at}`: only channels whose guide has a
+  program in that window).
   """
   @spec list_visible(integer(), keyword()) :: [LiveChannel.t()]
   def list_visible(user_id, opts \\ []) do
@@ -297,6 +301,7 @@ defmodule Streamix.Iptv.Channels do
       query
       |> maybe_where_provider(Keyword.get(opts, :provider_id))
       |> maybe_where_provider_type(Keyword.get(opts, :provider_type))
+      |> maybe_airing_between(Keyword.get(opts, :airing_between))
       |> exclude_dead()
 
     query =
@@ -321,6 +326,28 @@ defmodule Streamix.Iptv.Channels do
     else
       AdultFilter.exclude_adult_content(query)
     end
+  end
+
+  # `airing_between: {starts_at, ends_at}` keeps the channels whose guide
+  # has a program overlapping that window (what a TV guide can show).
+  defp maybe_airing_between(query, nil), do: query
+
+  defp maybe_airing_between(query, {%DateTime{} = starts_at, %DateTime{} = ends_at}) do
+    starts_at = DateTime.to_naive(starts_at)
+    ends_at = DateTime.to_naive(ends_at)
+
+    where(
+      query,
+      [c],
+      not is_nil(c.epg_channel_id) and
+        fragment(
+          "EXISTS (SELECT 1 FROM epg_channels e JOIN epg_programs p ON p.epg_channel_id = e.id WHERE e.provider_id = ? AND e.external_id = ? AND p.end_time > ? AND p.start_time < ?)",
+          c.provider_id,
+          c.epg_channel_id,
+          ^starts_at,
+          ^ends_at
+        )
+    )
   end
 
   defp maybe_where_provider(query, nil), do: query

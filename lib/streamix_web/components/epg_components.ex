@@ -5,6 +5,8 @@ defmodule StreamixWeb.EpgComponents do
   use Phoenix.Component
   import StreamixWeb.CoreComponents, only: [badge: 1]
 
+  alias StreamixWeb.Content.LocalTime
+
   def current_program?(program, now \\ DateTime.utc_now())
 
   def current_program?(
@@ -133,14 +135,5 @@ defmodule StreamixWeb.EpgComponents do
     """
   end
 
-  defp format_time(nil), do: ""
-
-  defp format_time(%DateTime{} = dt) do
-    # Convert to local time (Brazil)
-    dt
-    |> DateTime.shift_zone!("America/Sao_Paulo")
-    |> Calendar.strftime("%H:%M")
-  rescue
-    _ -> Calendar.strftime(dt, "%H:%M")
-  end
+  defp format_time(datetime), do: LocalTime.clock(datetime)
 end
