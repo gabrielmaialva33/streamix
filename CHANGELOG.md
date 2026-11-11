@@ -101,7 +101,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - The TV guide (`/guide`) lists every channel with programming in the window, not the first 100 by name: favorites
   first, then channels with a real schedule (not one all-day placeholder program), 30 at a time with more loading as
   the list scrolls ("Mostrar mais canais"). Channels without a guide are left out (`airing_between:` on
-  `Catalog.list_visible_live_channels/2`), and the same channel from two providers is listed once. On a wide screen
+  `Catalog.list_visible_live_channels/2`), the same channel from two providers or in FHD/HD/SD is listed once, and a
+  day-long entry some guides lay over the real schedule is dropped, so one program is on air at a time. On a wide screen
   it is one table under a sticky half-hour ruler, programs at their real start and length, past ones dimmed, the one
   on air marked "No ar" with its progress, and a single "now" line across every row; on a phone each channel shows
   its programs from now on. The window opens on the half hour and is named by day ("Hoje, 13:30–16:30").

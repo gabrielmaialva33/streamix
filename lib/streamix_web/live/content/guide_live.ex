@@ -240,12 +240,23 @@ defmodule StreamixWeb.Content.GuideLive do
     %{row | channel: channel, programs: programs, current_program: current, next_program: next}
   end
 
-  # The same channel from two providers is listed once, the copy with the
-  # fuller guide.
+  # The same channel from two providers, or in FHD, HD and SD, is listed
+  # once: the copy with the fuller guide, then the one named first.
   defp one_per_name(rows) do
     rows
-    |> Enum.sort_by(&(-length(&1.programs)))
-    |> Enum.uniq_by(&(&1.channel.name |> to_string() |> String.trim() |> String.downcase()))
+    |> Enum.sort_by(&{-length(&1.programs), String.length(to_string(&1.channel.name))})
+    |> Enum.uniq_by(&same_channel_key(&1.channel.name))
+  end
+
+  @quality_suffix ~r/(?:[\s\-|]+(?:fhd|uhd|hd|sd|4k|h\.?265|hevc|alt|backup))+\s*$/iu
+
+  @doc false
+  def same_channel_key(name) do
+    name
+    |> to_string()
+    |> String.replace(@quality_suffix, "")
+    |> String.trim()
+    |> String.downcase()
   end
 
   # Filters and orders the loaded rows and shows the first `count` of them

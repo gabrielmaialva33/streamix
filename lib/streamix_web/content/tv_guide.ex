@@ -182,6 +182,7 @@ defmodule StreamixWeb.Content.TvGuide do
         programs_by_provider
         |> Map.get(channel.provider_id, %{})
         |> Map.get(to_string(channel.id), [])
+        |> drop_umbrellas()
 
       %{
         channel: channel,
@@ -190,6 +191,21 @@ defmodule StreamixWeb.Content.TvGuide do
         next_program: next_program(programs, now),
         provider_name: Map.get(provider_names, channel.provider_id, "Provedor")
       }
+    end)
+  end
+
+  # Some guides carry a day-long entry ("MasterChef 22:30–22:30") on top of
+  # the real schedule. A program that wholly spans another one of the same
+  # channel is such an umbrella and is left out, so one program is on air.
+  defp drop_umbrellas(programs) do
+    Enum.reject(programs, fn program ->
+      Enum.any?(programs, fn other ->
+        other.id != program.id and
+          DateTime.compare(program.start_time, other.start_time) != :gt and
+          DateTime.compare(program.end_time, other.end_time) != :lt and
+          DateTime.diff(program.end_time, program.start_time) >
+            DateTime.diff(other.end_time, other.start_time)
+      end)
     end)
   end
 

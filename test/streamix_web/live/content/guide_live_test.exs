@@ -172,6 +172,46 @@ defmodule StreamixWeb.Content.GuideLiveTest do
       assert has_element?(view, "[data-current-program='true']", brasilia <> "–")
     end
 
+    test "one program on air and one row per channel across quality variants", %{
+      conn: conn,
+      provider: provider,
+      channel: channel,
+      current: current
+    } do
+      now = DateTime.utc_now()
+
+      # A day-long umbrella entry on top of the real schedule.
+      epg_program_fixture(provider, %{
+        epg_channel_id: channel.epg_channel_id,
+        title: "Maratona do Dia",
+        start_time: DateTime.add(now, -10, :hour),
+        end_time: DateTime.add(now, 10, :hour)
+      })
+
+      hd =
+        channel_fixture(provider, %{
+          name: "Canal Notícias HD",
+          epg_channel_id: channel.epg_channel_id
+        })
+
+      regional =
+        channel_fixture(provider, %{
+          name: "Canal Notícias (RJ)",
+          epg_channel_id: channel.epg_channel_id
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/guide")
+      render_async(view)
+
+      refute render(view) =~ "Maratona do Dia"
+      assert has_element?(view, "[data-current-program='true']", current.title)
+      assert view |> render() |> String.split("data-current-program=\"true\"") |> length() == 3
+
+      assert has_element?(view, "#guide-channel-#{channel.id}")
+      refute has_element?(view, "#guide-channel-#{hd.id}")
+      assert has_element?(view, "#guide-channel-#{regional.id}")
+    end
+
     test "shows channels a page at a time, favorites and real schedules first", %{
       conn: conn,
       user: user,
