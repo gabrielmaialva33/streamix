@@ -74,24 +74,25 @@ defmodule Streamix.Workers.ClassifyTitleTagsWorkerTest do
   test "a title left out is asked alone, then stored empty", %{provider: provider} do
     kept = movie_fixture(provider, %{title: "Respondido", plot: "x"})
     dropped = movie_fixture(provider, %{title: "Ignorado", plot: "x"})
-    dropped_title = "Ignorado"
 
+    # Answers by title, never by position: pending order follows variant
+    # keys, which fixtures may base on a random TMDB id.
     Req.Test.stub(__MODULE__, fn conn ->
       {conn, prompt} = prompt(conn)
 
-      if prompt =~ dropped_title and not (prompt =~ "Respondido") do
-        gemini(conn, "not json")
-      else
-        answer(conn, prompt, fn ref -> if ref == 1, do: %{"ref" => 1, "moods" => ["tenso"]} end)
+      case refs_by_title(prompt) do
+        %{"Respondido" => ref} ->
+          gemini(conn, Jason.encode!([%{"ref" => ref, "moods" => ["tenso"]}]))
+
+        %{"Ignorado" => _ref} ->
+          gemini(conn, "not json")
       end
     end)
 
     assert :ok = ClassifyTitleTagsWorker.perform(%Oban.Job{args: %{}})
 
-    # Pending titles come in variant-key order: "title:ignorado" before "title:respondido".
-    assert %{moods: moods_dropped} = tags_of("movies", dropped)
-    assert %{moods: moods_kept} = tags_of("movies", kept)
-    assert Enum.sort([moods_dropped, moods_kept]) == [[], ["tenso"]]
+    assert %{moods: ["tenso"]} = tags_of("movies", kept)
+    assert %{moods: []} = tags_of("movies", dropped)
     assert Catalog.pending_tag_count(:movies) == 0
   end
 
@@ -116,6 +117,12 @@ defmodule Streamix.Workers.ClassifyTitleTagsWorkerTest do
     {:ok, raw, conn} = Plug.Conn.read_body(conn)
     [%{"parts" => [%{"text" => prompt}]}] = Jason.decode!(raw)["contents"]
     {conn, prompt}
+  end
+
+  defp refs_by_title(prompt) do
+    ~r/^\[(\d+)\] (.+?)(?: \(\d{4}\))?$/m
+    |> Regex.scan(prompt)
+    |> Map.new(fn [_, ref, title] -> {title, String.to_integer(ref)} end)
   end
 
   defp answer(conn, fun) do
