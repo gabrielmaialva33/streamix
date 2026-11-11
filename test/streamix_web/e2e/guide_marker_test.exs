@@ -53,7 +53,7 @@ defmodule StreamixWeb.E2E.GuideMarkerTest do
   end
 
   @tag browser_context_opts: [viewport: %{width: 1440, height: 1000}]
-  test "desktop now marker paints only the gutters, never programme text", %{conn: session} do
+  test "desktop now line runs behind the programmes, never over their text", %{conn: session} do
     session
     |> visit("/guide")
     |> assert_has("[data-current-program=true]")
@@ -63,36 +63,30 @@ defmodule StreamixWeb.E2E.GuideMarkerTest do
       () => {
         const marker = document.querySelector('.guide-now-line');
         const rect = marker.getBoundingClientRect();
-        const bands = ['::before', '::after'].map(pseudo => {
-          const style = getComputedStyle(marker, pseudo);
-          const height = parseFloat(style.height);
-          const top = style.top === 'auto' ? rect.bottom - height : rect.top + parseFloat(style.top);
-          return {painted: style.content !== 'none' && style.content !== 'normal', top, bottom: top + height};
-        });
-        const textRects = [];
-        const walker = document.createTreeWalker(marker.parentElement, NodeFilter.SHOW_TEXT);
-        while (walker.nextNode()) {
-          if (!walker.currentNode.textContent.trim()) continue;
-          const range = document.createRange();
-          range.selectNodeContents(walker.currentNode);
-          textRects.push(...range.getClientRects());
-        }
+        const program = document.querySelector('[data-current-program=true]').getBoundingClientRect();
+        // Hit-test with the marker made hittable: whatever paints on top wins.
+        marker.parentElement.style.pointerEvents = 'auto';
+        marker.style.pointerEvents = 'auto';
+        const onProgram = document.elementFromPoint(rect.left + rect.width / 2, program.top + program.height / 2);
+        marker.parentElement.style.pointerEvents = '';
+        marker.style.pointerEvents = '';
         return {
+          display: getComputedStyle(marker).display,
           background: getComputedStyle(marker).backgroundColor,
-          bands,
-          overlaps: bands.some(band => textRects.some(text =>
-            rect.left < text.right && rect.right > text.left && band.top < text.bottom && band.bottom > text.top)),
+          crosses: rect.left > program.left && rect.right < program.right,
+          // The programme (and its title) paints over the line.
+          coveredByProgram: !!(onProgram && onProgram.closest('[data-guide-program]')),
           overflow: document.documentElement.scrollWidth - innerWidth
         };
       }
       """,
       [is_function: true],
       fn result ->
-        # The center must be transparent: the old full-height red marker cut through titles.
-        assert result["background"] == "rgba(0, 0, 0, 0)"
-        assert Enum.all?(result["bands"], & &1["painted"])
-        assert Enum.all?(result["bands"], &(&1["bottom"] - &1["top"] == 6))
-        refute result["overlaps"]
+        # The old full-height red marker was drawn over titles.
+        assert result["display"] == "block"
+        assert result["crosses"]
+        assert result["background"] != "rgba(0, 0, 0, 0)"
+        assert result["coveredByProgram"]
         assert result["overflow"] <= 1
       end
     )

@@ -72,7 +72,8 @@
 }
 
 .guide-ruler,
-.guide-now-overlay {
+.guide-now-overlay,
+.guide-now-line {
     display: none;
 }
 
@@ -263,7 +264,12 @@
         font-variant-numeric: tabular-nums;
     }
 
+    /* Rows sit above the "now" overlay: the opaque programs hide the line,
+       so it shows only in the gutters between rows and never crosses a
+       title. */
     .guide-rows {
+        position: relative;
+        z-index: 1;
         gap: 0;
     }
 
@@ -329,12 +335,13 @@
         bottom: 0;
         left: calc(var(--guide-pad) + var(--guide-channel-col) + var(--guide-gap));
         right: var(--guide-pad);
-        z-index: 2;
+        z-index: 0;
         display: block;
         pointer-events: none;
     }
 
     .guide-now-line {
+        display: block;
         position: absolute;
         top: 0;
         bottom: 0;
