@@ -12,6 +12,7 @@ test("builds one explicit player state from the hook dataset", () => {
       contentId: "42",
       contentType: "vod",
       expectedDuration: "7200",
+      startAt: "1830",
       featureAvbridge: "true",
       imdbId: "tt123",
       mediaTitle: "Filme",
@@ -41,6 +42,7 @@ test("builds one explicit player state from the hook dataset", () => {
   assert.equal(state.contentType, "vod");
   assert.equal(state.streamingMode, "vod:good");
   assert.equal(state.expectedDuration, 7200);
+  assert.equal(state.startAt, 1830);
   assert.equal(state.subtitleOffsetMs, 250);
   assert.equal(state.subtitlesEnabled, false);
   assert.equal(state.featureFlagAvbridge, true);
@@ -136,4 +138,22 @@ test("client revision comes from the page's served build meta, with untrusted va
     createInitialPlayerState(createElement(), { dependencies, documentRef }).clientRevision,
     undefined,
   );
+});
+
+test("a missing or invalid start offset means the start of the title", () => {
+  const deps = {
+    dependencies: {
+      createPlaybackMetrics: () => ({}),
+      isIosPwaMode: () => false,
+      now: () => 0,
+      parseNextEpisode: () => null,
+      readEngineFlag: () => false,
+      selectStreamingMode: () => "vod:good",
+    },
+  };
+
+  for (const startAt of [undefined, "", "abc", "-30"]) {
+    const state = createInitialPlayerState(createElement({ contentType: "vod", startAt }), deps);
+    assert.equal(state.startAt, 0, String(startAt));
+  }
 });

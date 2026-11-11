@@ -206,7 +206,8 @@ export const playerComposition = {
 
     // Load saved playback position for VOD content
     if (this.contentType === "vod" && this.contentId) {
-      this._savedPosition = getPlaybackPosition(this.contentId);
+      this._savedPosition =
+        this.startAt > 0 ? { time: this.startAt } : getPlaybackPosition(this.contentId);
       if (this._savedPosition) {
         log.debug("Found saved position:", this._savedPosition.time, "seconds");
       }

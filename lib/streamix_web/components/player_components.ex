@@ -36,6 +36,7 @@ defmodule StreamixWeb.PlayerComponents do
   attr :season_episodes, :list, default: []
   attr :synopsis, :string, default: nil
   attr :expected_duration, :integer, default: 0
+  attr :start_at, :integer, default: 0, doc: "seconds to start from, over any saved position"
   attr :subtitles_enabled, :boolean, default: true
   attr :subtitle_language, :string, default: "pt-BR"
   attr :subtitle_offset_ms, :integer, default: 0
@@ -107,6 +108,7 @@ defmodule StreamixWeb.PlayerComponents do
       data-streaming-mode={@streaming_mode}
       data-next-episode={@next_episode_json}
       data-expected-duration={@expected_duration}
+      data-start-at={@start_at}
       data-stream-type={@stream_type}
       data-container={Metadata.media_container(@content)}
       data-player-poster={@poster}

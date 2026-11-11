@@ -51,6 +51,9 @@ export function createInitialPlayerState(
     mediaSubtitle: dataset.mediaSubtitle || "Streamix",
     initialMode,
     expectedDuration: Number.parseInt(dataset.expectedDuration, 10) || 0,
+    // A 24h station tunes in mid-film: the server says where, and that
+    // wins over the position this browser saved for the title.
+    startAt: Math.max(Number.parseInt(dataset.startAt, 10) || 0, 0),
     playerLifecycleLogs: dataset.playerLifecycleLogs === "true",
 
     streamTransport: null,
