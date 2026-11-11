@@ -14,9 +14,10 @@ defmodule Streamix.Iptv.Genres.Browse do
 
   alias Streamix.Cache
   alias Streamix.Cache.Keys
+  alias Streamix.Iptv.Content.{GindexSeries, VodAvailability}
   alias Streamix.Iptv.Content.Movies.Queries
   alias Streamix.Iptv.Content.SeriesOps.ListingQuery
-  alias Streamix.Iptv.Genre
+  alias Streamix.Iptv.{Genre, Movie, Series}
   alias Streamix.Iptv.Genres.Vocabulary
   alias Streamix.Repo
 
@@ -34,6 +35,47 @@ defmodule Streamix.Iptv.Genres.Browse do
       end
     end)
   end
+
+  @doc """
+  Genre facets of the Drive (GIndex) catalog, with distinct titles per genre.
+  Series exclude anime, which the Drive files apart.
+  """
+  @spec list_gindex(:movies | :series) :: [map()]
+  def list_gindex(kind) when kind in [:movies, :series] do
+    Cache.fetch(Keys.gindex_genres(kind), @ttl, fn ->
+      counts = kind |> gindex_query() |> Repo.all() |> Map.new()
+
+      for %{slug: slug, name: name} <- Vocabulary.all(), count = counts[slug] do
+        %{slug: slug, name: name, count: count}
+      end
+    end)
+  end
+
+  defp gindex_query(kind) do
+    {schema, table, fk} =
+      case kind do
+        :movies -> {Movie, "movie_genres", :movie_id}
+        :series -> {Series, "series_genres", :series_id}
+      end
+
+    schema
+    |> where([item], not is_nil(item.gindex_path))
+    |> gindex_kind(kind)
+    |> join(:inner, [item], link in ^table, on: field(link, ^fk) == item.id)
+    |> join(:inner, [..., link], genre in Genre, on: genre.id == link.genre_id)
+    |> where([..., genre], genre.slug in ^Vocabulary.slugs())
+    |> group_by([..., genre], genre.slug)
+    |> select(
+      [item, ..., genre],
+      {genre.slug,
+       count(
+         fragment("DISTINCT coalesce(nullif(?, ''), 'row:' || ?::text)", item.tmdb_id, item.id)
+       )}
+    )
+  end
+
+  defp gindex_kind(query, :movies), do: VodAvailability.exclude_dead(query)
+  defp gindex_kind(query, :series), do: GindexSeries.exclude_animes(query)
 
   @doc false
   def filter(query, _kind, nil), do: query

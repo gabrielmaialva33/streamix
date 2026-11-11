@@ -143,7 +143,10 @@ defmodule StreamixWeb.Content.SeriesLive do
 
       <div class="flex flex-col sm:flex-row gap-4 sm:gap-6">
         <.genre_filter_v2
-          :if={@mode == :browse and @source == "iptv" and @provider_filter == "all" and @genres != []}
+          :if={
+            @mode == :browse and @genres != [] and
+              (@source == "gindex" or (@source == "iptv" and @provider_filter == "all"))
+          }
           genres={@genres}
           selected={@selected_genre}
           layout={:sidebar}

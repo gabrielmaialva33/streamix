@@ -13,6 +13,9 @@ defmodule Streamix.Cache.Keys do
     "genres:visible:v1:#{kind}:adult:#{show_adult}:user:#{user_id || "anonymous"}"
   end
 
+  @spec gindex_genres(:movies | :series) :: String.t()
+  def gindex_genres(kind), do: "genres:gindex:v1:#{kind}"
+
   @spec provider_categories(integer()) :: String.t()
   def provider_categories(provider_id), do: "categories:provider:#{provider_id}"
 

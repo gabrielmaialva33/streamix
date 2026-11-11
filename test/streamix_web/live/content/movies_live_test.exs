@@ -8,7 +8,7 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
   alias Streamix.Accounts
   alias Streamix.Cache
   alias Streamix.Cache.Keys
-  alias Streamix.Iptv.{Category, Genre}
+  alias Streamix.Iptv.{Category, Genre, Genres}
   alias Streamix.Repo
 
   describe "Infinite Scroll" do
@@ -324,6 +324,45 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
 
       refute has_element?(view, "#browse-premium-cta")
       refute has_element?(view, "#browse-premium-cta a[href=\"/plans\"]")
+    end
+  end
+
+  describe "Drive (GIndex) browse" do
+    setup do
+      Cache.delete(Keys.gindex_genres(:movies))
+      on_exit(fn -> Cache.delete(Keys.gindex_genres(:movies)) end)
+
+      drive = global_provider_fixture(%{provider_type: :gindex})
+      drama = Genres.canonical_ids()["drama"]
+
+      drama_movie =
+        movie_fixture(drive, %{name: "Drama do Drive", tmdb_id: "11", gindex_path: "/F/drama"})
+
+      other =
+        movie_fixture(drive, %{name: "Outro do Drive", tmdb_id: "12", gindex_path: "/F/outro"})
+
+      Repo.insert_all("movie_genres", [%{movie_id: drama_movie.id, genre_id: drama}])
+
+      %{drama_movie: drama_movie, other: other}
+    end
+
+    test "filters the Drive catalog by genre from the sidebar", %{
+      conn: conn,
+      drama_movie: drama_movie,
+      other: other
+    } do
+      conn = log_in_user(conn, user_fixture())
+      {:ok, view, _html} = live(conn, ~p"/browse/movies?source=gindex")
+
+      assert has_element?(view, "#genre-drama", "Drama")
+
+      view |> element("#genre-drama") |> render_click()
+      path = assert_patch(view)
+      assert path =~ "source=gindex"
+      assert path =~ "genre=drama"
+
+      assert has_element?(view, "#movies-#{drama_movie.id}")
+      refute has_element?(view, "#movies-#{other.id}")
     end
   end
 end

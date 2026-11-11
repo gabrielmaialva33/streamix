@@ -60,11 +60,20 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
             |> assign(lcp_image: movie.stream_icon)
             |> assign(display_title: display_title)
             |> assign(source_badges: SourceBadges.badges(movie))
+            |> assign(versions: versions(movie))
             |> assign(is_favorite: is_favorite)
 
           {:noreply, socket}
         end
     end
+  end
+
+  # The other Drive copies of this title, each with its version badges, so a
+  # viewer can pick 4K, dubbed or another copy when this one fails.
+  defp versions(movie) do
+    movie
+    |> Catalog.list_gindex_movie_versions()
+    |> Enum.map(&%{id: &1.id, badges: SourceBadges.badges(&1), file: &1.name})
   end
 
   @impl true
@@ -160,6 +169,34 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
               </div>
 
               <.synopsis_section text={@movie.plot} />
+
+              <section :if={@versions != []} id="gindex-versions" class="space-y-2 text-left">
+                <h2 class="text-sm font-semibold text-text-primary">
+                  {ngettext("Outra versão", "Outras versões", length(@versions))}
+                </h2>
+                <ul class="space-y-1.5">
+                  <li :for={version <- @versions}>
+                    <.link
+                      navigate={ReturnPath.append(~p"/gindex/movies/#{version.id}", @return_to)}
+                      id={"gindex-version-#{version.id}"}
+                      class="flex min-h-11 items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2 transition-colors hover:border-brand/60"
+                    >
+                      <span class="flex shrink-0 flex-wrap gap-1">
+                        <.badge :for={badge <- version.badges} variant="surface" size="sm">
+                          {badge}
+                        </.badge>
+                      </span>
+                      <span
+                        class="min-w-0 flex-1 truncate text-xs text-text-muted"
+                        title={version.file}
+                      >
+                        {version.file}
+                      </span>
+                      <.icon name="hero-chevron-right" class="size-4 shrink-0 text-text-muted" />
+                    </.link>
+                  </li>
+                </ul>
+              </section>
             </div>
           </div>
         </div>

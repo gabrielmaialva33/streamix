@@ -304,7 +304,7 @@ defmodule StreamixWeb.Content.Browse do
      |> assign(mode: :browse)
      |> assign(source: "gindex")
      |> assign(categories: [])
-     |> assign(genres: [])
+     |> assign(genres: Catalog.list_gindex_genres(kind))
      |> assign(gindex_counts: Catalog.gindex_counts())}
   end
 
@@ -358,6 +358,7 @@ defmodule StreamixWeb.Content.Browse do
     items =
       Catalog.list_gindex_movies(
         search: socket.assigns.search,
+        genre: socket.assigns.selected_genre,
         limit: @per_page,
         offset: offset(page),
         show_adult: user.show_adult_content
@@ -372,6 +373,7 @@ defmodule StreamixWeb.Content.Browse do
     items =
       Catalog.list_gindex_series(
         search: socket.assigns.search,
+        genre: socket.assigns.selected_genre,
         limit: @per_page,
         offset: offset(page)
       )
@@ -529,9 +531,10 @@ defmodule StreamixWeb.Content.Browse do
     }
   end
 
-  defp query_params("gindex", _provider_filter, category, _genre, search) do
+  defp query_params("gindex", _provider_filter, category, genre, search) do
     %{"source" => "gindex"}
     |> maybe_put_query("category", category)
+    |> maybe_put_query("genre", genre)
     |> maybe_put_query("search", search)
   end
 
@@ -612,6 +615,8 @@ defmodule StreamixWeb.Content.Browse do
 
   defp selected_genre_for(%{source: "iptv", mode: :browse, provider_filter: "all"}, genre),
     do: genre
+
+  defp selected_genre_for(%{source: "gindex", mode: :browse}, genre), do: genre
 
   defp selected_genre_for(_assigns, _genre), do: nil
 

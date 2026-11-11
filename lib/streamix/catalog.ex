@@ -210,6 +210,14 @@ defmodule Streamix.Catalog do
     to: Streamix.Iptv.Genres.Browse,
     as: :list_visible
 
+  @doc "Genres of the Drive (GIndex) catalog with distinct-title counts, cached for 10 minutes."
+  defdelegate list_gindex_genres(kind), to: Streamix.Iptv.Genres.Browse, as: :list_gindex
+
+  @doc "The other Drive copies of a GIndex movie's title (same TMDB id)."
+  defdelegate list_gindex_movie_versions(movie),
+    to: Streamix.Iptv.Content.GindexMovies,
+    as: :versions
+
   @doc "Canonical genre slugs a raw genre or category name means; see `Streamix.Iptv.Genres.Normalizer`."
   defdelegate genre_slugs(raw), to: Streamix.Iptv.Genres.Normalizer, as: :normalize
 

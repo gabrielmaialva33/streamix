@@ -7,6 +7,7 @@ defmodule Streamix.Iptv.Content.GindexSeries do
 
   alias Streamix.Helpers
   alias Streamix.Iptv.{Episode, Season, Series}
+  alias Streamix.Iptv.Genres.Browse
   alias Streamix.Repo
 
   @doc """
@@ -72,7 +73,8 @@ defmodule Streamix.Iptv.Content.GindexSeries do
   end
 
   @doc """
-  Lists GIndex series, excluding animes.
+  Lists GIndex series, excluding animes. Takes `:limit`, `:offset`, `:search`
+  and `:genre` (a genre slug).
   """
   def list(opts \\ []) do
     opts
@@ -81,8 +83,14 @@ defmodule Streamix.Iptv.Content.GindexSeries do
       Series
       |> where([s], not is_nil(s.gindex_path))
       |> where([s], not ilike(s.gindex_path, "%anime%") and not ilike(s.gindex_path, "%Anime%"))
-      |> order_by(desc: :year, asc: :name)
+      # Newest first, a series without a year last (plain DESC puts NULL first).
+      |> order_by([s],
+        desc_nulls_last: s.year,
+        asc: fragment("lower(coalesce(nullif(?, ''), ?))", s.title, s.name),
+        desc: s.id
+      )
       |> maybe_search(search)
+      |> Browse.filter(:series, Keyword.get(opts, :genre))
       |> limit(^limit)
       |> offset(^offset)
       |> Repo.all()

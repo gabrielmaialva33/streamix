@@ -98,6 +98,11 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Changed
 
+- The Drive (GIndex) movie catalog shows each film once: copies sharing a TMDB id (1080p, 4K, dubbed, a second
+  folder) collapse to one card, the copy with a poster and a TMDB title first, and the film's page lists the others
+  under "Outras versões" with their version badges. Drive movies and series are filtered by genre from the same
+  sidebar as the IPTV catalog (`Catalog.list_gindex_genres/1`), open newest first with undated titles last, and the
+  movie tab counts titles instead of files.
 - Saved movies open their page from "Minha lista" (the home shelf and `/favorites`), like every other title card,
   instead of starting playback; channels and episodes still play straight away.
 - Channel lists (catalog, guide, home) put the providers' placeholder and one-off event channels ("(01)", "[F1]

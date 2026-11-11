@@ -39,4 +39,30 @@ defmodule StreamixWeb.Gindex.MovieDetailLiveTest do
     assert has_element?(view, "h1", "Segundo título")
     refute has_element?(view, "h1", "Primeiro título")
   end
+
+  test "lists the other Drive copies of the title as versions", %{conn: conn, user: user} do
+    provider = provider_fixture(user, %{provider_type: :gindex})
+
+    shown =
+      movie_fixture(provider, %{
+        name: "Duna 1080p",
+        title: "Duna",
+        tmdb_id: "438631",
+        gindex_path: "/Filmes/duna-1080"
+      })
+
+    other =
+      movie_fixture(provider, %{
+        name: "Duna 2021 4K Dublado",
+        tmdb_id: "438631",
+        gindex_path: "/Filmes/duna-4k"
+      })
+
+    {:ok, view, _html} = live(conn, "/gindex/movies/#{shown.id}")
+
+    assert has_element?(view, "#gindex-versions", "Outra versão")
+    assert has_element?(view, "#gindex-version-#{other.id}", "4K")
+    assert has_element?(view, "#gindex-version-#{other.id}[href^='/gindex/movies/#{other.id}']")
+    refute has_element?(view, "#gindex-version-#{shown.id}")
+  end
 end
