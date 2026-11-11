@@ -47,6 +47,9 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   provider is selected.
 - Response-contract tests covering success, validation, not-found, and authentication responses against the published
   schemas.
+- Discovery recognizes people: when what the query leaves over names someone in the credits ("filmes do christopher
+  nolan", "tom hanks anos 90"), each collection is narrowed to the titles they directed, wrote or star in, and their
+  name joins the "Descobrir" chips.
 - `/search` has a "Descobrir" row: a query that describes something ("terror anos 80 leve", "comédia romântica de
   natal", or any phrase of three words or more) shows what was understood as chips and the matching movies and
   series from the viewer's providers, loaded after the title results so those stay instant. Typing reuses a query's
@@ -206,6 +209,9 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   `Streamix.Library.purge_legacy_plaintext/0` to delete what is left.
 
 ### Fixed
+
+- The "Descobrir" row stayed empty in production: discovery ranked the torrent catalog's copies first and the web
+  list, which shows Xtream titles only, then dropped them all. It now searches only the providers the web lists.
 
 - Include lazy decoder preparation in the AVPlayer startup budget and preserve remaining recovery time across pauses and watch-party holds.
 

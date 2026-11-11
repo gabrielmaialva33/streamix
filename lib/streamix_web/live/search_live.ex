@@ -771,22 +771,23 @@ defmodule StreamixWeb.SearchLive do
     end
   end
 
+  # Only the providers whose titles the web lists (Xtream, the same rule as
+  # `Catalog.list_visible_movies_by_ids/3`): otherwise the torrent catalog's
+  # copies win the ranking and are then dropped, leaving the row empty.
   defp discover(user_id, query, show_adult) do
-    provider_ids = user_id |> Providers.list_visible_providers() |> Enum.map(& &1.id)
+    provider_ids =
+      for %{provider_type: :xtream, id: id} <- Providers.list_visible_providers(user_id), do: id
 
-    with {:ok, %{results: results, parsed: parsed}} <-
-           AI.discover(query, [:movies, :series, :animes],
+    with {:ok, %{results: results, parsed: parsed, people: people}} <-
+           AI.discover(query, [:movies, :series],
              provider_ids: provider_ids,
              limit: @discover_limit
            ) do
-      series_ids =
-        (results.series ++ results.animes)
-        |> Enum.sort_by(& &1.score, :desc)
-        |> Enum.map(& &1.id)
+      series_ids = Enum.map(results.series, & &1.id)
 
       {:ok,
        %{
-         labels: Catalog.discovery_query_labels(parsed),
+         labels: people ++ Catalog.discovery_query_labels(parsed),
          movies:
            Catalog.list_visible_movies_by_ids(user_id, Enum.map(results.movies, & &1.id),
              show_adult: show_adult

@@ -201,6 +201,10 @@ defmodule StreamixWeb.SearchLiveTest do
         movie_fixture(global, %{name: "Noite do Terror", title: "Noite do Terror", year: 1984})
 
       private_provider = provider_fixture(user_fixture(), %{visibility: "private"})
+
+      torrent =
+        provider_fixture(user, %{visibility: "global", provider_type: "torrent", is_active: true})
+
       hidden = movie_fixture(private_provider, %{name: "Oculto", title: "Oculto"})
       stub_semantic_search(%{"movies" => [movie.id, hidden.id]})
 
@@ -218,6 +222,9 @@ defmodule StreamixWeb.SearchLiveTest do
       assert %{"key" => "genres", "match" => %{"any" => ["Terror"]}} in filter["must"]
       assert %{"key" => "provider_id", "match" => %{"any" => visible}} = hd(filter["must"])
       refute private_provider.id in visible
+      # Torrent copies are not listed by the web search, so never asked for.
+      refute torrent.id in visible
+      assert global.id in visible
     end
 
     # Semantic search counts as available only when the embedding provider
