@@ -194,7 +194,12 @@ defmodule StreamixWeb.StationsLiveTest do
              "Chaves"
            )
 
-    assert view |> render() |> String.split("Chaves</span>") |> length() == 2
+    # The duplicate "Chaves" is listed once.
+    assert view
+           |> element("#list-channel-grid")
+           |> render()
+           |> String.split("/watch/live_channel/")
+           |> length() == 2
 
     view |> element("#list-tab-desenhos") |> render_click()
     assert has_element?(view, "#list-channel-grid a[href='/watch/live_channel/#{pink.id}']")

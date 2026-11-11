@@ -280,23 +280,42 @@ defmodule StreamixWeb.StationsLive do
             :for={{dom_id, channel} <- @streams.list_channels}
             id={dom_id}
             navigate={~p"/watch/live_channel/#{channel.id}"}
-            class="group flex flex-col items-center gap-2 rounded-xl border border-border bg-surface p-3 text-center transition-colors hover:border-brand/60 hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-brand"
+            class="group block space-y-2 focus:outline-none"
           >
-            <div class="flex h-14 w-full items-center justify-center">
+            <div class="relative aspect-[2/3] overflow-hidden rounded-lg border border-border bg-surface transition-colors group-hover:border-brand/60 group-focus:ring-2 group-focus:ring-brand">
               <img
-                :if={channel.stream_icon not in [nil, ""]}
-                src={channel.stream_icon}
+                :if={channel.poster}
+                src={channel.poster}
                 alt=""
                 loading="lazy"
-                class="max-h-14 max-w-full object-contain"
+                class="size-full object-cover"
               />
-              <.icon
-                :if={channel.stream_icon in [nil, ""]}
-                name="hero-tv"
-                class="size-8 text-text-muted"
-              />
+              <div
+                :if={!channel.poster && channel.logo}
+                class="flex size-full items-center justify-center p-4"
+              >
+                <img
+                  src={channel.logo}
+                  alt=""
+                  loading="lazy"
+                  class="max-h-full max-w-full object-contain"
+                />
+              </div>
+              <div
+                :if={!channel.poster && !channel.logo}
+                class="flex size-full items-end bg-gradient-to-br from-surface-hover to-surface p-3"
+              >
+                <span class="line-clamp-4 text-base font-bold leading-snug text-text-primary">
+                  {channel.name}
+                </span>
+              </div>
+              <span class="absolute left-2 top-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                24h
+              </span>
             </div>
-            <span class="line-clamp-2 text-xs font-medium text-text-primary">{channel.name}</span>
+            <p class="line-clamp-2 text-xs font-medium text-text-secondary group-hover:text-text-primary">
+              {channel.name}
+            </p>
           </.link>
         </div>
       </section>

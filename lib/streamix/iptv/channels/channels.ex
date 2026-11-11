@@ -17,7 +17,8 @@ defmodule Streamix.Iptv.Channels do
     EpgChannel,
     EpgProgram,
     LiveChannel,
-    RankedSearch
+    RankedSearch,
+    Series
   }
 
   alias Streamix.Repo
@@ -129,7 +130,9 @@ defmodule Streamix.Iptv.Channels do
   @doc """
   The providers' own 24h live channels a user may watch ("24H | Séries",
   "24HRS I SHOWS"...), grouped under one label per kind across providers,
-  largest group first. Adult categories and dead channels are left out
+  largest group first. Each channel carries `:logo` (its own, never a
+  placeholder shared by many) and `:poster` (the cover of the catalog series
+  it is named after), either of which may be nil. Adult categories and dead channels are left out
   (adult unless `show_adult: true`); a name repeated across providers is
   listed once, as its oldest channel.
   """
@@ -156,6 +159,7 @@ defmodule Streamix.Iptv.Channels do
     })
     |> Repo.all()
     |> Enum.filter(&Regex.match?(@round_the_clock_category, &1.category))
+    |> with_artwork()
     |> Enum.group_by(&round_the_clock_label(&1.category))
     |> Enum.map(fn {label, channels} ->
       %{
@@ -169,6 +173,66 @@ defmodule Streamix.Iptv.Channels do
       }
     end)
     |> Enum.sort_by(&{-length(&1.channels), &1.label})
+  end
+
+  # A provider often gives every 24h channel the same placeholder logo. A
+  # logo shared by this many channels says nothing and is dropped; a
+  # channel named after a series in the catalog ("Chaves 02", "Dois Homens e
+  # Meio (Parte 1)") shows that series' poster instead.
+  @placeholder_logo_threshold 3
+
+  defp with_artwork(channels) do
+    shared =
+      channels
+      |> Enum.map(& &1.stream_icon)
+      |> Enum.reject(&(&1 in [nil, ""]))
+      |> Enum.frequencies()
+      |> Enum.flat_map(fn {icon, n} ->
+        if n >= @placeholder_logo_threshold, do: [icon], else: []
+      end)
+      |> MapSet.new()
+
+    posters = series_posters(Enum.map(channels, &series_key(&1.name)))
+
+    Enum.map(channels, fn channel ->
+      logo =
+        if channel.stream_icon in [nil, ""] or channel.stream_icon in shared,
+          do: nil,
+          else: channel.stream_icon
+
+      channel
+      |> Map.delete(:stream_icon)
+      |> Map.merge(%{logo: logo, poster: Map.get(posters, series_key(channel.name))})
+    end)
+  end
+
+  defp series_posters(keys) do
+    keys = keys |> Enum.reject(&(&1 == "")) |> Enum.uniq()
+
+    if keys == [] do
+      %{}
+    else
+      from(s in Series,
+        where: not is_nil(s.cover) and s.cover != "",
+        where: fragment("lower(coalesce(?, ?))", s.title, s.name) in ^keys,
+        order_by: [desc: s.rating],
+        select: {fragment("lower(coalesce(?, ?))", s.title, s.name), s.cover}
+      )
+      |> Repo.all()
+      |> Enum.reverse()
+      |> Map.new()
+    end
+  end
+
+  @doc false
+  # "Chaves 02", "Dois Homens e Meio (Parte 1)", "Bob Esponja Part 01",
+  # "Big Bang: A Teoria 2" → the series' own name, lowercased.
+  def series_key(name) do
+    name
+    |> String.replace(~r/\s*[-–]?\s*\(?\s*part[e]?\s*\d+\s*\)?\s*$/iu, "")
+    |> String.replace(~r/\s+\d{1,2}$/u, "")
+    |> String.trim()
+    |> String.downcase()
   end
 
   @doc false
