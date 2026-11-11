@@ -103,6 +103,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   under "Outras versões" with their version badges. Drive movies and series are filtered by genre from the same
   sidebar as the IPTV catalog (`Catalog.list_gindex_genres/1`), open newest first with undated titles last, and the
   movie tab counts titles instead of files.
+- Watch history groups each series into one card with its latest watched episode, episode count and watch time.
+  Episode filters still count individual episodes; removing a series card clears all of its history for that user.
 - Saved movies open their page from "Minha lista" (the home shelf and `/favorites`), like every other title card,
   instead of starting playback; channels and episodes still play straight away.
 - Channel lists (catalog, guide, home) put the providers' placeholder and one-off event channels ("(01)", "[F1]

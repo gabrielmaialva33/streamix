@@ -95,20 +95,20 @@ defmodule StreamixWeb.HistoryLive do
     {:noreply, redirect(socket, to: path)}
   end
 
-  def handle_event("remove_entry", %{"id" => id, "type" => type}, socket) do
+  def handle_event("remove_entry", %{"id" => id}, socket) do
     library_key = socket.assigns.current_scope.library_key
 
     case parse_positive_integer(id) do
       {:ok, entry_id} ->
-        Library.remove_from_watch_history(library_key, entry_id)
+        Library.remove_from_watch_history(library_key, entry_id, group_episodes: true)
 
-        # Update counts
-        counts = update_counts(socket.assigns.counts, type, -1)
-
+        # Refill the loaded pages after removal so offset pagination does not
+        # skip the next card, and derive counts from the user's actual history.
         socket =
           socket
-          |> stream_delete_by_dom_id(:history, "history-#{entry_id}")
-          |> assign(counts: counts)
+          |> assign(counts: load_counts(library_key, socket.assigns.show_adult))
+          |> assign(sync_history: load_history_for_sync(library_key, socket.assigns.show_adult))
+          |> load_history(reset: true)
 
         {:noreply, socket}
 
@@ -124,7 +124,7 @@ defmodule StreamixWeb.HistoryLive do
     socket =
       socket
       |> stream(:history, [], reset: true)
-      |> assign(counts: %{})
+      |> assign(counts: %{}, sync_history: [], page: 0, end_of_list: true)
 
     {:noreply, socket}
   end
@@ -267,7 +267,10 @@ defmodule StreamixWeb.HistoryLive do
           <span :if={@entry.duration_seconds}>
             {format_duration(@entry.duration_seconds)}
           </span>
-          <span :if={@entry.content_type == "episode" && @entry.watched_at}>
+          <span :if={@entry.content_type == "episode"} data-history-episode-count>
+            {@entry.episode_count} {if @entry.episode_count == 1, do: "episódio", else: "episódios"}
+          </span>
+          <span :if={@entry.content_type == "episode" && @entry.watched_at} data-history-watched-at>
             {format_relative_time(@entry.watched_at)}
           </span>
         </div>
@@ -295,8 +298,7 @@ defmodule StreamixWeb.HistoryLive do
 
   defp history_display_title(%{content_type: "episode"} = entry) do
     series = episode_series_title(entry)
-    code = episode_position_label(entry)
-    format_episode_history_title(series, code, entry[:content_name])
+    if series in [nil, ""], do: clean_raw_history_title(entry[:content_name] || ""), else: series
   end
 
   defp history_display_title(%{content_type: "live_channel", content_name: name})
@@ -315,20 +317,6 @@ defmodule StreamixWeb.HistoryLive do
 
   defp episode_series_title(entry), do: extract_series_from_episode_name(entry[:content_name])
 
-  defp format_episode_history_title(series, code, _raw)
-       when is_binary(series) and series != "" and is_binary(code),
-       do: "#{series} · #{code}"
-
-  defp format_episode_history_title(series, _code, _raw)
-       when is_binary(series) and series != "",
-       do: series
-
-  defp format_episode_history_title(_series, _code, name)
-       when is_binary(name) and name != "",
-       do: clean_raw_history_title(name)
-
-  defp format_episode_history_title(_series, _code, _raw), do: "Desconhecido"
-
   defp clean_raw_history_title(name) do
     name
     |> DisplayTitle.title()
@@ -337,29 +325,24 @@ defmodule StreamixWeb.HistoryLive do
   end
 
   defp history_display_subtitle(%{content_type: "episode"} = entry) do
-    ep_title =
-      case entry[:content_name] do
-        name when is_binary(name) and name != "" -> DisplayTitle.episode(name)
-        _ -> ""
-      end
-
-    if ep_title != "" do
-      ep_title
-    else
-      format_relative_time(entry[:watched_at])
-    end
+    [
+      episode_position_label(entry),
+      DisplayTitle.episode_name(entry[:content_name], episode_series_title(entry))
+    ]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join(" · ")
   end
 
   defp history_display_subtitle(entry), do: format_relative_time(entry[:watched_at])
 
   defp episode_position_label(%{season_number: season, episode_number: episode})
        when is_integer(season) and is_integer(episode) do
-    "T#{season} E#{episode}"
+    "T#{season}:E#{episode}"
   end
 
   defp episode_position_label(%{content_name: name}) when is_binary(name) do
     case Regex.run(~r/\bs0?(\d{1,2})\s?e0?(\d{1,4})\b/iu, name) do
-      [_, season, episode] -> "T#{season} E#{episode}"
+      [_, season, episode] -> "T#{season}:E#{episode}"
       _ -> nil
     end
   end
@@ -378,21 +361,29 @@ defmodule StreamixWeb.HistoryLive do
   defp fallback_title(""), do: "Desconhecido"
   defp fallback_title(title), do: title
 
-  defp load_history(socket) do
+  defp load_history(socket, opts \\ []) do
     library_key = socket.assigns.current_scope.library_key
     filter = socket.assigns.filter
     page = socket.assigns.page
-    offset = page * @per_page
+    reset = Keyword.get(opts, :reset, false)
+    offset = if reset, do: 0, else: page * @per_page
+    limit = if reset, do: (page + 1) * @per_page, else: @per_page
 
-    opts = [limit: @per_page, offset: offset, show_adult: socket.assigns.show_adult]
+    opts = [
+      limit: limit,
+      offset: offset,
+      show_adult: socket.assigns.show_adult,
+      group_episodes: true
+    ]
+
     opts = if filter != "all", do: Keyword.put(opts, :content_type, filter), else: opts
 
     history = Library.list_watch_history(library_key, opts)
 
     socket
     |> assign(loading: false)
-    |> assign(end_of_list: length(history) < @per_page)
-    |> stream(:history, history)
+    |> assign(end_of_list: length(history) < limit)
+    |> stream(:history, history, reset: reset)
   end
 
   defp load_counts(library_key, show_adult) do
@@ -414,10 +405,6 @@ defmodule StreamixWeb.HistoryLive do
         watched_at: h.watched_at
       }
     end)
-  end
-
-  defp update_counts(counts, type, delta) do
-    Map.update(counts, type, 0, &max(0, &1 + delta))
   end
 
   defp total_count(counts) do

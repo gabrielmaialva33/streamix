@@ -147,8 +147,8 @@ defmodule Streamix.Library do
     |> after_history_write(key)
   end
 
-  def remove_from_watch_history(%Key{} = key, entry_id) do
-    result = History.remove(key, entry_id)
+  def remove_from_watch_history(%Key{} = key, entry_id, opts \\ []) do
+    result = History.remove(key, entry_id, opts)
 
     if match?({count, _} when count > 0, result) do
       refresh_personalization(key.user_id)

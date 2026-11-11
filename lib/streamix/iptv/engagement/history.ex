@@ -35,6 +35,8 @@ defmodule Streamix.Iptv.History do
   ## Options
     * `:limit` - Maximum number of results (default: 50)
     * `:offset` - Number of results to skip (default: 0)
+    * `:group_episodes` - Keep the latest episode per series, with an episode count,
+      before pagination (default: false; counts remain individual history entries)
     * `:content_type` - Filter by content type ("movie", "episode", "live_channel")
   """
   @spec list(Key.t(), keyword()) :: [map()]
@@ -175,10 +177,42 @@ defmodule Streamix.Iptv.History do
   end
 
   @doc """
-  Removes a single watch progress entry by its ID.
+  Removes a single watch progress entry by its ID. With `group_episodes: true`,
+  an owned episode entry removes all of that series' entries for the key's user.
   """
-  @spec remove(Key.t(), integer()) :: {integer(), nil}
-  def remove(%Key{user_id: user_id}, entry_id) do
+  @spec remove(Key.t(), integer(), keyword()) :: {integer(), nil}
+  def remove(key, entry_id, opts \\ [])
+
+  def remove(%Key{} = key, entry_id, opts) do
+    if Keyword.get(opts, :group_episodes, false) do
+      {:ok, result} =
+        Repo.transact(fn ->
+          Repo.query!("SELECT pg_advisory_xact_lock($1)", [write_lock_key(key)])
+          {:ok, remove_group(key, entry_id)}
+        end)
+
+      result
+    else
+      remove_entry(key, entry_id)
+    end
+  end
+
+  defp remove_group(%Key{user_id: user_id} = key, entry_id) do
+    case open_where(key, dynamic([progress], progress.id == ^entry_id)) do
+      [%{content_type: "episode", series_id: series_id}] when is_integer(series_id) ->
+        ids = key |> open_by_series([series_id]) |> Enum.map(& &1.id)
+
+        WatchProgress
+        |> where(user_id: ^user_id)
+        |> where([progress], progress.id in ^ids)
+        |> Repo.delete_all()
+
+      _ ->
+        remove_entry(key, entry_id)
+    end
+  end
+
+  defp remove_entry(%Key{user_id: user_id}, entry_id) do
     WatchProgress
     |> where(user_id: ^user_id, id: ^entry_id)
     |> Repo.delete_all()
@@ -497,6 +531,7 @@ defmodule Streamix.Iptv.History do
     content_type = Keyword.get(opts, :content_type)
     show_adult = Keyword.get(opts, :show_adult, false)
     needed = offset + limit
+    group_episodes = Keyword.get(opts, :group_episodes, false)
 
     key
     |> open_all()
@@ -505,11 +540,31 @@ defmodule Streamix.Iptv.History do
     |> Enum.chunk_every(max(needed * 2, 50))
     |> Enum.reduce_while([], fn chunk, acc ->
       acc = acc ++ resolve_cards(key, chunk, show_adult)
-      if length(acc) >= needed, do: {:halt, acc}, else: {:cont, acc}
+      if not group_episodes and length(acc) >= needed, do: {:halt, acc}, else: {:cont, acc}
     end)
+    |> maybe_group_episodes(group_episodes)
     |> Enum.drop(offset)
     |> Enum.take(limit)
   end
+
+  defp maybe_group_episodes(cards, false), do: cards
+
+  defp maybe_group_episodes(cards, true) do
+    # Like the home resume shelf, the newest episode represents its series.
+    # Count the entire visible history before paging so a binge cannot fill
+    # multiple pages or reappear after scrolling.
+    counts = Enum.frequencies_by(cards, &history_group_key/1)
+
+    cards
+    |> Enum.uniq_by(&history_group_key/1)
+    |> Enum.map(&Map.put(&1, :episode_count, Map.fetch!(counts, history_group_key(&1))))
+  end
+
+  defp history_group_key(%{content_type: "episode", episode_series_id: series_id})
+       when is_integer(series_id),
+       do: {:series, series_id}
+
+  defp history_group_key(card), do: {card.content_type, content_id(card)}
 
   # A provider resync can delete a catalog item a sealed row still points at.
   # The database cannot see that reference anymore, so the owner's own reads
@@ -720,7 +775,8 @@ defmodule Streamix.Iptv.History do
       user_id: row.user_id,
       catalog_item_id: row.catalog_item_id,
       completed: row.completed,
-      last_watched_at: row.watched_at
+      last_watched_at: row.watched_at,
+      episode_count: Map.get(row, :episode_count, 1)
     })
   end
 
@@ -763,6 +819,7 @@ defmodule Streamix.Iptv.History do
       content_id: row.episode_id,
       content_name: row.episode_name || row.episode_raw_name,
       content_icon: row.episode_icon || row.episode_cover || row.episode_series_cover,
+      series_id: row.episode_series_id,
       series_name: row.episode_series_name || row.episode_series_title,
       series_tmdb_id: row.episode_series_tmdb_id,
       season_number: row.episode_season_number,

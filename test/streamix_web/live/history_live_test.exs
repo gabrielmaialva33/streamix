@@ -130,6 +130,20 @@ defmodule StreamixWeb.HistoryLiveTest do
       refute has_element?(view, "#history-sentinel")
     end
 
+    test "refills after removal so loading the next page skips no history", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/history")
+
+      view
+      |> element("#history-list > div:first-child button[phx-click='remove_entry']")
+      |> render_click()
+
+      assert has_element?(view, "#history-list > div:nth-child(20)")
+      view |> render_hook("load_more", %{})
+      assert has_element?(view, "#history-list > div:nth-child(24)")
+      refute has_element?(view, "#history-list > div:nth-child(25)")
+      refute has_element?(view, "#history-sentinel")
+    end
+
     test "does not load more when already loading", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/history")
 
@@ -203,7 +217,7 @@ defmodule StreamixWeb.HistoryLiveTest do
       refute has_element?(view, "#history-list h3", "WEB-DL")
     end
 
-    test "formats episode history entries as 'Série · T1 E1' with the episode title as secondary text",
+    test "formats episode history entries with the series and a clean episode subtitle",
          %{conn: conn, user: user} do
       provider = provider_fixture(user, %{visibility: "global", is_system: true})
 
@@ -243,9 +257,103 @@ defmodule StreamixWeb.HistoryLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/history")
 
-      assert has_element?(view, "#history-list h3", "Dawson's Creek · T1 E1")
-      assert has_element?(view, "#history-list p", "Piloto")
+      assert has_element?(view, "#history-list h3", "Dawson's Creek")
+      assert has_element?(view, "#history-list p", "T1:E1 · Piloto")
       assert has_element?(view, "#history-list [data-history-type-badge]", "Episódio")
+    end
+  end
+
+  describe "grouped episodes" do
+    setup :register_and_log_in_user
+
+    test "groups before pagination and keeps episode counts and the latest playback target", %{
+      conn: conn,
+      user: user
+    } do
+      provider = provider_fixture(user)
+      series = series_content_fixture(provider, %{name: "Maratona"})
+      key = library_key_fixture(user)
+      movie = movie_fixture(provider, %{name: "Filme único"})
+      channel = channel_fixture(provider, %{name: "Canal único"})
+      movie_history_fixture(user, movie)
+      watch_history_fixture(user, channel)
+
+      episodes =
+        for number <- Enum.to_list(2..25) ++ [1] do
+          episode = history_episode(provider, series, number)
+          {:ok, entry} = Streamix.Library.add_watch_history(key, "episode", episode.id)
+          {episode, entry}
+        end
+
+      {latest, _entry} = List.last(episodes)
+      {:ok, view, _html} = live(conn, ~p"/history")
+
+      assert has_element?(view, "#history-list[phx-update='stream']")
+      assert has_element?(view, "#history-list > div:nth-child(3)")
+      refute has_element?(view, "#history-list > div:nth-child(4)")
+      refute has_element?(view, "#history-sentinel")
+      assert has_element?(view, "#history-list > div:first-child h3", "Maratona")
+      assert has_element?(view, "#history-list > div:first-child p", "T2:E1 · Capítulo 1")
+      assert has_element?(view, "[data-history-episode-count]", "25 episódios")
+      assert has_element?(view, "[data-history-watched-at]", "agora")
+      assert has_element?(view, "#history-filter-episode", "25")
+      assert has_element?(view, "#history-filter-all", "27")
+
+      view |> element("#history-filter-episode") |> render_click()
+      assert has_element?(view, "#history-list > div:nth-child(1)")
+      refute has_element?(view, "#history-list > div:nth-child(2)")
+
+      view
+      |> element("[data-media-primary][phx-value-id='#{latest.id}'][phx-value-type='episode']")
+      |> render_click()
+
+      assert_redirect(view, ~p"/watch/episode/#{latest.id}")
+    end
+
+    test "removing a grouped card removes the whole series and refreshes counts from Library", %{
+      conn: conn,
+      user: user
+    } do
+      provider = provider_fixture(user)
+      series = series_content_fixture(provider, %{name: "Remover série"})
+      other_series = series_content_fixture(provider, %{name: "Manter série"})
+      key = library_key_fixture(user)
+
+      for number <- 1..3 do
+        episode = history_episode(provider, series, number)
+        {:ok, _} = Streamix.Library.add_watch_history(key, "episode", episode.id)
+      end
+
+      other = history_episode(provider, other_series, 1)
+      {:ok, _} = Streamix.Library.add_watch_history(key, "episode", other.id)
+      movie = movie_fixture(provider)
+      movie_history_fixture(user, movie)
+
+      {:ok, view, _html} = live(conn, ~p"/history?type=episode")
+      assert has_element?(view, "[data-history-episode-count]", "1 episódio")
+
+      [group] =
+        Streamix.Library.list_watch_history(key,
+          group_episodes: true,
+          content_type: "episode",
+          offset: 1
+        )
+
+      view
+      |> element("button[phx-click='remove_entry'][phx-value-id='#{group.id}']")
+      |> render_click()
+
+      refute has_element?(view, "#history-list h3", "Remover série")
+      assert has_element?(view, "#history-list h3", "Manter série")
+      assert has_element?(view, "#history-filter-episode", "1")
+      assert has_element?(view, "#history-filter-all", "2")
+      assert Streamix.Library.count_watch_history_by_type(key) == %{"episode" => 1, "movie" => 1}
+
+      render_click(view, "remove_entry", %{"id" => "999999999", "type" => "movie"})
+      assert has_element?(view, "#history-filter-all", "2")
+      render_click(view, "clear_history")
+      assert has_element?(view, "#history-empty")
+      refute has_element?(view, "#history-sentinel")
     end
   end
 
@@ -308,5 +416,21 @@ defmodule StreamixWeb.HistoryLiveTest do
       # The shared pt-BR relative time ("agora", "há 5 min").
       assert html =~ "agora" or html =~ ~r/há \d+ min/
     end
+  end
+
+  defp history_episode(provider, series, number) do
+    season =
+      Repo.get_by(Season, series_id: series.id, season_number: 2) ||
+        Repo.insert!(%Season{series_id: series.id, season_number: 2, name: "Temporada 2"})
+
+    %Episode{}
+    |> Episode.changeset(%{
+      episode_id: System.unique_integer([:positive]),
+      episode_num: number,
+      title: "#{series.name} - S02E#{number} - Capítulo #{number}",
+      season_id: season.id,
+      catalog_item_id: catalog_item_fixture("episode", provider.id).id
+    })
+    |> Repo.insert!()
   end
 end
