@@ -138,8 +138,15 @@ defmodule Streamix.Iptv.Content.SeriesOps.Enrichment do
       is_nil(series.content_rating) and is_nil(series.tagline) and
         not Series.has_images?(series)
 
-    missing_plot or missing_cast or missing_director or missing_extended
+    # A missing title or year counts too (Drive rows: a synopsis, no title).
+    missing_identity = blank_title?(series.title) or is_nil(series.year)
+
+    missing_plot or missing_cast or missing_director or missing_extended or missing_identity
   end
+
+  defp blank_title?(nil), do: true
+  defp blank_title?(title) when is_binary(title), do: String.trim(title) == ""
+  defp blank_title?(_title), do: false
 
   defp update_series(series, attrs) when attrs == %{}, do: {:ok, series}
 

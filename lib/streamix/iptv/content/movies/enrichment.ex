@@ -184,8 +184,13 @@ defmodule Streamix.Iptv.Content.Movies.Enrichment do
 
   defp year_matches?(_, _), do: false
 
+  # A missing title or year counts too: a Drive row has a synopsis from the
+  # matcher but no title, so it was shown by its file name ("007 (1969) - 007
+  # A Serviço Secreto... [1969] 1080p Dual Áudio 5.1") and sorted as undated.
   defp needs_tmdb_enrichment?(movie, xtream_attrs) do
-    missing_basic_info?(movie, xtream_attrs) or missing_extended_info?(movie)
+    missing_basic_info?(movie, xtream_attrs) or missing_extended_info?(movie) or
+      (blank?(movie.title) and blank?(xtream_attrs[:title])) or
+      (is_nil(movie.year) and is_nil(xtream_attrs[:year]))
   end
 
   defp missing_basic_info?(movie, xtream_attrs) do

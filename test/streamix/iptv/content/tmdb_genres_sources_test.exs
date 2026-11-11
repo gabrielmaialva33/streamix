@@ -53,6 +53,42 @@ defmodule Streamix.Iptv.Content.TmdbGenresSourcesTest do
     assert slugs(copy) == ["acao"]
   end
 
+  test "a Drive movie complete but for its title and year still asks TMDB for them" do
+    complete = %Streamix.Iptv.Movie{
+      id: 1,
+      name: "007 (1969) - 007 A Serviço Secreto [1969] 1080p Dual Áudio 5.1",
+      plot: "Bond.",
+      content_rating: "14",
+      gindex_path: "/Filmes/007"
+    }
+
+    known = %{cast: "George Lazenby", director: "Peter Hunt"}
+    # TMDB answers are cached (Redis outlives a test run): a fresh id per run
+    # keeps the request real.
+    tmdb_id = Integer.to_string(900_000_000 + :rand.uniform(99_999_999))
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      Req.Test.json(conn, %{
+        "id" => 668,
+        "title" => "007: A Serviço Secreto de Sua Majestade",
+        "release_date" => "1969-12-12"
+      })
+    end)
+
+    attrs = Enrichment.maybe_fetch_from_tmdb(%{complete | title: nil, year: nil}, known, tmdb_id)
+    assert attrs[:_tmdb_title] == "007: A Serviço Secreto de Sua Majestade"
+    assert attrs[:year] == 1969
+    Req.Test.verify!(__MODULE__)
+
+    # Nothing missing, nothing fetched (an unexpected request would fail).
+    assert Enrichment.maybe_fetch_from_tmdb(
+             %{complete | title: "007", year: 1969},
+             known,
+             tmdb_id
+           ) ==
+             %{}
+  end
+
   test "absent genre attrs preserve earlier ids", %{provider: provider} do
     movie = movie_fixture(provider, %{tmdb_id: "550"})
     assert {:ok, movie} = Enrichment.update_movie(movie, %{tmdb_genre_ids: [18]})

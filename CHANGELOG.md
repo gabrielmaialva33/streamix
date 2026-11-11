@@ -248,6 +248,9 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Drive movies and series showed their file name ("007 (1969) - 007 A Serviço Secreto... [1969] 1080p Dual Áudio
+  5.1") although TMDB had matched them: TMDB details were only read when a synopsis, cast or images were missing,
+  and the matcher had already stored a synopsis. A missing title or year now counts too, so enrichment fills them.
 - A series saved to "Minha lista" opened the movie player with the series' id from the home shelf.
 - The movie and series catalogs opened on titles without a year (unmatched, most without a poster, such as "1 -
   Harry Potter E A Pedra Filosofal"): newest-first sorting put NULL years first. They now come last.
