@@ -45,10 +45,20 @@ defmodule StreamixWeb.StationsLive do
       :timer.send_interval(@tick, :tick)
     end
 
+    cards = Enum.map(playing, &card/1)
+    {series, movies} = Enum.split_with(cards, &(&1.kind == "series"))
+
     {:ok,
      socket
-     |> assign(page_title: "Canais 24h", current_path: "/stations", count: length(playing))
-     |> stream(:stations, Enum.map(playing, &card/1))}
+     |> assign(
+       page_title: "Canais 24h",
+       current_path: "/stations",
+       count: length(cards),
+       movie_count: length(movies),
+       series_count: length(series)
+     )
+     |> stream(:movie_stations, movies)
+     |> stream(:series_stations, series)}
   end
 
   @impl true
@@ -59,31 +69,53 @@ defmodule StreamixWeb.StationsLive do
   end
 
   def handle_info(:tick, socket) do
-    cards = Enum.map(Programming.list_now_playing(), &card/1)
-    {:noreply, stream(socket, :stations, cards)}
+    socket =
+      Enum.reduce(Programming.list_now_playing(), socket, fn playing, socket ->
+        card = card(playing)
+        stream_insert(socket, stream_for(card), card)
+      end)
+
+    {:noreply, socket}
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
   defp refresh(socket, slug) do
     case Programming.now_playing(slug) do
-      {:ok, playing} -> stream_insert(socket, :stations, card(playing))
-      {:error, _reason} -> stream_delete_by_dom_id(socket, :stations, "stations-#{slug}")
+      {:ok, playing} ->
+        card = card(playing)
+        stream_insert(socket, stream_for(card), card)
+
+      {:error, _reason} ->
+        socket
+        |> stream_delete_by_dom_id(:movie_stations, "movie_stations-#{slug}")
+        |> stream_delete_by_dom_id(:series_stations, "series_stations-#{slug}")
     end
   end
+
+  defp stream_for(%{kind: "series"}), do: :series_stations
+  defp stream_for(_card), do: :movie_stations
 
   defp card(%{station: station, slot: slot}) do
     %{
       id: station.slug,
+      kind: station.kind,
       name: station.name,
       description: station.description,
-      now: slot.item,
-      next: slot.next,
+      poster: slot.item["poster"],
+      now: label(slot.item),
+      next: label(slot.next),
       progress: round(Programming.progress(slot) * 100),
       remaining: div(DateTime.diff(slot.ends_at, DateTime.utc_now(), :second), 60),
       viewers: StationPaths.viewers_topic(station.slug) |> Presence.list() |> map_size()
     }
   end
+
+  # "Friends · T2:E3 · Aquele do..." for an episode, "Title (1984)" for a film.
+  defp label(%{"subtitle" => subtitle} = item) when is_binary(subtitle),
+    do: "#{item["title"]} · #{subtitle}"
+
+  defp label(item), do: "#{item["title"]}#{year_suffix(item["year"])}"
 
   # Catalog rows without a known year store 0; say nothing rather than "(0)".
   defp year_suffix(year) when is_integer(year) and year > 0, do: " (#{year})"
@@ -92,26 +124,56 @@ defmodule StreamixWeb.StationsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="space-y-6 py-6 sm:py-8">
-      <.page_header id="stations-page-header" title="Canais 24h" icon="hero-signal" />
-      <p class="max-w-2xl text-sm text-text-secondary">
-        Filmes passando agora, como na TV: entre e caia no mesmo minuto que todo mundo.
-      </p>
+    <div class="space-y-8 py-6 sm:py-8">
+      <div class="space-y-2">
+        <.page_header id="stations-page-header" title="Canais 24h" icon="hero-signal" />
+        <p class="max-w-2xl text-sm text-text-secondary">
+          Passando agora, como na TV: entre e caia no mesmo minuto que todo mundo.
+        </p>
+      </div>
 
+      <.station_grid
+        :if={@movie_count > 0}
+        id="movie-stations"
+        title="Filmes"
+        stations={@streams.movie_stations}
+      />
+      <.station_grid
+        :if={@series_count > 0}
+        id="series-stations"
+        title="Séries"
+        stations={@streams.series_stations}
+      />
+
+      <div :if={@count == 0} id="stations-empty">
+        <.empty_state
+          icon="hero-signal"
+          title="Nenhum canal no ar"
+          message="A programação está sendo montada. Volte em alguns minutos."
+        />
+      </div>
+    </div>
+    """
+  end
+
+  defp station_grid(assigns) do
+    ~H"""
+    <section class="space-y-3">
+      <h2 class="text-lg font-semibold text-text-primary">{@title}</h2>
       <div
-        id="stations-grid"
+        id={@id}
         phx-update="stream"
         class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3"
       >
         <.link
-          :for={{dom_id, station} <- @streams.stations}
+          :for={{dom_id, station} <- @stations}
           id={dom_id}
           navigate={~p"/stations/#{station.id}"}
           class="group relative flex min-h-56 flex-col justify-end overflow-hidden rounded-xl border border-border bg-surface focus:outline-none focus:ring-2 focus:ring-brand"
         >
           <img
-            :if={station.now["poster"]}
-            src={station.now["poster"]}
+            :if={station.poster}
+            src={station.poster}
             alt=""
             loading="lazy"
             class="absolute inset-0 size-full object-cover opacity-40 transition-opacity group-hover:opacity-60"
@@ -126,36 +188,26 @@ defmodule StreamixWeb.StationsLive do
               :if={station.viewers > 0}
               class="flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-xs text-white"
             >
-              <.icon name="hero-eye" class="size-3.5" />
-              {station.viewers} assistindo
+              <.icon name="hero-eye" class="size-3.5" /> {station.viewers} assistindo
             </span>
           </div>
 
           <div class="relative space-y-2 p-4">
-            <h2 class="text-lg font-semibold text-white">{station.name}</h2>
+            <h3 class="text-lg font-semibold text-white">{station.name}</h3>
             <p class="truncate text-sm text-white/90">
-              <span class="text-white/60">Agora:</span>
-              {station.now["title"]}{year_suffix(station.now["year"])}
+              <span class="text-white/60">Agora:</span> {station.now}
             </p>
             <div class="h-1 w-full overflow-hidden rounded-full bg-white/20">
               <div class="h-full rounded-full bg-brand" style={"width: #{station.progress}%"}></div>
             </div>
             <div class="flex items-center justify-between gap-3 text-xs text-white/60">
-              <span class="truncate">A seguir: {station.next["title"]}</span>
+              <span class="truncate">A seguir: {station.next}</span>
               <span class="shrink-0">faltam {max(station.remaining, 1)} min</span>
             </div>
           </div>
         </.link>
       </div>
-
-      <div :if={@count == 0} id="stations-empty">
-        <.empty_state
-          icon="hero-signal"
-          title="Nenhum canal no ar"
-          message="A programação está sendo montada. Volte em alguns minutos."
-        />
-      </div>
-    </div>
+    </section>
     """
   end
 end

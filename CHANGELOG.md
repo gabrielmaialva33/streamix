@@ -9,6 +9,11 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Added
 
+- Series stations: random episodes around the clock, from one show ("Chaves 24h", "Os Simpsons 24h", "Friends 24h"
+  and ten more) or a marathon of several ("Maratona de Sitcom", "Animação Adulta"). Series are named by TMDB id;
+  the public copy with the most episodes plays, its episodes fetched from the provider when none are stored yet, and
+  an episode without a runtime takes the series' median. `/stations` now groups Filmes and Séries, a card names the
+  episode ("Chaves · T1:E4 · O Barril"), and in station mode the player never jumps to the series' own next episode.
 - 24h stations at `/stations` ("Canais 24h" in the menu): eight channels built from discovery queries ("Terror Anos
   80", "Comédia Romântica", "Crime e Máfia"...), each a looping program of public, feature-length movies. Tuning in
   lands on the film on air at the current minute, the same for every viewer, with an "Ao vivo" badge and what comes

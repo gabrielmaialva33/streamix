@@ -732,6 +732,79 @@ defmodule StreamixWeb.PlayerLiveTest do
       assert_redirect(view, expected)
     end
 
+    test "a series station plays its episode without the series' own next episode",
+         %{conn: conn, user: user} do
+      provider =
+        provider_fixture(user, %{
+          visibility: "global",
+          is_system: true,
+          provider_type: "xtream",
+          is_active: true
+        })
+
+      series = series_content_fixture(provider, %{name: "Chaves"})
+
+      season =
+        %Season{}
+        |> Season.changeset(%{season_number: 1, name: "T1", series_id: series.id})
+        |> Repo.insert!()
+
+      [first, _second] =
+        for n <- 1..2 do
+          %Episode{}
+          |> Episode.changeset(%{
+            episode_id: System.unique_integer([:positive]),
+            episode_num: n,
+            title: "Episódio #{n}",
+            container_extension: "mp4",
+            season_id: season.id
+          })
+          |> Ecto.Changeset.put_change(
+            :catalog_item_id,
+            catalog_item_fixture("episode", provider.id).id
+          )
+          |> Repo.insert!()
+        end
+
+      %Station{}
+      |> Station.changeset(%{
+        slug: "chaves-teste",
+        name: "Chaves 24h",
+        query: "Chaves",
+        kind: "series",
+        series_tmdb_ids: ["47"]
+      })
+      |> Repo.insert!()
+      |> Station.program_changeset(
+        [
+          %{
+            "type" => "episode",
+            "content_id" => first.id,
+            "duration" => 1_500,
+            "title" => "Chaves",
+            "subtitle" => "T1:E1"
+          },
+          %{
+            "type" => "episode",
+            "content_id" => 999_999,
+            "duration" => 1_500,
+            "title" => "Chaves",
+            "subtitle" => "T3:E9"
+          }
+        ],
+        DateTime.add(DateTime.utc_now(), -120, :second)
+      )
+      |> Repo.update!()
+
+      {:ok, view, html} = live(conn, ~p"/watch/episode/#{first.id}?station=chaves-teste")
+
+      assert has_element?(view, "#player-station-badge", "Chaves 24h")
+      assert has_element?(view, "#player-station-badge", "A seguir: Chaves · T3:E9")
+      [start_at] = Regex.run(~r/data-start-at="(\d+)"/, html, capture: :all_but_first)
+      assert String.to_integer(start_at) in 119..125
+      refute html =~ ~s(data-next-episode="{)
+    end
+
     test "an unknown station plays the film as usual", %{conn: conn, on_air: on_air} do
       {:ok, view, _html} = live(conn, ~p"/watch/movie/#{on_air.id}?station=nao-existe")
       refute has_element?(view, "#player-station-badge")

@@ -4,6 +4,7 @@ defmodule Streamix.ProgrammingTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
+  alias Streamix.Iptv.{Episode, Season}
   alias Streamix.Programming
   alias Streamix.Programming.{Lineup, Station, StationServer}
 
@@ -37,15 +38,16 @@ defmodule Streamix.ProgrammingTest do
       assert station.program_started_at == now
       assert length(station.program) == 5
 
-      ids = Enum.map(station.program, & &1["movie_id"])
+      ids = Enum.map(station.program, & &1["content_id"])
       assert Enum.sort(ids) == Enum.sort(Enum.map(movies.feature, & &1.id))
       refute movies.short.id in ids
 
-      assert %{"duration" => 5_400, "title" => "Filme " <> _} = hd(station.program)
+      assert %{"type" => "movie", "duration" => 5_400, "title" => "Filme " <> _} =
+               hd(station.program)
 
       # Same station, same day: same order.
       assert Programming.rebuild_programs(now: now) == ["terror-teste"]
-      assert Enum.map(Repo.reload!(station).program, & &1["movie_id"]) == ids
+      assert Enum.map(Repo.reload!(station).program, & &1["content_id"]) == ids
     end
 
     test "only_empty leaves running programs alone" do
@@ -59,6 +61,52 @@ defmodule Streamix.ProgrammingTest do
       |> Repo.update!()
 
       assert Programming.rebuild_programs(only_empty: true) == []
+    end
+  end
+
+  describe "rebuild_programs/1 for series stations" do
+    test "plays random episodes of each series, runtimes filled from the series" do
+      owner = user_fixture()
+
+      global =
+        provider_fixture(owner, %{visibility: "global", is_system: true, provider_type: "xtream"})
+
+      _empty_copy = series_content_fixture(global, %{title: "Sitcom A", tmdb_id: "9001"})
+      sitcom = series_with_episodes!(global, "Sitcom A", "9001", List.duplicate(1_320, 6))
+      cartoon = series_with_episodes!(global, "Desenho B", "9002", [nil, nil, 30])
+
+      station =
+        %Station{}
+        |> Station.changeset(%{
+          slug: "maratona-teste",
+          name: "Maratona",
+          query: "Maratona",
+          kind: "series",
+          series_tmdb_ids: ["9001", "9002"]
+        })
+        |> Repo.insert!()
+
+      assert Programming.rebuild_programs() == ["maratona-teste"]
+      program = Repo.reload!(station).program
+
+      assert length(program) == 9
+      assert Enum.all?(program, &(&1["type"] == "episode"))
+
+      by_series = Enum.group_by(program, & &1["title"])
+      assert length(by_series["Sitcom A"]) == 6
+      assert Enum.all?(by_series["Sitcom A"], &(&1["duration"] == 1_320))
+      assert Enum.all?(by_series["Sitcom A"], &(&1["poster"] == sitcom.cover))
+      # No usable runtime at all (30 s is not an episode): the 25-min default.
+      assert Enum.all?(by_series["Desenho B"], &(&1["duration"] == 1_500))
+      assert Enum.any?(by_series["Desenho B"], &(&1["subtitle"] == "T1:E1 · Episódio 1"))
+      assert cartoon.id
+    end
+
+    test "a series station needs its series" do
+      changeset =
+        Station.changeset(%Station{}, %{slug: "vazia", name: "Vazia", query: "x", kind: "series"})
+
+      assert %{series_tmdb_ids: ["lists no series"]} = errors_on(changeset)
     end
   end
 
@@ -112,9 +160,47 @@ defmodule Streamix.ProgrammingTest do
 
       for slug <- ["um", "dois"] do
         assert [{pid, _}] = Registry.lookup(Streamix.Programming.Registry, slug)
-        on_exit(fn -> Process.exit(pid, :kill) end)
+
+        # terminate_child, not a kill: a killed :transient server is restarted
+        # and would query the database after this test's sandbox is gone.
+        on_exit(fn ->
+          DynamicSupervisor.terminate_child(Streamix.Programming.StationSupervisor, pid)
+        end)
       end
     end
+  end
+
+  defp series_with_episodes!(provider, title, tmdb_id, runtimes) do
+    series =
+      series_content_fixture(provider, %{
+        title: title,
+        tmdb_id: tmdb_id,
+        cover: "https://img.test/#{tmdb_id}.jpg"
+      })
+
+    season =
+      %Season{}
+      |> Season.changeset(%{season_number: 1, name: "T1", series_id: series.id})
+      |> Repo.insert!()
+
+    for {runtime, n} <- Enum.with_index(runtimes, 1) do
+      %Episode{}
+      |> Episode.changeset(%{
+        episode_id: System.unique_integer([:positive]),
+        episode_num: n,
+        title: "Episódio #{n}",
+        container_extension: "mp4",
+        season_id: season.id
+      })
+      |> Ecto.Changeset.put_change(:duration_secs, runtime)
+      |> Ecto.Changeset.put_change(
+        :catalog_item_id,
+        catalog_item_fixture("episode", provider.id).id
+      )
+      |> Repo.insert!()
+    end
+
+    series
   end
 
   defp station!(slug, query) do

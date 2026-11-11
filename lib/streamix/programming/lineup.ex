@@ -1,7 +1,8 @@
 defmodule Streamix.Programming.Lineup do
   @moduledoc """
-  The stations Streamix ships with. Each is a discovery query: the same
-  words a viewer could type into "Descobrir".
+  The stations Streamix ships with. A movie station is a discovery query,
+  the same words a viewer could type into "Descobrir"; a series station is
+  a list of TMDB series whose episodes play in random order.
 
   `Streamix.Programming.sync_lineup/0` creates missing ones and refreshes the
   name, description, query and order of existing ones; a station removed
@@ -59,10 +60,45 @@ defmodule Streamix.Programming.Lineup do
     }
   ]
 
-  @doc "The shipped stations, in display order."
+  # Series stations name their series by TMDB id, so any provider's copy
+  # counts. One id: that show around the clock; several: a marathon.
+  @series_stations [
+    {"chaves", "Chaves 24h", "Foi sem querer querendo.", ["47"]},
+    {"chapolin", "Chapolin 24h", "Não contavam com a minha astúcia!", ["13023"]},
+    {"os-simpsons", "Os Simpsons 24h", "Springfield sem intervalo.", ["456"]},
+    {"friends", "Friends 24h", "Os seis no Central Perk, o dia todo.", ["1668"]},
+    {"todo-mundo-odeia-o-chris", "Todo Mundo Odeia o Chris 24h", "Brooklyn, 1982.", ["252"]},
+    {"eu-a-patroa-e-as-criancas", "Eu, a Patroa e as Crianças 24h", "Michael Kyle em família.",
+     ["2692"]},
+    {"dois-homens-e-meio", "Dois Homens e Meio 24h", "Charlie, Alan e Jake.", ["2691"]},
+    {"the-office", "The Office 24h", "Um dia normal na Dunder Mifflin.", ["2316"]},
+    {"big-bang", "Big Bang 24h", "Bazinga.", ["1418"]},
+    {"bob-esponja", "Bob Esponja 24h", "Direto da Fenda do Biquíni.", ["387"]},
+    {"scooby-doo", "Scooby-Doo 24h", "Mistérios e biscoitos Scooby.", ["926"]},
+    {"maratona-sitcom", "Maratona de Sitcom", "Episódios aleatórios das sitcoms favoritas.",
+     ["1668", "1418", "2316", "2691", "2692", "252", "1421", "1400"]},
+    {"animacao-adulta", "Animação Adulta", "Simpsons, South Park, Rick e Morty e companhia.",
+     ["456", "2190", "60625", "1434", "32726"]}
+  ]
+
+  @doc "The shipped stations, in display order: movie stations, then series."
   @spec stations() :: [map()]
   def stations do
-    @stations
+    movies = Enum.map(@stations, &Map.merge(&1, %{kind: "movies", series_tmdb_ids: []}))
+
+    series =
+      Enum.map(@series_stations, fn {slug, name, description, tmdb_ids} ->
+        %{
+          slug: slug,
+          name: name,
+          description: description,
+          query: name,
+          kind: "series",
+          series_tmdb_ids: tmdb_ids
+        }
+      end)
+
+    (movies ++ series)
     |> Enum.with_index()
     |> Enum.map(fn {station, position} -> Map.put(station, :position, position) end)
   end

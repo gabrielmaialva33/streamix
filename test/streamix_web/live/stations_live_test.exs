@@ -39,10 +39,10 @@ defmodule StreamixWeb.StationsLiveTest do
   test "lists what each station plays now and next", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/stations")
 
-    assert has_element?(view, "#stations-terror-anos-80", "Terror Anos 80")
-    assert has_element?(view, "#stations-terror-anos-80", "Pânico na Floresta (1983)")
-    assert has_element?(view, "#stations-terror-anos-80", "A seguir: A Noite do Terror")
-    assert has_element?(view, "#stations-terror-anos-80 [style='width: 25%']")
+    assert has_element?(view, "#movie_stations-terror-anos-80", "Terror Anos 80")
+    assert has_element?(view, "#movie_stations-terror-anos-80", "Pânico na Floresta (1983)")
+    assert has_element?(view, "#movie_stations-terror-anos-80", "A seguir: A Noite do Terror")
+    assert has_element?(view, "#movie_stations-terror-anos-80 [style='width: 25%']")
     refute has_element?(view, "#stations-empty")
   end
 
@@ -60,7 +60,7 @@ defmodule StreamixWeb.StationsLiveTest do
     |> Repo.update!()
 
     send(view.pid, {:station_slot, "terror-anos-80", nil})
-    assert has_element?(view, "#stations-terror-anos-80", "Novo")
+    assert has_element?(view, "#movie_stations-terror-anos-80", "Novo")
     refute render(view) =~ "(0)"
 
     topic = StationPaths.viewers_topic("terror-anos-80")
@@ -70,6 +70,52 @@ defmodule StreamixWeb.StationsLiveTest do
     # The page hears the same diff; once it reached us it reached the view.
     assert_receive %Phoenix.Socket.Broadcast{event: "presence_diff"}, 5_000
     assert render(view) =~ "1 assistindo"
+  end
+
+  test "series stations get their own grid and name the episode", %{conn: conn} do
+    %Station{}
+    |> Station.changeset(%{
+      slug: "chaves",
+      name: "Chaves 24h",
+      query: "Chaves 24h",
+      kind: "series",
+      series_tmdb_ids: ["47"]
+    })
+    |> Repo.insert!()
+    |> Station.program_changeset(
+      [
+        %{
+          "type" => "episode",
+          "content_id" => 7,
+          "duration" => 1_500,
+          "title" => "Chaves",
+          "subtitle" => "T1:E4 · O Barril"
+        },
+        %{
+          "type" => "episode",
+          "content_id" => 8,
+          "duration" => 1_500,
+          "title" => "Chaves",
+          "subtitle" => "T2:E1 · A Vila"
+        }
+      ],
+      DateTime.utc_now()
+    )
+    |> Repo.update!()
+
+    {:ok, view, _html} = live(conn, ~p"/stations")
+
+    assert has_element?(
+             view,
+             "#series-stations #series_stations-chaves",
+             "Chaves · T1:E4 · O Barril"
+           )
+
+    assert has_element?(view, "#series_stations-chaves", "A seguir: Chaves · T2:E1 · A Vila")
+    assert has_element?(view, "#movie-stations #movie_stations-terror-anos-80")
+
+    assert {:error, {:redirect, %{to: "/watch/episode/7?station=chaves&t=" <> _}}} =
+             live(conn, ~p"/stations/chaves")
   end
 
   test "tuning in jumps to the film on air at the current minute", %{conn: conn} do

@@ -75,6 +75,8 @@ defmodule Streamix.Catalog do
   defdelegate list_public_catalog_series(opts \\ []), to: SeriesOps, as: :list_public_catalog
   defdelegate list_public_series(opts \\ []), to: SeriesOps, as: :list_public
 
+  defdelegate public_series_copy_ids_by_tmdb(tmdb_id), to: SeriesOps, as: :public_copy_ids_by_tmdb
+
   defdelegate list_public_series_by_ids(ids, opts \\ []),
     to: SeriesOps,
     as: :list_public_by_ids

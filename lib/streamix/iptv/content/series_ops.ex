@@ -187,6 +187,10 @@ defmodule Streamix.Iptv.SeriesOps do
     Queries.list_visible_by_ids(user_id, ids, opts)
   end
 
+  @doc "Ids of the public Xtream copies of a TMDB series, most episodes first."
+  @spec public_copy_ids_by_tmdb(String.t()) :: [integer()]
+  def public_copy_ids_by_tmdb(tmdb_id), do: Queries.public_copy_ids_by_tmdb(tmdb_id)
+
   @doc """
   Lists public series for ranked IDs while preserving requested order.
   """

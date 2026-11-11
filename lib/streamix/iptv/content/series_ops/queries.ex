@@ -17,6 +17,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
   defdelegate get_by_ids(ids), to: Listings
   defdelegate list_visible_by_ids(user_id, ids, opts), to: Listings
   defdelegate list_public_by_ids(ids, opts \\ []), to: Listings
+  defdelegate public_copy_ids_by_tmdb(tmdb_id), to: Listings
   defdelegate search(user_id, query, opts \\ []), to: Listings
   defdelegate search_public(query, opts \\ []), to: Listings
 

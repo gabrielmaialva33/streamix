@@ -15,9 +15,10 @@ defmodule StreamixWeb.PlayerLive do
   - Picture-in-Picture
   - Progress tracking for VOD content
   - Watch history recording
-  - 24h station mode (`?station=slug&t=seconds`): tunes in mid-film, shows
-    the station badge, follows the station to its next film and leaves the
-    viewer's progress and history alone
+  - 24h station mode (`?station=slug&t=seconds`): tunes in mid-film or
+    mid-episode, shows the station badge, follows the station to what plays
+    next (never the series' own next episode) and leaves the viewer's
+    progress and history alone
   """
   use StreamixWeb, :live_view
 
@@ -487,7 +488,7 @@ defmodule StreamixWeb.PlayerLive do
         fullscreen={true}
         on_close="close_player"
         show_controls={true}
-        next_episode={@next_episode}
+        next_episode={if @station, do: nil, else: @next_episode}
         season_episodes={@season_episodes}
         synopsis={Map.get(@content, :plot)}
         expected_duration={Map.get(@content, :duration_secs, 0) || 0}
@@ -533,7 +534,8 @@ defmodule StreamixWeb.PlayerLive do
   # Private Helpers
   # ============================================
 
-  defp assign_station_mode(socket, "movie", %{"station" => slug} = params) when is_binary(slug) do
+  defp assign_station_mode(socket, type, %{"station" => slug} = params)
+       when type in ["movie", "episode"] and is_binary(slug) do
     case Programming.now_playing(slug) do
       {:ok, %{station: station, slot: slot}} ->
         if connected?(socket) do
@@ -542,8 +544,8 @@ defmodule StreamixWeb.PlayerLive do
         end
 
         assign(socket,
-          start_at: start_at(params, slot),
-          station: %{slug: slug, name: station.name, next_title: slot.next["title"]}
+          start_at: start_at(type, params, slot),
+          station: %{slug: slug, name: station.name, next_title: next_label(slot.next)}
         )
 
       {:error, _reason} ->
@@ -555,14 +557,19 @@ defmodule StreamixWeb.PlayerLive do
 
   # The link carried the offset when it was made; recompute it if the film in
   # the link is still the one on air, so a slow load does not start behind.
-  defp start_at(params, slot) do
-    on_air = slot.item["movie_id"]
+  defp start_at(type, params, slot) do
+    linked = params["id"] |> to_string() |> Integer.parse()
 
-    case params["id"] |> to_string() |> Integer.parse() do
-      {^on_air, ""} -> slot.offset
+    case {Programming.item_ref(slot.item), linked} do
+      {{^type, id}, {id, ""}} -> slot.offset
       _other -> params["t"] |> to_string() |> Integer.parse() |> offset_or_zero()
     end
   end
+
+  defp next_label(%{"subtitle" => subtitle, "title" => title}) when is_binary(subtitle),
+    do: "#{title} · #{subtitle}"
+
+  defp next_label(next), do: next["title"]
 
   defp offset_or_zero({seconds, ""}) when seconds > 0, do: seconds
   defp offset_or_zero(_parsed), do: 0

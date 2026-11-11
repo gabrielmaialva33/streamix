@@ -82,6 +82,9 @@ defmodule Streamix.Programming do
   @doc "Share of the current item already played, 0.0 to 1.0."
   defdelegate progress(slot), to: Schedule
 
+  @doc ~s(What a program item plays: `{"movie" | "episode", id}`, or nil.)
+  defdelegate item_ref(item), to: Station
+
   @doc """
   Creates the shipped stations (`Streamix.Programming.Lineup`) that are
   missing, refreshes the editorial fields of the rest and deactivates

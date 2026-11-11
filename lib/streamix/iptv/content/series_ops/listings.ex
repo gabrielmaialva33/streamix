@@ -143,6 +143,36 @@ defmodule Streamix.Iptv.Content.SeriesOps.Listings do
     ranked_rows(ranked_ids, series_by_id)
   end
 
+  @doc """
+  Ids of the public Xtream copies of a TMDB series, the copy with the most
+  stored episodes first (then the oldest). Adult copies are left out.
+  """
+  @spec public_copy_ids_by_tmdb(String.t()) :: [integer()]
+  def public_copy_ids_by_tmdb(tmdb_id) when is_binary(tmdb_id) and tmdb_id != "" do
+    ids =
+      false
+      |> ListingQuery.public()
+      |> where(
+        [series, provider],
+        series.tmdb_id == ^tmdb_id and provider.provider_type == :xtream
+      )
+      |> select([series], series.id)
+      |> Repo.all()
+
+    counts =
+      from(season in "seasons",
+        join: episode in "episodes",
+        on: episode.season_id == season.id,
+        where: season.series_id in ^ids,
+        group_by: season.series_id,
+        select: {season.series_id, count(episode.id)}
+      )
+      |> Repo.all()
+      |> Map.new()
+
+    Enum.sort_by(ids, &{-Map.get(counts, &1, 0), &1})
+  end
+
   @spec search(integer(), String.t(), keyword()) :: [Series.t()]
   def search(user_id, query, opts \\ []) do
     list_visible(user_id,

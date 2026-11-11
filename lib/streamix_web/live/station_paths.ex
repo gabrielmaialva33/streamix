@@ -6,10 +6,14 @@ defmodule StreamixWeb.StationPaths do
 
   use StreamixWeb, :verified_routes
 
-  @doc "The player path for a station's slot: its film, from the slot's offset."
+  alias Streamix.Programming
+
+  @doc "The player path for a station's slot: its film or episode, from the slot's offset."
   @spec watch(String.t(), map()) :: String.t()
-  def watch(slug, %{item: %{"movie_id" => movie_id}, offset: offset}),
-    do: ~p"/watch/movie/#{movie_id}?station=#{slug}&t=#{offset}"
+  def watch(slug, %{item: item, offset: offset}) do
+    {type, id} = Programming.item_ref(item)
+    ~p"/watch/#{type}/#{id}?station=#{slug}&t=#{offset}"
+  end
 
   @doc "The Presence topic of a station's viewers."
   @spec viewers_topic(String.t()) :: String.t()
