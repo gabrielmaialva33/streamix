@@ -253,6 +253,9 @@ defmodule Streamix.Catalog do
   @doc "What a parsed discovery query understood, as pt-BR labels."
   defdelegate discovery_query_labels(parsed), to: Streamix.Iptv.Tags.QueryParser, as: :labels
 
+  @doc "The people a text names and the variant keys of their titles; see `Streamix.Iptv.Credits`."
+  defdelegate titles_by_people(text), to: Streamix.Iptv.Credits
+
   @doc "Titles classified so far, per stored kind."
   defdelegate title_tag_counts(), to: Streamix.Iptv.Tags, as: :counts
 

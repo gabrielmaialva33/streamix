@@ -1,5 +1,7 @@
 defmodule Streamix.AI.DiscoveryTest do
-  use ExUnit.Case, async: false
+  use Streamix.DataCase, async: false
+
+  import Streamix.IptvFixtures
 
   alias Streamix.AI.Discovery
   alias Streamix.Catalog
@@ -107,6 +109,48 @@ defmodule Streamix.AI.DiscoveryTest do
     refute_received {:request, "generativelanguage.googleapis.com", _path}
     assert_received {:request, "qdrant.test", "/collections/movies/points/search"}
     assert_received {:request, "qdrant.test", "/collections/series/points/search"}
+  end
+
+  test "a named person narrows each collection to their titles" do
+    provider = global_provider_fixture()
+    tmdb_id = Integer.to_string(System.unique_integer([:positive]))
+    movie_fixture(provider, %{title: "Obra", tmdb_id: tmdb_id})
+
+    {:ok, _} =
+      Catalog.apply_tmdb_metadata(:movies, tmdb_id, %{
+        keywords: [],
+        credits: [%{name: "Iolanda Bittencourt", role: "director", position: 0}]
+      })
+
+    owner = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      case conn.host do
+        "qdrant.test" ->
+          {:ok, raw, conn} = Plug.Conn.read_body(conn)
+          send(owner, {:qdrant, conn.path_info, Jason.decode!(raw)})
+          Req.Test.json(conn, %{"result" => [point(1, 0.3, "tmdb:" <> tmdb_id, %{})]})
+
+        _gemini ->
+          Req.Test.json(conn, %{"embedding" => %{"values" => [0.4]}})
+      end
+    end)
+
+    assert {:ok, %{results: results, people: ["Iolanda Bittencourt"]}} =
+             Discovery.discover("filmes da iolanda bittencourt", [:movies, :series])
+
+    assert [%{id: 1}] = results.movies
+    # She has no series: that collection is not even searched.
+    assert results.series == []
+
+    assert_received {:qdrant, ["collections", "movies", "points", "search"], body}
+    refute_received {:qdrant, ["collections", "series" | _], _body}
+
+    assert body["filter"] == %{
+             "must" => [%{"key" => "variant_key", "match" => %{"any" => ["tmdb:" <> tmdb_id]}}]
+           }
+
+    assert body["score_threshold"] == 0.0
   end
 
   defp point(id, score, key, payload) do

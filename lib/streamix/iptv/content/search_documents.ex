@@ -12,7 +12,7 @@ defmodule Streamix.Iptv.SearchDocuments do
 
   alias Streamix.Helpers
   alias Streamix.Iptv.Content.GindexSeries
-  alias Streamix.Iptv.{Movie, Provider, Series, Tags, TmdbMetadata}
+  alias Streamix.Iptv.{Credits, Movie, Provider, Series, Tags, TmdbMetadata}
   alias Streamix.Repo
 
   @type kind :: :movies | :series | :animes
@@ -148,10 +148,6 @@ defmodule Streamix.Iptv.SearchDocuments do
     credits
     |> Enum.filter(&(&1.role == role))
     |> Enum.sort_by(& &1.position)
-    |> Enum.map(&display_name(&1.person.name))
-  end
-
-  defp display_name(name) do
-    name |> String.split(" ") |> Enum.map_join(" ", &String.capitalize/1)
+    |> Enum.map(&Credits.display_name(&1.person.name))
   end
 end

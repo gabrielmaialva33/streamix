@@ -14,7 +14,9 @@ defmodule Streamix.AI.Discovery do
   subgenre implies only add to the score, so a title still waiting for
   classification is ranked lower, never hidden. Similarity comes from the
   embedding of the whole query, which also carries what the parser left
-  over ("christopher nolan").
+  over. When that leftover names a credited person ("filmes do christopher
+  nolan", `Streamix.Catalog.titles_by_people/1`), each collection is narrowed
+  to that person's titles.
 
   Results are one per title (`variant_key`), best first.
   """
@@ -45,7 +47,8 @@ defmodule Streamix.AI.Discovery do
   to these providers; nil searches every provider).
   """
   @spec discover(String.t(), atom() | [atom()], keyword()) ::
-          {:ok, %{results: [result()] | %{atom() => [result()]}, parsed: map()}}
+          {:ok,
+           %{results: [result()] | %{atom() => [result()]}, parsed: map(), people: [String.t()]}}
           | {:error, term()}
   def discover(query, collections, opts \\ [])
 
@@ -57,30 +60,55 @@ defmodule Streamix.AI.Discovery do
 
   def discover(query, collections, opts) when is_binary(query) and is_list(collections) do
     parsed = Catalog.parse_discovery_query(query)
+    people = Catalog.titles_by_people(parsed.terms)
     limit = Keyword.get(opts, :limit, 24)
 
-    search_opts = [
+    structured? = Catalog.discovery_query_structured?(parsed) or people.people != []
+
+    base = %{
       limit: max(limit * 6, 120),
       filter: filter(parsed, Keyword.get(opts, :provider_ids)),
       # A structured query already narrowed the field; keep its whole tail.
-      score_threshold:
-        if(Catalog.discovery_query_structured?(parsed), do: 0.0, else: ScoreThresholds.query())
-    ]
+      score_threshold: if(structured?, do: 0.0, else: ScoreThresholds.query())
+    }
 
     with {:ok, vector} <- query_vector(query),
-         {:ok, results} <- search_all(collections, vector, search_opts, parsed, limit) do
-      {:ok, %{results: results, parsed: parsed}}
+         {:ok, results} <- search_all(collections, vector, base, {parsed, people}, limit) do
+      {:ok, %{results: results, parsed: parsed, people: people.people}}
     end
   end
 
-  defp search_all(collections, vector, search_opts, parsed, limit) do
+  defp search_all(collections, vector, base, {parsed, people}, limit) do
     Enum.reduce_while(collections, {:ok, %{}}, fn collection, {:ok, acc} ->
-      case Qdrant.search(to_string(collection), vector, search_opts) do
+      case search_collection(collection, vector, base, people) do
         {:ok, hits} -> {:cont, {:ok, Map.put(acc, collection, ranked(hits, parsed, limit))}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
   end
+
+  # A named person narrows each collection to that person's titles; one
+  # with none of them in this collection has nothing to search.
+  defp search_collection(collection, vector, base, %{people: []}) do
+    Qdrant.search(to_string(collection), vector, Map.to_list(base))
+  end
+
+  defp search_collection(collection, vector, base, people) do
+    case person_keys(people, collection) do
+      [] ->
+        {:ok, []}
+
+      keys ->
+        filter = with_condition(base.filter, %{key: "variant_key", match: %{any: keys}})
+        Qdrant.search(to_string(collection), vector, Map.to_list(%{base | filter: filter}))
+    end
+  end
+
+  defp person_keys(people, :movies), do: people.movies
+  defp person_keys(people, collection) when collection in [:series, :animes], do: people.series
+
+  defp with_condition(nil, condition), do: %{must: [condition]}
+  defp with_condition(%{must: must}, condition), do: %{must: must ++ [condition]}
 
   defp ranked(hits, parsed, limit) do
     hits
