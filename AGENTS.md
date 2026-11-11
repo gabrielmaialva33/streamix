@@ -196,7 +196,7 @@ Main browser surfaces:
 - `/gindex/...` GIndex catalog pages
 - `/party`, `/party/:invite_code`, `/party/:invite_code/watch`
 - `/watch/:type/:id` (`?station=slug&t=seconds` plays it as a 24h station)
-- `/canais`, `/canais/:slug` (24h stations; the slug tunes in at the current minute)
+- `/stations`, `/stations/:slug` (24h stations; the slug tunes in at the current minute)
 - `/admin`, `/admin/plans`, `/admin/users`
 
 API surfaces under `/api/v1`:

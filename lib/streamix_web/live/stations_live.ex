@@ -5,7 +5,7 @@ defmodule StreamixWeb.StationsLive do
 
   Cards update themselves: each station's server announces a new film on
   its PubSub topic, viewer counts arrive as Presence diffs, and a coarse
-  tick moves the progress bars. `/canais/:slug` tunes in, computing the
+  tick moves the progress bars. `/stations/:slug` tunes in, computing the
   offset at the moment of the tap.
   """
 
@@ -29,7 +29,7 @@ defmodule StreamixWeb.StationsLive do
         {:ok,
          socket
          |> put_flash(:error, "Esse canal está fora do ar agora.")
-         |> redirect(to: ~p"/canais")}
+         |> redirect(to: ~p"/stations")}
     end
   end
 
@@ -47,7 +47,7 @@ defmodule StreamixWeb.StationsLive do
 
     {:ok,
      socket
-     |> assign(page_title: "Canais 24h", current_path: "/canais", count: length(playing))
+     |> assign(page_title: "Canais 24h", current_path: "/stations", count: length(playing))
      |> stream(:stations, Enum.map(playing, &card/1))}
   end
 
@@ -102,7 +102,7 @@ defmodule StreamixWeb.StationsLive do
         <.link
           :for={{dom_id, station} <- @streams.stations}
           id={dom_id}
-          navigate={~p"/canais/#{station.id}"}
+          navigate={~p"/stations/#{station.id}"}
           class="group relative flex min-h-56 flex-col justify-end overflow-hidden rounded-xl border border-border bg-surface focus:outline-none focus:ring-2 focus:ring-brand"
         >
           <img

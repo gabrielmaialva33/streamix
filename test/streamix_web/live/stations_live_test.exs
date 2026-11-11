@@ -37,7 +37,7 @@ defmodule StreamixWeb.StationsLiveTest do
   end
 
   test "lists what each station plays now and next", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/canais")
+    {:ok, view, _html} = live(conn, ~p"/stations")
 
     assert has_element?(view, "#stations-terror-anos-80", "Terror Anos 80")
     assert has_element?(view, "#stations-terror-anos-80", "Pânico na Floresta (1983)")
@@ -50,7 +50,7 @@ defmodule StreamixWeb.StationsLiveTest do
     conn: conn,
     station: station
   } do
-    {:ok, view, _html} = live(conn, ~p"/canais")
+    {:ok, view, _html} = live(conn, ~p"/stations")
 
     station
     |> Station.program_changeset(
@@ -72,18 +72,20 @@ defmodule StreamixWeb.StationsLiveTest do
   end
 
   test "tuning in jumps to the film on air at the current minute", %{conn: conn} do
-    assert {:error, {:redirect, %{to: to}}} = live(conn, ~p"/canais/terror-anos-80")
+    assert {:error, {:redirect, %{to: to}}} = live(conn, ~p"/stations/terror-anos-80")
     assert to =~ ~r{^/watch/movie/11\?station=terror-anos-80&t=(89[5-9]|90[0-9])$}
   end
 
   test "an off-air station sends the viewer back to the list", %{conn: conn} do
-    assert {:error, {:redirect, %{to: "/canais", flash: flash}}} = live(conn, ~p"/canais/sumiu")
+    assert {:error, {:redirect, %{to: "/stations", flash: flash}}} =
+             live(conn, ~p"/stations/sumiu")
+
     assert flash["error"] =~ "fora do ar"
   end
 
   test "no stations, a plain empty state", %{conn: conn, station: station} do
     Repo.delete!(station)
-    {:ok, view, _html} = live(conn, ~p"/canais")
+    {:ok, view, _html} = live(conn, ~p"/stations")
     assert has_element?(view, "#stations-empty")
   end
 end

@@ -48,7 +48,8 @@ defmodule StreamixWeb.PlayerLive do
 
     user_id = socket.assigns.current_scope.user.id
     # A station's player closes back to the stations, wherever it came from.
-    return_to = if params["station"], do: ~p"/canais", else: ReturnPath.safe(params["return_to"])
+    return_to =
+      if params["station"], do: ~p"/stations", else: ReturnPath.safe(params["return_to"])
 
     case load_content_preflight(type, id, user_id) do
       {:ok, content, provider} ->
@@ -438,7 +439,7 @@ defmodule StreamixWeb.PlayerLive do
   def handle_info({:station_slot, slug, slot}, %{assigns: %{station: %{slug: slug}}} = socket) do
     case slot do
       %{} -> {:noreply, push_navigate(socket, to: StationPaths.watch(slug, slot))}
-      nil -> {:noreply, push_navigate(socket, to: ~p"/canais")}
+      nil -> {:noreply, push_navigate(socket, to: ~p"/stations")}
     end
   end
 

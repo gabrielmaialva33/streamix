@@ -9,7 +9,7 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Added
 
-- 24h stations at `/canais` ("Canais 24h" in the menu): eight channels built from discovery queries ("Terror Anos
+- 24h stations at `/stations` ("Canais 24h" in the menu): eight channels built from discovery queries ("Terror Anos
   80", "Comédia Romântica", "Crime e Máfia"...), each a looping program of public, feature-length movies. Tuning in
   lands on the film on air at the current minute, the same for every viewer, with an "Ao vivo" badge and what comes
   next; the player follows the station to the next film on its own and never writes the viewer's progress or

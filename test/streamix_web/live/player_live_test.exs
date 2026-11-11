@@ -715,7 +715,7 @@ defmodule StreamixWeb.PlayerLiveTest do
       assert Library.get_watch_progress_map(key, "movie", [on_air.id]) == %{}
       assert Library.list_watch_history(key) == []
 
-      assert {:error, {:redirect, %{to: "/canais"}}} = render_hook(view, "close_player", %{})
+      assert {:error, {:redirect, %{to: "/stations"}}} = render_hook(view, "close_player", %{})
     end
 
     test "follows the station to its next film", %{
