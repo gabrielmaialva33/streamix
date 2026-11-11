@@ -27,7 +27,7 @@ defmodule StreamixWeb.StationsLiveTest do
             "title" => "Pânico na Floresta",
             "year" => 1983
           },
-          %{"movie_id" => 12, "duration" => 3_600, "title" => "A Noite do Terror"}
+          %{"movie_id" => 12, "duration" => 3_600, "title" => "A Noite do Terror", "year" => 0}
         ],
         DateTime.add(DateTime.utc_now(), -900, :second)
       )
@@ -54,13 +54,14 @@ defmodule StreamixWeb.StationsLiveTest do
 
     station
     |> Station.program_changeset(
-      [%{"movie_id" => 13, "duration" => 3_600, "title" => "Novo"}],
+      [%{"movie_id" => 13, "duration" => 3_600, "title" => "Novo", "year" => 0}],
       DateTime.utc_now()
     )
     |> Repo.update!()
 
     send(view.pid, {:station_slot, "terror-anos-80", nil})
     assert has_element?(view, "#stations-terror-anos-80", "Novo")
+    refute render(view) =~ "(0)"
 
     topic = StationPaths.viewers_topic("terror-anos-80")
     :ok = Phoenix.PubSub.subscribe(Streamix.PubSub, topic)

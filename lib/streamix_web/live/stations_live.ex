@@ -85,6 +85,10 @@ defmodule StreamixWeb.StationsLive do
     }
   end
 
+  # Catalog rows without a known year store 0; say nothing rather than "(0)".
+  defp year_suffix(year) when is_integer(year) and year > 0, do: " (#{year})"
+  defp year_suffix(_year), do: ""
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -131,7 +135,7 @@ defmodule StreamixWeb.StationsLive do
             <h2 class="text-lg font-semibold text-white">{station.name}</h2>
             <p class="truncate text-sm text-white/90">
               <span class="text-white/60">Agora:</span>
-              {station.now["title"]}{if station.now["year"], do: " (#{station.now["year"]})"}
+              {station.now["title"]}{year_suffix(station.now["year"])}
             </p>
             <div class="h-1 w-full overflow-hidden rounded-full bg-white/20">
               <div class="h-full rounded-full bg-brand" style={"width: #{station.progress}%"}></div>

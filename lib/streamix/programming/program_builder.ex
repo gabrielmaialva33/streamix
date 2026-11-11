@@ -65,7 +65,7 @@ defmodule Streamix.Programming.ProgramBuilder do
       "movie_id" => movie.id,
       "duration" => movie.duration_secs,
       "title" => movie.title || movie.name,
-      "year" => movie.year,
+      "year" => if(is_integer(movie.year) and movie.year > 0, do: movie.year),
       "poster" => movie.stream_icon
     }
   end
