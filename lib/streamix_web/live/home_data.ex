@@ -48,11 +48,9 @@ defmodule StreamixWeb.HomeData do
     |> assign(movie_progress: %{})
     |> assign(series_progress: %{})
     |> assign(trending_genre: "all")
-    |> assign(trending_period: 7)
     |> assign(series_genre: "all")
     |> assign(channels_category: "all")
     |> assign(genre_filters: AI.get_user_genre_filters(nil))
-    |> assign(period_filters: AI.get_period_filters())
     |> assign(channel_filters: AI.get_channel_category_filters())
     |> assign(home_loading: Map.new(@home_groups, &{&1, true}))
   end
@@ -98,28 +96,11 @@ defmodule StreamixWeb.HomeData do
       load_trending(
         library_key(socket),
         genre,
-        socket.assigns.trending_period,
         show_adult_content?(socket)
       )
 
     socket
     |> assign(trending_genre: genre)
-    |> assign(trending: trending)
-  end
-
-  def filter_trending_period(socket, period) do
-    period_days = parse_period_days(period)
-
-    trending =
-      load_trending(
-        library_key(socket),
-        socket.assigns.trending_genre,
-        period_days,
-        show_adult_content?(socket)
-      )
-
-    socket
-    |> assign(trending_period: period_days)
     |> assign(trending: trending)
   end
 
@@ -252,7 +233,6 @@ defmodule StreamixWeb.HomeData do
           load_trending(
             key,
             Map.get(assigns, :trending_genre, "all"),
-            Map.get(assigns, :trending_period, 7),
             show_adult,
             personalization
           )
@@ -330,34 +310,37 @@ defmodule StreamixWeb.HomeData do
     )
   end
 
-  defp load_trending(key, genre, period, show_adult, personalization \\ nil)
+  # One card per title: several providers' copies of a film rank side by
+  # side. A wider pool keeps the shelf full after that and a genre filter.
+  defp load_trending(key, genre, show_adult, personalization \\ nil)
 
-  defp load_trending(nil, _genre, period, _show_adult, _personalization) do
-    Cache.fetch("home:trending:guest:#{period}", @trending_ttl, fn ->
-      Catalog.list_trending_movies(
-        limit: @home_default_limit,
-        days: period,
-        show_adult: false
-      )
+  defp load_trending(nil, _genre, _show_adult, _personalization) do
+    Cache.fetch("home:trending:guest", @trending_ttl, fn ->
+      [limit: @home_default_limit * 3, show_adult: false]
+      |> Catalog.list_trending_movies()
+      |> TitleIdentity.distinct()
+      |> Enum.take(@home_default_limit)
     end)
   end
 
   # Reordered by the user's taste, so it is cached in memory only (Redis would
   # hold a ranking derived from their sealed history).
-  defp load_trending(key, genre, period, show_adult, personalization) do
-    cache_kind = {:home_trending, genre, period, show_adult}
+  defp load_trending(key, genre, show_adult, personalization) do
+    cache_kind = {:home_trending, genre, show_adult}
     personalization = personalization || personalization_context(key)
 
     Cache.fetch_personal(key.user_id, cache_kind, :timer.seconds(@trending_ttl), fn ->
-      AI.get_personalized_trending(key,
-        limit: @home_default_limit,
+      key
+      |> AI.get_personalized_trending(
+        limit: @home_default_limit * 3,
         genre: genre,
-        days: period,
         show_adult: show_adult,
         profile: personalization.profile,
         insights: personalization.insights,
         semantic_scores: personalization.movie_scores
       )
+      |> TitleIdentity.distinct()
+      |> Enum.take(@home_default_limit)
     end)
   end
 
@@ -574,15 +557,4 @@ defmodule StreamixWeb.HomeData do
       check_featured_favorite(socket.assigns.featured, socket.assigns.current_scope.library_key)
     )
   end
-
-  defp parse_period_days("all"), do: nil
-
-  defp parse_period_days(period) when is_binary(period) do
-    case Integer.parse(period) do
-      {days, ""} when days > 0 -> days
-      _ -> nil
-    end
-  end
-
-  defp parse_period_days(_), do: nil
 end

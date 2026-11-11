@@ -8,7 +8,7 @@ defmodule StreamixWeb.Content.FavoriteComponents do
   alias StreamixWeb.Helpers.ImageProxy
   alias StreamixWeb.Home.Helpers, as: HomeHelpers
 
-  @doc "The shelf links directly to playback; the library emits play/remove events and adapts to the content aspect ratio."
+  @doc "A movie or series opens its page, a channel or episode plays; the library emits play/remove events and adapts to the content aspect ratio."
   attr :favorite, :map, required: true
   attr :variant, :atom, values: [:shelf, :library], default: :shelf
   attr :id, :string, default: nil
@@ -21,7 +21,7 @@ defmodule StreamixWeb.Content.FavoriteComponents do
 
     ~H"""
     <.link
-      href={HomeHelpers.watch_path(@favorite.content_type, @favorite.content_id)}
+      href={HomeHelpers.title_path(@favorite.content_type, @favorite.content_id)}
       class={[
         "content-card media-shelf-card media-shelf-card--favorite group overflow-hidden rounded-md bg-surface transition-transform duration-300 hover:-translate-y-1 sm:rounded-lg",
         @class
@@ -55,7 +55,10 @@ defmodule StreamixWeb.Content.FavoriteComponents do
             />
           </div>
         </div>
-        <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hidden sm:flex items-center justify-center">
+        <div
+          :if={HomeHelpers.plays_directly?(@favorite.content_type)}
+          class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hidden sm:flex items-center justify-center"
+        >
           <.icon name="hero-play-solid" class="size-8 text-white/90 drop-shadow-lg" />
         </div>
       </div>

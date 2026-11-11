@@ -11,6 +11,9 @@ defmodule StreamixWeb.FavoritesLiveTest do
 
   import Phoenix.LiveViewTest
   import Streamix.IptvFixtures
+  import Streamix.AccountsFixtures, only: [library_key_fixture: 1]
+
+  alias StreamixWeb.Content.FavoriteComponents
 
   describe "mount" do
     setup :register_and_log_in_user
@@ -239,6 +242,58 @@ defmodule StreamixWeb.FavoritesLiveTest do
 
       # Should navigate to watch page
       assert_redirect(view, ~p"/watch/live_channel/#{channel.id}")
+    end
+
+    test "a saved movie opens its page, like every other title card", %{
+      conn: conn,
+      user: user,
+      provider: provider
+    } do
+      movie =
+        movie_fixture(provider, %{name: "Filme Salvo", stream_icon: "https://img.test/f.jpg"})
+
+      {:ok, _} =
+        Streamix.Library.add_favorite(library_key_fixture(user), %{
+          content_type: "movie",
+          content_id: movie.id
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/favorites")
+
+      view
+      |> element(
+        "[data-media-primary][phx-click='play'][phx-value-id='#{movie.id}'][phx-value-type='movie']"
+      )
+      |> render_click()
+
+      assert_redirect(view, ~p"/browse/movies/#{movie.id}")
+    end
+
+    test "the home shelf opens a saved series on its page, not in the movie player" do
+      html =
+        render_component(&FavoriteComponents.favorite_item/1,
+          favorite: %{
+            content_type: "series",
+            content_id: 77,
+            content_name: "Série",
+            content_icon: nil
+          }
+        )
+
+      assert html =~ ~s(href="/browse/series/77")
+      refute html =~ "/watch/movie/77"
+
+      html =
+        render_component(&FavoriteComponents.favorite_item/1,
+          favorite: %{
+            content_type: "live_channel",
+            content_id: 5,
+            content_name: "Canal",
+            content_icon: nil
+          }
+        )
+
+      assert html =~ ~s(href="/watch/live_channel/5")
     end
   end
 

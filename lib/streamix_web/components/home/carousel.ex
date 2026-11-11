@@ -215,9 +215,7 @@ defmodule StreamixWeb.Home.Carousel do
   attr :progress_map, :map, default: %{}
   attr :favorites_map, :any, default: MapSet.new()
   attr :genre_filters, :list, required: true
-  attr :period_filters, :list, required: true
   attr :selected_genre, :any, default: nil
-  attr :selected_period, :any, default: nil
   attr :ai_powered, :boolean, default: true
 
   def ai_trending_section(assigns) do
@@ -228,11 +226,8 @@ defmodule StreamixWeb.Home.Carousel do
         icon="hero-fire-solid"
         icon_class="text-brand"
         genre_filters={@genre_filters}
-        period_filters={@period_filters}
         selected_genre={@selected_genre}
-        selected_period={@selected_period}
         on_genre_change="filter_trending_genre"
-        on_period_change="filter_trending_period"
         see_more_path={~p"/browse/movies?sort=trending"}
         ai_powered={@ai_powered}
       />

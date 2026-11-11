@@ -22,7 +22,6 @@ defmodule StreamixWeb.Home.Authenticated do
   attr :recommendations, :list, required: true
   attr :trending, :list, required: true
   attr :genre_filters, :list, required: true
-  attr :period_filters, :list, required: true
   attr :new_releases, :list, required: true
   attr :top_10, :list, required: true
   attr :movies, :list, required: true
@@ -30,7 +29,6 @@ defmodule StreamixWeb.Home.Authenticated do
   attr :channels, :list, required: true
   attr :channel_filters, :list, required: true
   attr :trending_genre, :any, default: nil
-  attr :trending_period, :any, default: nil
   attr :series_genre, :any, default: nil
   attr :channels_category, :any, default: nil
   attr :movie_progress, :map, default: %{}
@@ -92,9 +90,7 @@ defmodule StreamixWeb.Home.Authenticated do
         :if={@trending != []}
         items={@trending}
         genre_filters={@genre_filters}
-        period_filters={@period_filters}
         selected_genre={@trending_genre}
-        selected_period={@trending_period}
         ai_powered={true}
         progress_map={@movie_progress}
         favorites_map={@movie_favorites_map}

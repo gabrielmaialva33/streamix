@@ -25,6 +25,17 @@ defmodule StreamixWeb.Home.Helpers do
   def content_info_path(:movie, movie), do: ~p"/browse/movies/#{movie.id}"
   def content_info_path(:series, series), do: ~p"/browse/series/#{series.id}"
 
+  @doc """
+  Where a saved item opens: a movie or series on its page (like every other
+  title card), a channel or an episode straight in the player.
+  """
+  def title_path("movie", id), do: ~p"/browse/movies/#{id}"
+  def title_path("series", id), do: ~p"/browse/series/#{id}"
+  def title_path(type, id), do: watch_path(type, id)
+
+  @doc "Whether opening an item starts playback (a channel or an episode)."
+  def plays_directly?(type), do: type in ["live_channel", "live", "episode"]
+
   def watch_path("live_channel", id), do: ~p"/watch/live_channel/#{id}"
   def watch_path("live", id), do: ~p"/watch/live_channel/#{id}"
   def watch_path("movie", id), do: ~p"/watch/movie/#{id}"

@@ -17,6 +17,7 @@ defmodule StreamixWeb.FavoritesLive do
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
   alias Streamix.Library
+  alias StreamixWeb.Home.Helpers, as: HomeHelpers
 
   @per_page 24
 
@@ -85,7 +86,7 @@ defmodule StreamixWeb.FavoritesLive do
 
   def handle_event("play", %{"id" => id, "type" => type}, socket) do
     path = get_play_path(type, id)
-    {:noreply, redirect(socket, to: path)}
+    {:noreply, push_navigate(socket, to: path)}
   end
 
   def handle_event(
@@ -257,10 +258,11 @@ defmodule StreamixWeb.FavoritesLive do
     Enum.reduce(counts, 0, fn {_type, count}, acc -> acc + count end)
   end
 
-  defp get_play_path("live_channel", id), do: ~p"/watch/live_channel/#{id}"
-  defp get_play_path("movie", id), do: ~p"/watch/movie/#{id}"
-  defp get_play_path("series", id), do: ~p"/browse/series/#{id}"
-  defp get_play_path("episode", id), do: ~p"/watch/episode/#{id}"
+  # A movie opens its page, as it does everywhere else; a channel or an
+  # episode plays.
+  defp get_play_path(type, id) when type in ["live_channel", "movie", "series", "episode"],
+    do: HomeHelpers.title_path(type, id)
+
   defp get_play_path(_, _), do: ~p"/"
 
   defp empty_title("all"), do: "Nenhum favorito"

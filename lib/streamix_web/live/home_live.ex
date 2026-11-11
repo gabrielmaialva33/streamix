@@ -102,7 +102,6 @@ defmodule StreamixWeb.HomeLive do
       :new_releases,
       :top_10,
       :trending_genre,
-      :trending_period,
       :series_genre,
       :channels_category
     ])
@@ -152,10 +151,6 @@ defmodule StreamixWeb.HomeLive do
   # AI Section Filter Events
   def handle_event("filter_trending_genre", %{"genre" => genre}, socket) do
     {:noreply, Data.filter_trending_genre(socket, genre)}
-  end
-
-  def handle_event("filter_trending_period", %{"period" => period}, socket) do
-    {:noreply, Data.filter_trending_period(socket, period)}
   end
 
   def handle_event("filter_series_genre", %{"genre" => genre}, socket) do

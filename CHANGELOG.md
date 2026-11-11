@@ -98,8 +98,12 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Changed
 
+- Saved movies open their page from "Minha lista" (the home shelf and `/favorites`), like every other title card,
+  instead of starting playback; channels and episodes still play straight away.
 - Channel lists (catalog, guide, home) put the providers' placeholder and one-off event channels ("(01)", "[F1]
   Piloto", "21:30 • Hawks x Lakers") after the named channels, so they open on real channels.
+- "Em Alta Agora" shows each film once instead of once per provider copy, and drops its "7 dias" period menu: the
+  shelf ranks catalog signals, never viewing activity, so the period changed nothing.
 - The TV guide (`/guide`) lists every channel with programming in the window, not the first 100 by name: favorites
   first, then channels with a real schedule (not one all-day placeholder program), 30 at a time with more loading as
   the list scrolls ("Mostrar mais canais"). Channels without a guide are left out (`airing_between:` on
@@ -244,6 +248,7 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- A series saved to "Minha lista" opened the movie player with the series' id from the home shelf.
 - The movie and series catalogs opened on titles without a year (unmatched, most without a poster, such as "1 -
   Harry Potter E A Pedra Filosofal"): newest-first sorting put NULL years first. They now come last.
 - The TV guide and the EPG "now/next" lines showed times in UTC (three hours ahead): the release has no time zone
