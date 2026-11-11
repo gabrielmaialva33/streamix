@@ -16,6 +16,7 @@ defmodule Streamix.Iptv.History do
 
   alias Ecto.Changeset
   alias Streamix.Iptv.{CatalogItem, CatalogItemRedirect, Episode, Season, WatchProgress}
+  alias Streamix.Iptv.Content.VariantCards
   alias Streamix.Iptv.ContentRef
   alias Streamix.Iptv.Engagement.ContentPolicy
   alias Streamix.Library.{Cipher, Key}
@@ -35,8 +36,10 @@ defmodule Streamix.Iptv.History do
   ## Options
     * `:limit` - Maximum number of results (default: 50)
     * `:offset` - Number of results to skip (default: 0)
-    * `:group_episodes` - Keep the latest episode per series, with an episode count,
-      before pagination (default: false; counts remain individual history entries)
+    * `:group_episodes` - One card per title before pagination: the latest
+      episode of each series (with an episode count) and the latest copy of
+      each film, across providers (default: false; counts remain individual
+      history entries)
     * `:content_type` - Filter by content type ("movie", "episode", "live_channel")
   """
   @spec list(Key.t(), keyword()) :: [map()]
@@ -178,7 +181,8 @@ defmodule Streamix.Iptv.History do
 
   @doc """
   Removes a single watch progress entry by its ID. With `group_episodes: true`,
-  an owned episode entry removes all of that series' entries for the key's user.
+  it removes every entry grouped with it: all episodes of the series, or every
+  copy of the film, across providers, for the key's user.
   """
   @spec remove(Key.t(), integer(), keyword()) :: {integer(), nil}
   def remove(key, entry_id, opts \\ [])
@@ -197,18 +201,23 @@ defmodule Streamix.Iptv.History do
     end
   end
 
+  # Removes every entry the grouped listing folded into this card: all
+  # episodes of the series, or every copy of the film, across providers.
   defp remove_group(%Key{user_id: user_id} = key, entry_id) do
-    case open_where(key, dynamic([progress], progress.id == ^entry_id)) do
-      [%{content_type: "episode", series_id: series_id}] when is_integer(series_id) ->
-        ids = key |> open_by_series([series_id]) |> Enum.map(& &1.id)
+    cards = resolve_cards(key, open_all(key), true)
+
+    case Enum.find(cards, &(&1.id == entry_id)) do
+      nil ->
+        remove_entry(key, entry_id)
+
+      card ->
+        group = history_group_key(card)
+        ids = for other <- cards, history_group_key(other) == group, do: other.id
 
         WatchProgress
         |> where(user_id: ^user_id)
         |> where([progress], progress.id in ^ids)
         |> Repo.delete_all()
-
-      _ ->
-        remove_entry(key, entry_id)
     end
   end
 
@@ -560,11 +569,32 @@ defmodule Streamix.Iptv.History do
     |> Enum.map(&Map.put(&1, :episode_count, Map.fetch!(counts, history_group_key(&1))))
   end
 
-  defp history_group_key(%{content_type: "episode", episode_series_id: series_id})
-       when is_integer(series_id),
-       do: {:series, series_id}
+  # A title, not a provider copy: the same series or film watched from two
+  # providers is one card. TMDB id first, else the normalized title the
+  # catalog uses to match copies, else the row itself.
+  defp history_group_key(%{content_type: "episode"} = card) do
+    title_group(
+      :series,
+      card.episode_series_tmdb_id,
+      card.episode_series_title || card.episode_series_name
+    ) || {:series_row, card.episode_series_id}
+  end
+
+  defp history_group_key(%{content_type: "movie"} = card) do
+    title_group(:movie, card.movie_tmdb_id, card.movie_name) || {:movie_row, card.movie_id}
+  end
 
   defp history_group_key(card), do: {card.content_type, content_id(card)}
+
+  defp title_group(kind, tmdb_id, _title) when is_binary(tmdb_id) and tmdb_id != "",
+    do: {kind, :tmdb, tmdb_id}
+
+  defp title_group(kind, _tmdb_id, title) do
+    case VariantCards.normalize_title(title) do
+      "" -> nil
+      normalized -> {kind, :title, normalized}
+    end
+  end
 
   # A provider resync can delete a catalog item a sealed row still points at.
   # The database cannot see that reference anymore, so the owner's own reads

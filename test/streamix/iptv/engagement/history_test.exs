@@ -57,6 +57,65 @@ defmodule Streamix.Iptv.HistoryTest do
     end
   end
 
+  describe "grouped history across providers" do
+    test "one card per title, whatever provider each episode or copy came from" do
+      owner = user_fixture()
+      key = library_key_fixture(owner)
+
+      [first, second] =
+        for name <- ["Provedor A", "Provedor B"],
+            do: provider_fixture(owner, %{name: name, visibility: "global", is_system: true})
+
+      episode = fn provider, series_attrs, number ->
+        series = series_content_fixture(provider, series_attrs)
+        season = Repo.insert!(%Season{series_id: series.id, season_number: 1, name: "T1"})
+
+        %Episode{}
+        |> Episode.changeset(%{
+          episode_id: System.unique_integer([:positive]),
+          episode_num: number,
+          title: "Episódio #{number}",
+          season_id: season.id,
+          catalog_item_id: catalog_item_fixture("episode", provider.id).id
+        })
+        |> Repo.insert!()
+      end
+
+      # Same series by TMDB id, and an untracked one matched by its title.
+      by_tmdb = %{name: "Prazer Máximo", title: nil, tmdb_id: "250000"}
+
+      for {provider, attrs, n} <- [
+            {first, by_tmdb, 1},
+            {second, by_tmdb, 2},
+            {first, %{name: "Cabo do Medo", title: nil, tmdb_id: nil}, 1},
+            {second, %{name: "Cabo do Medo [L]", title: nil, tmdb_id: nil}, 2}
+          ] do
+        {:ok, _} = History.add(key, "episode", episode.(provider, attrs, n).id)
+      end
+
+      for provider <- [first, second] do
+        movie = movie_fixture(provider, %{name: "Holy Spider", tmdb_id: "736526"})
+        {:ok, _} = History.add(key, "movie", movie.id)
+      end
+
+      cards = History.list(key, group_episodes: true, limit: 10)
+
+      assert length(cards) == 3
+
+      assert cards |> Enum.filter(&(&1.content_type == "episode")) |> Enum.map(& &1.episode_count) ==
+               [2, 2]
+
+      assert History.count_by_type(key) == %{"episode" => 4, "movie" => 2}
+
+      movie_card = Enum.find(cards, &(&1.content_type == "movie"))
+      assert {2, nil} = History.remove(key, movie_card.id, group_episodes: true)
+
+      series_card = Enum.find(cards, &(&1.content_type == "episode"))
+      assert {2, nil} = History.remove(key, series_card.id, group_episodes: true)
+      assert length(History.list(key, group_episodes: true)) == 1
+    end
+  end
+
   describe "list_for_analytics/2" do
     test "returns lightweight analytics entries without catalog preloads" do
       user = user_fixture()
