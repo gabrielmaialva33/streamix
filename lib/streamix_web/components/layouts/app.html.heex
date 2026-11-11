@@ -118,6 +118,14 @@
               active={String.starts_with?(@current_path || "", "/browse")}
             />
             <.nav_link
+              path={~p"/canais"}
+              current_path={@current_path}
+              label={gettext("Canais 24h")}
+              icon="hero-signal"
+              icon_active="hero-signal-solid"
+              active={String.starts_with?(@current_path || "", "/canais")}
+            />
+            <.nav_link
               path={~p"/guide"}
               current_path={@current_path}
               label={gettext("Guia")}

@@ -111,6 +111,7 @@ lib/streamix/
 ├── gindex/                   # GIndex transport, parsing, matching, quota, and sync
 ├── hls/                      # Shared HLS gateway: playlist rewrite, bounded fetch, registry
 ├── iptv/                     # Canonical catalog, providers, EPG, engagement, and streaming
+├── programming/              # 24h stations: schedule, program builder, station servers
 ├── qoe/                      # Privacy-bounded playback quality events
 ├── queue/                    # RabbitMQ/Broadway integration (optional)
 ├── security/                 # Shared URL and network-boundary validation
@@ -175,6 +176,7 @@ Delivery code (controllers, LiveViews, workers) calls these modules and nothing 
 | QoE         | `Streamix.Qoe`        | Playback quality telemetry and retention                        |
 | Subtitles   | `Streamix.Subtitles`  | Subtitle discovery, normalization, and conversion               |
 | Watch Party | `Streamix.WatchParty` | Rooms, playback sync, chat, presence                            |
+| Programming | `Streamix.Programming`| 24h stations: lineup, looping programs, on-air station servers  |
 | Queue       | `Streamix.Queue`      | Optional RabbitMQ + Broadway execution path                     |
 
 The six IPTV boundaries (Catalog through Guide) are implemented under `Streamix.Iptv.*`, which is internal. There is
@@ -193,7 +195,8 @@ Main browser surfaces:
 - `/favorites`, `/history`
 - `/gindex/...` GIndex catalog pages
 - `/party`, `/party/:invite_code`, `/party/:invite_code/watch`
-- `/watch/:type/:id`
+- `/watch/:type/:id` (`?station=slug&t=seconds` plays it as a 24h station)
+- `/canais`, `/canais/:slug` (24h stations; the slug tunes in at the current minute)
 - `/admin`, `/admin/plans`, `/admin/users`
 
 API surfaces under `/api/v1`:
@@ -220,6 +223,7 @@ API surfaces under `/api/v1`:
 | `BackfillTmdbMetadataWorker`| daily at 05:45                 | `tmdb_details`   |
 | `IndexEmbeddingsWorker`     | daily at 05:00                 | `ai`             |
 | `ClassifyTitleTagsWorker`   | hourly at :25                  | `tags`           |
+| `RebuildStationsWorker`     | daily at 06:30, and at boot    | `ai`             |
 | `UpdateUserProfileWorker`   | triggered from analytics flows | `ai` / async     |
 
 ## Repo-Specific Conventions

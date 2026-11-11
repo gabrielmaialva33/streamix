@@ -9,6 +9,14 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Added
 
+- 24h stations at `/canais` ("Canais 24h" in the menu): eight channels built from discovery queries ("Terror Anos
+  80", "Comédia Romântica", "Crime e Máfia"...), each a looping program of public, feature-length movies. Tuning in
+  lands on the film on air at the current minute, the same for every viewer, with an "Ao vivo" badge and what comes
+  next; the player follows the station to the next film on its own and never writes the viewer's progress or
+  history. Each on-air station is a process that wakes when a film ends and announces the next one; the list shows
+  live progress and how many are watching (a Presence count, never who). Programs rebuild daily at 06:30 UTC and
+  fill empty stations at boot.
+- The player takes a server-chosen start offset (`data-start-at`), which wins over the position saved in the browser.
 - A Netflix-style player: chrome, pause screen, episodes panel, gestures and keyboard controls, a startup screen with
   the title's cover and plain-words loading stages, and "fill screen" as the default framing on desktop and phones.
 - Playback telemetry records why a session ended (`end_reason`), why an engine was chosen (`engine_reason`) and which

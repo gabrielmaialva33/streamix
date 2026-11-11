@@ -228,6 +228,9 @@ config :gettext, :default_locale, "pt_BR"
 config :streamix, StreamixWeb.Gettext, default_locale: "pt_BR"
 
 # Oban - Background jobs
+# Put every 24h station on air when the application boots.
+config :streamix, Streamix.Programming, autostart: true
+
 # Titles per kind per run, titles per Gemini request, requests in flight. Hourly runs
 # let a free-tier key work through the catalog a daily quota at a time.
 config :streamix, Streamix.Workers.ClassifyTitleTagsWorker,
@@ -349,6 +352,10 @@ config :streamix, Oban,
        # Classify titles into the tag vocabulary. Hourly and bounded: a run
        # stops quietly when the Gemini quota is spent and the next continues.
        {"25 * * * *", Streamix.Workers.ClassifyTitleTagsWorker},
+       # 24h stations: fill empty programs at boot, rebuild all daily at
+       # 06:30 UTC (03:30 in Brasília), after the 05:00 embedding reindex.
+       {"@reboot", Streamix.Workers.RebuildStationsWorker, args: %{"only_empty" => true}},
+       {"30 6 * * *", Streamix.Workers.RebuildStationsWorker},
        # Index embeddings for semantic search daily at 5 AM
        {"0 5 * * *", Streamix.Workers.IndexEmbeddingsWorker},
        # Repair missing Qdrant collections after each application boot without

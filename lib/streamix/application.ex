@@ -116,6 +116,8 @@ defmodule Streamix.Application do
       ],
       maybe_provider_health_monitor_child(),
       [
+        # 24h stations: one process per on-air station.
+        Streamix.Programming.Supervisor,
         # Stream multiplexer infrastructure (1 upstream → N downstream)
         {Registry, keys: :unique, name: Streamix.StreamRegistry},
         {Streamix.Iptv.StreamMultiplexerSupervisor, []},

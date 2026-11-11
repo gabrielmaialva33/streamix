@@ -492,6 +492,8 @@ defmodule StreamixWeb.Router do
       live "/settings", User.SettingsLive, :index
       live "/billing", BillingLive, :index
       live "/search", SearchLive, :index
+      live "/canais", StationsLive, :index
+      live "/canais/:slug", StationsLive, :tune
       live "/guide", Content.GuideLive, :index
 
       # Global catalog (uses system global provider)

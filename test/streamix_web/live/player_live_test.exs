@@ -4,10 +4,11 @@ defmodule StreamixWeb.PlayerLiveTest do
   import Phoenix.LiveViewTest
   import Streamix.IptvFixtures
 
-  alias Streamix.Billing
+  alias Streamix.{AccountsFixtures, Billing, Library}
   alias Streamix.Billing.Plan
   alias Streamix.Billing.Subscription
   alias Streamix.Iptv.{Episode, Season}
+  alias Streamix.Programming.Station
   alias Streamix.Repo
   alias Streamix.Torrent.TorrentStream
   alias StreamixWeb.PlayerHelpers
@@ -655,6 +656,85 @@ defmodule StreamixWeb.PlayerLiveTest do
                |> LazyHTML.attribute("href")
 
       assert current == ~p"/watch/episode/#{episode.id}"
+    end
+  end
+
+  describe "24h station mode" do
+    setup :register_and_log_in_user
+
+    setup %{user: user} do
+      subscription_fixture(user, plan_fixture())
+
+      provider =
+        provider_fixture(user, %{
+          visibility: "global",
+          is_system: true,
+          provider_type: "xtream",
+          is_active: true
+        })
+
+      on_air = movie_fixture(provider, %{name: "No Ar", duration_secs: 3_600})
+      following = movie_fixture(provider, %{name: "Depois", duration_secs: 3_600})
+
+      started = DateTime.add(DateTime.utc_now(), -600, :second)
+
+      station =
+        %Station{}
+        |> Station.changeset(%{
+          slug: "teste-24h",
+          name: "Teste 24h",
+          query: "x"
+        })
+        |> Repo.insert!()
+        |> Station.program_changeset(
+          [
+            %{"movie_id" => on_air.id, "duration" => 3_600, "title" => "No Ar"},
+            %{"movie_id" => following.id, "duration" => 3_600, "title" => "Depois"}
+          ],
+          started
+        )
+        |> Repo.update!()
+
+      %{station: station, on_air: on_air, following: following}
+    end
+
+    test "tunes in mid-film with the station badge and keeps the library untouched",
+         %{conn: conn, user: user, on_air: on_air} do
+      {:ok, view, html} = live(conn, ~p"/watch/movie/#{on_air.id}?station=teste-24h&t=1")
+
+      assert has_element?(view, "#player-station-badge", "Teste 24h")
+      assert has_element?(view, "#player-station-badge", "A seguir: Depois")
+
+      # The film on air starts from the clock, not from the stale link.
+      [start_at] = Regex.run(~r/data-start-at="(\d+)"/, html, capture: :all_but_first)
+      assert String.to_integer(start_at) in 599..605
+
+      render_hook(view, "progress_update", %{"current_time" => 700, "duration" => 3_600})
+
+      key = AccountsFixtures.library_key_fixture(user)
+      assert Library.get_watch_progress_map(key, "movie", [on_air.id]) == %{}
+      assert Library.list_watch_history(key) == []
+
+      assert {:error, {:redirect, %{to: "/canais"}}} = render_hook(view, "close_player", %{})
+    end
+
+    test "follows the station to its next film", %{
+      conn: conn,
+      on_air: on_air,
+      following: following
+    } do
+      {:ok, view, _html} = live(conn, ~p"/watch/movie/#{on_air.id}?station=teste-24h")
+
+      slot = %{item: %{"movie_id" => following.id}, offset: 0}
+      send(view.pid, {:station_slot, "teste-24h", slot})
+
+      expected = "/watch/movie/#{following.id}?station=teste-24h&t=0"
+      assert_redirect(view, expected)
+    end
+
+    test "an unknown station plays the film as usual", %{conn: conn, on_air: on_air} do
+      {:ok, view, _html} = live(conn, ~p"/watch/movie/#{on_air.id}?station=nao-existe")
+      refute has_element?(view, "#player-station-badge")
     end
   end
 end

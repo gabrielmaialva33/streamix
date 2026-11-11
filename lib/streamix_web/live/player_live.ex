@@ -15,12 +15,15 @@ defmodule StreamixWeb.PlayerLive do
   - Picture-in-Picture
   - Progress tracking for VOD content
   - Watch history recording
+  - 24h station mode (`?station=slug&t=seconds`): tunes in mid-film, shows
+    the station badge, follows the station to its next film and leaves the
+    viewer's progress and history alone
   """
   use StreamixWeb, :live_view
 
   require Logger
 
-  alias Streamix.{Access, Billing, Library, Playback}
+  alias Streamix.{Access, Billing, Library, Playback, Programming}
   import StreamixWeb.PlayerComponents
   import StreamixWeb.PlayerHelpers
 
@@ -31,7 +34,9 @@ defmodule StreamixWeb.PlayerLive do
   alias StreamixWeb.PlayerComponents.Metadata
   alias StreamixWeb.PlayerEvents
   alias StreamixWeb.PlayerSourceFailover
+  alias StreamixWeb.Presence
   alias StreamixWeb.ReturnPath
+  alias StreamixWeb.StationPaths
   alias StreamixWeb.Telemetry.PlayerLifecycle
 
   @torrent_peer_target 30
@@ -42,11 +47,14 @@ defmodule StreamixWeb.PlayerLive do
     socket = PlayerEvents.attach(socket)
 
     user_id = socket.assigns.current_scope.user.id
-    return_to = ReturnPath.safe(params["return_to"])
+    # A station's player closes back to the stations, wherever it came from.
+    return_to = if params["station"], do: ~p"/canais", else: ReturnPath.safe(params["return_to"])
 
     case load_content_preflight(type, id, user_id) do
       {:ok, content, provider} ->
-        handle_loaded_content(socket, type, user_id, content, provider, return_to)
+        socket
+        |> assign_station_mode(type, params)
+        |> handle_loaded_content(type, user_id, content, provider, return_to)
 
       {:error, :not_found} ->
         {:ok,
@@ -70,8 +78,9 @@ defmodule StreamixWeb.PlayerLive do
     content = socket.assigns.content
     type = Atom.to_string(socket.assigns.content_type)
 
-    # Update progress in database for VOD content (only for logged-in users)
-    if user_id && socket.assigns.content_type != :live do
+    # Update progress in database for VOD content (only for logged-in users).
+    # A station is TV, not the viewer's library: it never writes progress.
+    if user_id && socket.assigns.content_type != :live && is_nil(socket.assigns.station) do
       {progress_type, progress_id} = progress_ref(type, content)
 
       socket.assigns.current_scope.library_key
@@ -424,6 +433,15 @@ defmodule StreamixWeb.PlayerLive do
      |> push_event("torrent_swarm_failed", %{reason: inspect(reason)})}
   end
 
+  # The station moved on: follow it to the next film, in the same minute as
+  # every other viewer. A station that went off the air sends viewers back.
+  def handle_info({:station_slot, slug, slot}, %{assigns: %{station: %{slug: slug}}} = socket) do
+    case slot do
+      %{} -> {:noreply, push_navigate(socket, to: StationPaths.watch(slug, slot))}
+      nil -> {:noreply, push_navigate(socket, to: ~p"/canais")}
+    end
+  end
+
   def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
@@ -472,11 +490,13 @@ defmodule StreamixWeb.PlayerLive do
         season_episodes={@season_episodes}
         synopsis={Map.get(@content, :plot)}
         expected_duration={Map.get(@content, :duration_secs, 0) || 0}
+        start_at={@start_at}
         subtitles_enabled={@current_scope.user.subtitles_enabled}
         subtitle_language={@current_scope.user.subtitle_language}
         subtitle_offset_ms={@current_scope.user.subtitle_offset_ms}
         source_failover_enabled={@source_failover_enabled}
       />
+      <.station_badge :if={@station} station={@station} />
       <.torrent_swarm_gate
         :if={@player_state == :torrent_buffering}
         content={@content}
@@ -488,9 +508,66 @@ defmodule StreamixWeb.PlayerLive do
     """
   end
 
+  # Read-only overlay: it never takes a tap away from the player controls.
+  defp station_badge(assigns) do
+    ~H"""
+    <div
+      id="player-station-badge"
+      class="pointer-events-none absolute left-4 top-4 z-30 flex max-w-[70vw] flex-col gap-1 sm:left-6 sm:top-6"
+    >
+      <div class="flex items-center gap-2">
+        <span class="rounded bg-brand px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">
+          Ao vivo
+        </span>
+        <span class="truncate text-sm font-semibold text-white drop-shadow">{@station.name}</span>
+      </div>
+      <span :if={@station.next_title} class="truncate text-xs text-white/80 drop-shadow">
+        A seguir: {@station.next_title}
+      </span>
+    </div>
+    """
+  end
+
   # ============================================
   # Private Helpers
   # ============================================
+
+  defp assign_station_mode(socket, "movie", %{"station" => slug} = params) when is_binary(slug) do
+    case Programming.now_playing(slug) do
+      {:ok, %{station: station, slot: slot}} ->
+        if connected?(socket) do
+          Programming.subscribe(slug)
+          Presence.track(self(), StationPaths.viewers_topic(slug), viewer_key(socket), %{})
+        end
+
+        assign(socket,
+          start_at: start_at(params, slot),
+          station: %{slug: slug, name: station.name, next_title: slot.next["title"]}
+        )
+
+      {:error, _reason} ->
+        assign(socket, start_at: 0, station: nil)
+    end
+  end
+
+  defp assign_station_mode(socket, _type, _params), do: assign(socket, start_at: 0, station: nil)
+
+  # The link carried the offset when it was made; recompute it if the film in
+  # the link is still the one on air, so a slow load does not start behind.
+  defp start_at(params, slot) do
+    on_air = slot.item["movie_id"]
+
+    case params["id"] |> to_string() |> Integer.parse() do
+      {^on_air, ""} -> slot.offset
+      _other -> params["t"] |> to_string() |> Integer.parse() |> offset_or_zero()
+    end
+  end
+
+  defp offset_or_zero({seconds, ""}) when seconds > 0, do: seconds
+  defp offset_or_zero(_parsed), do: 0
+
+  # Presence counts viewers, it never lists them: the key is opaque.
+  defp viewer_key(socket), do: Integer.to_string(socket.assigns.current_scope.user.id)
 
   defp handle_loaded_content(socket, type, user_id, content, provider, return_to) do
     if Access.plays_global_content?(socket.assigns.current_scope.user, provider) do
@@ -722,7 +799,9 @@ defmodule StreamixWeb.PlayerLive do
        ) do
     # Mount runs twice (static HTTP + WS upgrade). Writing watch history on
     # the static pass duplicated every play into the timeline.
-    if connected?(socket), do: record_watch_history(socket, type, content)
+    if connected?(socket) and is_nil(socket.assigns.station),
+      do: record_watch_history(socket, type, content)
+
     prepare_connected_player(socket, type, content, user_id, provider)
 
     next_episode = load_next_episode(type, content, provider, user_id)
@@ -802,7 +881,9 @@ defmodule StreamixWeb.PlayerLive do
 
   defp prepare_torrent_gate(socket, type, user_id, content, provider, playback_session, return_to) do
     # Mount runs twice — see comment in prepare_player_socket. Same guard.
-    if connected?(socket), do: record_watch_history(socket, type, content)
+    if connected?(socket) and is_nil(socket.assigns.station),
+      do: record_watch_history(socket, type, content)
+
     start_torrent_session_task(socket, content)
 
     info_hash = content.torrent_stream.info_hash
