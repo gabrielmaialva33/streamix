@@ -207,14 +207,14 @@ defmodule StreamixWeb.StationsLive do
 
       <div
         :if={@station_count > 0}
-        class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_26rem]"
+        class="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_26rem]"
       >
         <.feature :if={@hero} station={@hero} />
 
         <nav
           id="station-list"
           aria-label="Canais Streamix"
-          class="space-y-4 lg:max-h-[34rem] lg:overflow-y-auto lg:pr-1"
+          class="min-w-0 space-y-4 lg:max-h-[34rem] lg:overflow-y-auto lg:pr-1"
         >
           <.station_rows
             :if={@movie_count > 0}
@@ -313,7 +313,10 @@ defmodule StreamixWeb.StationsLive do
                 24h
               </span>
             </div>
-            <p class="line-clamp-2 text-xs font-medium text-text-secondary group-hover:text-text-primary">
+            <p
+              :if={channel.poster || channel.logo}
+              class="line-clamp-2 text-xs font-medium text-text-secondary group-hover:text-text-primary"
+            >
               {channel.name}
             </p>
           </.link>
@@ -330,7 +333,7 @@ defmodule StreamixWeb.StationsLive do
     <section
       id="station-feature"
       aria-live="polite"
-      class="relative isolate flex min-h-[22rem] overflow-hidden rounded-2xl border border-border bg-surface sm:min-h-[26rem] lg:min-h-[34rem]"
+      class="relative isolate flex min-h-[22rem] min-w-0 overflow-hidden rounded-2xl border border-border bg-surface sm:min-h-[26rem] lg:min-h-[34rem]"
     >
       <img
         :if={@station.poster}

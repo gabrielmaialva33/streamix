@@ -154,6 +154,7 @@ defmodule StreamixWeb.App.Navigation do
   # What the desktop header offers beyond the four tabs, so the phone shell
   # reaches the same places. A native popover: tap outside or Esc closes it.
   @more_links [
+    {"/stations", "hero-signal", "Canais 24h"},
     {"/guide", "hero-calendar-days", "Guia de programação"},
     {"/torrent", "hero-bolt", "Torrents"},
     {"/party", "hero-users", "Assistir juntos"},

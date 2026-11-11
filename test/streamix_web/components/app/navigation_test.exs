@@ -29,7 +29,16 @@ defmodule StreamixWeb.App.NavigationTest do
       |> Floki.find("#mobile-more-sheet[popover] a")
       |> Enum.flat_map(&Floki.attribute(&1, "href"))
 
-    assert hrefs == ["/guide", "/torrent", "/party", "/history", "/providers", "/settings"]
+    assert hrefs == [
+             "/stations",
+             "/guide",
+             "/torrent",
+             "/party",
+             "/history",
+             "/providers",
+             "/settings"
+           ]
+
     assert Floki.find(document, "#mobile-tab-more[aria-current='page']") == []
   end
 
