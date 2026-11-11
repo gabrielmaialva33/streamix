@@ -23,6 +23,9 @@ defmodule StreamixWeb.StationsLive do
   alias StreamixWeb.StationPaths
 
   @tick :timer.seconds(30)
+  # A tab shows this many channels, then more as the grid scrolls (a
+  # multiple of every column count the grid uses).
+  @list_page 24
 
   @impl true
   def mount(%{"slug" => slug}, _session, socket) do
@@ -77,11 +80,13 @@ defmodule StreamixWeb.StationsLive do
        series_count: length(series),
        groups: Map.new(groups, &{&1.label, &1.channels}),
        tabs: Enum.map(groups, &{&1.label, length(&1.channels)}),
-       tab: tab
+       tab: tab,
+       list_shown: 0,
+       list_left: 0
      )
      |> stream(:movie_stations, movies)
      |> stream(:series_stations, series)
-     |> stream(:list_channels, channels_for(groups, tab))}
+     |> show_tab(tab)}
   end
 
   @impl true
@@ -100,13 +105,24 @@ defmodule StreamixWeb.StationsLive do
   end
 
   def handle_event("tab", %{"label" => label}, socket) do
-    case Map.fetch(socket.assigns.groups, label) do
-      {:ok, channels} ->
-        {:noreply, socket |> assign(tab: label) |> stream(:list_channels, channels, reset: true)}
-
-      :error ->
-        {:noreply, socket}
+    if Map.has_key?(socket.assigns.groups, label) do
+      {:noreply, show_tab(socket, label)}
+    else
+      {:noreply, socket}
     end
+  end
+
+  def handle_event("more_channels", _params, socket) do
+    %{groups: groups, tab: tab, list_shown: shown} = socket.assigns
+    page = groups |> Map.get(tab, []) |> Enum.drop(shown) |> Enum.take(@list_page)
+
+    {:noreply,
+     socket
+     |> assign(
+       list_shown: shown + length(page),
+       list_left: socket.assigns.list_left - length(page)
+     )
+     |> stream(:list_channels, page)}
   end
 
   @impl true
@@ -155,10 +171,17 @@ defmodule StreamixWeb.StationsLive do
     cards |> Enum.max_by(& &1.viewers, fn -> hd(cards) end) |> Map.fetch!(:id)
   end
 
-  defp channels_for(_groups, nil), do: []
+  # Opens a tab on its first page of channels.
+  defp show_tab(socket, tab) do
+    page = socket.assigns.groups |> Map.get(tab, []) |> Enum.take(@list_page)
 
-  defp channels_for(groups, tab) do
-    Enum.find_value(groups, [], fn group -> if group.label == tab, do: group.channels end)
+    socket
+    |> assign(
+      tab: tab,
+      list_shown: length(page),
+      list_left: length(Map.get(socket.assigns.groups, tab, [])) - length(page)
+    )
+    |> stream(:list_channels, page, reset: true)
   end
 
   defp card(%{station: station, slot: slot}, numbers) do
@@ -274,6 +297,7 @@ defmodule StreamixWeb.StationsLive do
         <div
           id="list-channel-grid"
           phx-update="stream"
+          phx-viewport-bottom={@list_left > 0 && "more_channels"}
           class="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8"
         >
           <.link
@@ -320,6 +344,17 @@ defmodule StreamixWeb.StationsLive do
               {channel.name}
             </p>
           </.link>
+        </div>
+
+        <div :if={@list_left > 0} class="flex justify-center">
+          <button
+            id="list-more"
+            type="button"
+            phx-click="more_channels"
+            class="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-surface px-5 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary focus:outline-none focus:ring-2 focus:ring-brand"
+          >
+            Mostrar mais <span class="tabular-nums opacity-70">({@list_left})</span>
+          </button>
         </div>
       </section>
     </div>

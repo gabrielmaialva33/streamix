@@ -105,6 +105,7 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   it is one table under a sticky half-hour ruler, programs at their real start and length, past ones dimmed, the one
   on air marked "No ar" with its progress, and a single "now" line across every row; on a phone each channel shows
   its programs from now on. The window opens on the half hour and is named by day ("Hoje, 13:30–16:30").
+- The 24h channel tabs on `/stations` show 24 channels and load the rest as the grid scrolls ("Mostrar mais").
 - Semantic search embeds each title as labelled lines (genres, TMDB keywords, directors, writers, billed cast,
   tagline, synopsis) through one text builder shared by both embedding providers, instead of title, genres and plot.
   Results and "similar titles" list each title once instead of once per provider copy, and "similar to X" no longer

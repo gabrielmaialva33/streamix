@@ -210,6 +210,39 @@ defmodule StreamixWeb.StationsLiveTest do
     refute html =~ "/watch/live_channel/#{sports.id}"
   end
 
+  test "a long 24h list shows a page and loads the rest on demand", %{conn: conn, user: user} do
+    provider =
+      provider_fixture(user, %{
+        visibility: "global",
+        is_system: true,
+        provider_type: "xtream",
+        is_active: true
+      })
+
+    cartoons = category!(provider, "24HRS I DESENHOS")
+
+    channels =
+      for n <- 1..30,
+          do:
+            channel!(
+              provider,
+              "Desenho #{String.pad_leading(Integer.to_string(n), 2, "0")}",
+              cartoons
+            )
+
+    {:ok, view, _html} = live(conn, ~p"/stations")
+
+    grid = fn -> view |> element("#list-channel-grid") |> render() end
+    assert grid.() |> String.split("/watch/live_channel/") |> length() == 25
+    assert has_element?(view, "#list-more", "(6)")
+    refute has_element?(view, "a[href='/watch/live_channel/#{List.last(channels).id}']")
+
+    view |> element("#list-more") |> render_click()
+    assert has_element?(view, "a[href='/watch/live_channel/#{List.last(channels).id}']")
+    assert grid.() |> String.split("/watch/live_channel/") |> length() == 31
+    refute has_element?(view, "#list-more")
+  end
+
   defp category!(provider, name, opts \\ []) do
     %Category{}
     |> Category.changeset(%{
