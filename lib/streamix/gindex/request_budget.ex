@@ -3,11 +3,27 @@ defmodule Streamix.Gindex.RequestBudget do
 
   @process_key {__MODULE__, :state}
 
-  @doc "Runs a scan slice with a process-local outbound request ceiling."
-  @spec run(pos_integer(), (-> result)) :: result when result: term()
-  def run(limit, fun) when is_integer(limit) and limit > 0 and is_function(fun, 0) do
+  @doc """
+  Runs a scan slice with a process-local outbound request ceiling.
+
+  `:deadline_ms` also ends the slice once that much time has passed, at the
+  next request it would make. A request ceiling alone cannot bound a slice's
+  duration: one Worker folder that answers 500 every time costs about ten
+  minutes of capped retries across three endpoints, and a few of them kept a
+  1,500-request slice past Oban's two-hour timeout, which killed the job and
+  spent one of its attempts.
+  """
+  @spec run(pos_integer(), (-> result), keyword()) :: result when result: term()
+  def run(limit, fun, opts \\ []) when is_integer(limit) and limit > 0 and is_function(fun, 0) do
     previous = Process.get(@process_key)
-    Process.put(@process_key, %{limit: limit, count: 0})
+
+    deadline =
+      case Keyword.get(opts, :deadline_ms) do
+        ms when is_integer(ms) and ms >= 0 -> System.monotonic_time(:millisecond) + ms
+        _none -> nil
+      end
+
+    Process.put(@process_key, %{limit: limit, count: 0, deadline: deadline})
 
     try do
       fun.()
@@ -23,9 +39,13 @@ defmodule Streamix.Gindex.RequestBudget do
       nil ->
         :ok
 
-      %{limit: limit, count: count} when count < limit ->
-        Process.put(@process_key, %{limit: limit, count: count + 1})
-        :ok
+      %{limit: limit, count: count, deadline: deadline} = state when count < limit ->
+        if past?(deadline) do
+          {:error, {:slice_exhausted, count}}
+        else
+          Process.put(@process_key, %{state | count: count + 1})
+          :ok
+        end
 
       %{count: count} ->
         {:error, {:slice_exhausted, count}}
@@ -39,6 +59,9 @@ defmodule Streamix.Gindex.RequestBudget do
       nil -> 0
     end
   end
+
+  defp past?(nil), do: false
+  defp past?(deadline), do: System.monotonic_time(:millisecond) >= deadline
 
   defp restore(nil), do: Process.delete(@process_key)
   defp restore(previous), do: Process.put(@process_key, previous)

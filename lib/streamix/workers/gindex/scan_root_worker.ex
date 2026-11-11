@@ -27,6 +27,11 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
   require Logger
 
   @timeout :timer.hours(2)
+  # A slice yields at its request budget or after this long, whichever comes
+  # first. The margin under @timeout covers the request in flight when the
+  # deadline passes: a Worker folder that keeps answering 500 can hold one
+  # listing for about ten minutes of retries across three endpoints.
+  @slice_deadline :timer.minutes(90)
   @slice_resume_seconds 5
   @minimum_upstream_pause_seconds 60
   @max_slice_requests 1_500
@@ -398,15 +403,19 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
   end
 
   defp run_sync(scan_root, job, provider, kind, request_budget, _quota, sync_fun) do
-    Gindex.run_with_request_budget(request_budget, fn ->
-      sync_fun.(
-        provider,
-        scan_root.base_url,
-        scan_root.root_path,
-        kind,
-        sync_opts(scan_root, job, scan_root.root_path)
-      )
-    end)
+    Gindex.run_with_request_budget(
+      request_budget,
+      fn ->
+        sync_fun.(
+          provider,
+          scan_root.base_url,
+          scan_root.root_path,
+          kind,
+          sync_opts(scan_root, job, scan_root.root_path)
+        )
+      end,
+      deadline_ms: @slice_deadline
+    )
   end
 
   defp request_budget(%{background_remaining: 0}, _provider_id, _cycle_id, _kind), do: 0

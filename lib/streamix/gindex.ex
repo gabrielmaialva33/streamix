@@ -36,7 +36,7 @@ defmodule Streamix.Gindex do
   defdelegate seconds_until_quota_reset(), to: QuotaGuard, as: :seconds_until_reset
   defdelegate sync_url(config), to: EndpointPolicy
   defdelegate acquire_pacing_slot(bucket), to: Pacer, as: :acquire
-  defdelegate run_with_request_budget(limit, fun), to: RequestBudget, as: :run
+  defdelegate run_with_request_budget(limit, fun, opts \\ []), to: RequestBudget, as: :run
 
   # Durable scan-root state. Oban executes work; it isn't the source of truth
   # for progress because completed jobs are intentionally pruned.

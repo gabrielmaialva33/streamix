@@ -210,6 +210,10 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- A GIndex scan slice could run past Oban's two-hour timeout and be killed mid-run: Worker folders that answer 500 on
+  every attempt cost about ten minutes of capped retries each, so a 1,500-request slice never reached its budget.
+  Slices now also yield after 90 minutes and resume from their saved progress.
+
 - The "Descobrir" row stayed empty in production: discovery ranked the torrent catalog's copies first and the web
   list, which shows Xtream titles only, then dropped them all. It now searches only the providers the web lists.
 
