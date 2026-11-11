@@ -94,7 +94,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.ListingQuery do
   def sorted(query, "rating_desc") do
     order_by(query, [series], [
       fragment("? DESC NULLS LAST", series.rating),
-      desc: series.year,
+      desc_nulls_last: series.year,
       asc: series.name,
       desc: series.id
     ])
@@ -117,7 +117,12 @@ defmodule Streamix.Iptv.Content.SeriesOps.ListingQuery do
   end
 
   def sorted(query, _sort) do
-    order_by(query, [series], desc: series.year, asc: series.name, desc: series.id)
+    # Newest first, a series without a year last (plain DESC puts NULL first).
+    order_by(query, [series],
+      desc_nulls_last: series.year,
+      asc: series.name,
+      desc: series.id
+    )
   end
 
   def count(query, true), do: select(query, [series], count(series.id, :distinct))

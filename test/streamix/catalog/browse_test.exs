@@ -35,6 +35,29 @@ defmodule Streamix.Catalog.BrowseTest do
       refute Ecto.assoc_loaded?(result.credits)
     end
 
+    test "list_visible_movies/2 opens on dated titles, those without a year last" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+
+      undated = movie_fixture(provider, %{name: "1 - Sem Ano", year: nil})
+      older = movie_fixture(provider, %{name: "Antigo", year: 1999})
+      newer = movie_fixture(provider, %{name: "Novo", year: 2025})
+
+      ours = [undated.id, older.id, newer.id]
+
+      # The database orders each batch: NULL years must not come first, or a
+      # catalog with thousands of them opens on them.
+      for opts <- [[limit: 10], [limit: 10, dedupe: false]] do
+        ids =
+          user.id
+          |> Streamix.Catalog.list_visible_movies(opts)
+          |> Enum.map(& &1.id)
+          |> Enum.filter(&(&1 in ours))
+
+        assert ids == [newer.id, older.id, undated.id], inspect(opts)
+      end
+    end
+
     test "list_visible_live_channels/2 filters by category across visible providers" do
       user = user_fixture()
       provider = provider_fixture(user, %{name: "Visible Live"})

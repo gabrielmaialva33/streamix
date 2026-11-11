@@ -64,7 +64,7 @@ defmodule Streamix.Iptv.Content.Movies.Queries do
     do:
       order_by(query, [m], [
         fragment("? DESC NULLS LAST", m.rating),
-        desc: m.year,
+        desc_nulls_last: m.year,
         asc: m.name,
         desc: m.id
       ])
@@ -76,7 +76,11 @@ defmodule Streamix.Iptv.Content.Movies.Queries do
     do: order_by(query, [m], [fragment("? DESC NULLS LAST", m.year), asc: m.name, desc: m.id])
 
   def sorted(query, "name_asc"), do: order_by(query, [m], asc: m.name, desc: m.id)
-  def sorted(query, _sort), do: order_by(query, [m], desc: m.year, asc: m.name, desc: m.id)
+  # Newest first. A title without a year (most often one the provider never
+  # matched, with no poster either) goes last: plain DESC would put NULL first
+  # and open the catalog on them.
+  def sorted(query, _sort),
+    do: order_by(query, [m], desc_nulls_last: m.year, asc: m.name, desc: m.id)
 
   def variant_page(query, sort, limit, offset) do
     page_ids =

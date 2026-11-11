@@ -57,7 +57,11 @@ defmodule Streamix.Iptv.Content.SeriesOps.Listings do
     show_adult
     |> ListingQuery.public()
     |> where([series, _provider], not is_nil(series.cover))
-    |> order_by([series], desc: series.rating, desc: series.year, asc: series.name)
+    |> order_by([series],
+      desc_nulls_last: series.rating,
+      desc_nulls_last: series.year,
+      asc: series.name
+    )
     |> limit(^limit)
     |> preload(^@public_summary_preloads)
     |> Repo.all()

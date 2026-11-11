@@ -98,6 +98,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Changed
 
+- Channel lists (catalog, guide, home) put the providers' placeholder and one-off event channels ("(01)", "[F1]
+  Piloto", "21:30 • Hawks x Lakers") after the named channels, so they open on real channels.
 - The TV guide (`/guide`) lists every channel with programming in the window, not the first 100 by name: favorites
   first, then channels with a real schedule (not one all-day placeholder program), 30 at a time with more loading as
   the list scrolls ("Mostrar mais canais"). Channels without a guide are left out (`airing_between:` on
@@ -242,6 +244,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- The movie and series catalogs opened on titles without a year (unmatched, most without a poster, such as "1 -
+  Harry Potter E A Pedra Filosofal"): newest-first sorting put NULL years first. They now come last.
 - The TV guide and the EPG "now/next" lines showed times in UTC (three hours ahead): the release has no time zone
   database, so `DateTime.shift_zone!/2` failed and the fallback printed UTC. Times are now Brasília's fixed UTC-3
   (`StreamixWeb.Content.LocalTime`), shared with the stations' clock.

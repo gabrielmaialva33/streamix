@@ -49,7 +49,7 @@ defmodule Streamix.Iptv.Channels do
 
     provider_id
     |> build_query(opts)
-    |> order_by(:name)
+    |> by_display_name()
     |> limit(^limit)
     |> offset(^offset)
     |> Repo.all()
@@ -69,7 +69,7 @@ defmodule Streamix.Iptv.Channels do
 
     user_id
     |> build_visible_query(opts)
-    |> order_by([c], asc: c.name)
+    |> by_display_name()
     |> limit(^limit)
     |> offset(^offset)
     |> Repo.all()
@@ -328,6 +328,16 @@ defmodule Streamix.Iptv.Channels do
     end
   end
 
+  # By name, with the provider's placeholder and one-off event channels
+  # ("(01)", "[PPV] 03", "21:30 • Atlanta Hawks x...") after the named ones, so
+  # a list opens on real channels.
+  defp by_display_name(query) do
+    order_by(query, [c],
+      asc: fragment("? ~ '^\\s*([(\\[#]|\\d{1,2}[:h]\\d{2})'", c.name),
+      asc: c.name
+    )
+  end
+
   # `airing_between: {starts_at, ends_at}` keeps the channels whose guide
   # has a program overlapping that window (what a TV guide can show).
   defp maybe_airing_between(query, nil), do: query
@@ -454,7 +464,7 @@ defmodule Streamix.Iptv.Channels do
     |> maybe_exclude_adult(show_adult)
     |> where([c, _p], not is_nil(c.stream_icon))
     |> exclude_dead()
-    |> order_by([c], asc: c.name)
+    |> by_display_name()
     |> limit(^limit)
     |> preload(:provider)
     |> Repo.all()

@@ -21,6 +21,20 @@ defmodule Streamix.Iptv.ChannelsTest do
     end
   end
 
+  test "lists named channels before placeholder and event channels" do
+    provider = global_provider_fixture()
+
+    for name <- ["(01)", "21:30 • Hawks x Lakers", "[F1] Piloto", "Globo SP", "01 - Band", "ESPN"],
+        do: channel_fixture(provider, %{name: name})
+
+    names = nil |> Channels.list_visible(limit: 50) |> Enum.map(& &1.name)
+
+    assert Enum.take(names, 3) == ["01 - Band", "ESPN", "Globo SP"]
+
+    assert names |> Enum.drop(3) |> Enum.sort() ==
+             Enum.sort(["(01)", "21:30 • Hawks x Lakers", "[F1] Piloto"])
+  end
+
   test "series names lose their part numbers" do
     for {name, key} <- [
           {"Chaves 02", "chaves"},
