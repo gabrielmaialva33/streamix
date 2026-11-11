@@ -206,22 +206,51 @@ defmodule Streamix.Iptv.Channels do
     end)
   end
 
+  # An exact title first; for a name left unmatched, the best-rated series
+  # whose title starts with it ("Chapolin" → "Chapolin Colorado").
   defp series_posters(keys) do
-    keys = keys |> Enum.reject(&(&1 == "")) |> Enum.uniq()
+    keys = keys |> Enum.reject(&(String.length(&1) < 3)) |> Enum.uniq()
+    exact = covers(keys, :exact)
+    missing = Enum.reject(keys, &Map.has_key?(exact, &1))
 
-    if keys == [] do
-      %{}
-    else
+    by_prefix =
+      missing
+      |> covers(:prefix)
+      |> Enum.flat_map(fn {title, cover} ->
+        for key <- missing, String.starts_with?(title, key <> " "), do: {key, cover}
+      end)
+      |> Enum.reverse()
+      |> Map.new()
+
+    Map.merge(by_prefix, exact)
+  end
+
+  defp covers([], _match), do: %{}
+
+  defp covers(keys, match) do
+    patterns = Enum.map(keys, &(Helpers.escape_like(&1) <> " %"))
+
+    base =
       from(s in Series,
         where: not is_nil(s.cover) and s.cover != "",
-        where: fragment("lower(coalesce(?, ?))", s.title, s.name) in ^keys,
         order_by: [desc: s.rating],
         select: {fragment("lower(coalesce(?, ?))", s.title, s.name), s.cover}
       )
-      |> Repo.all()
-      |> Enum.reverse()
-      |> Map.new()
-    end
+
+    query =
+      case match do
+        :exact ->
+          where(base, [s], fragment("lower(coalesce(?, ?))", s.title, s.name) in ^keys)
+
+        :prefix ->
+          where(
+            base,
+            [s],
+            fragment("lower(coalesce(?, ?)) LIKE ANY(?)", s.title, s.name, ^patterns)
+          )
+      end
+
+    query |> Repo.all() |> Enum.reverse() |> Map.new()
   end
 
   @doc false

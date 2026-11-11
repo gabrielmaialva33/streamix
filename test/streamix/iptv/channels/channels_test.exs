@@ -51,12 +51,18 @@ defmodule Streamix.Iptv.ChannelsTest do
       cover: "https://img.test/chaves-poster.jpg"
     })
 
+    series_content_fixture(provider, %{
+      title: "Chapolin Colorado",
+      cover: "https://img.test/chapolin-poster.jpg"
+    })
+
     channels =
       for {name, icon} <- [
             {"Chaves 02", "https://img.test/placeholder.png"},
             {"Doctor Who", "https://img.test/placeholder.png"},
             {"Breaking Bad", "https://img.test/placeholder.png"},
-            {"Seinfeld", "https://img.test/seinfeld-logo.png"}
+            {"Seinfeld", "https://img.test/seinfeld-logo.png"},
+            {"Chapolin 02", nil}
           ] do
         channel = channel_fixture(provider, %{name: name, stream_icon: icon})
 
@@ -74,6 +80,8 @@ defmodule Streamix.Iptv.ChannelsTest do
     assert by_name["Chaves 02"].logo == nil
     assert by_name["Doctor Who"] |> Map.take([:poster, :logo]) == %{poster: nil, logo: nil}
     assert by_name["Seinfeld"].logo == "https://img.test/seinfeld-logo.png"
+    # No series is called just "Chapolin": the one starting with it lends its poster.
+    assert by_name["Chapolin 02"].poster == "https://img.test/chapolin-poster.jpg"
     assert length(channels) == length(listed)
   end
 end
