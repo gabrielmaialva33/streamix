@@ -122,6 +122,34 @@ defmodule StreamixWeb.Home.CardsTest do
     refute public_channel_html =~ "<img"
   end
 
+  test "recommendations and home movie and series shelves keep a metadata row on every poster" do
+    items = [
+      %{id: 70, name: "Sem ano", provider_id: 7},
+      %{id: 71, name: "Com ano", year: 2026, provider_id: 7}
+    ]
+
+    shelves = [
+      render_component(&ContentCarousel.for_you_section/1, recommendations: items),
+      render_component(&Carousel.content_carousel/1,
+        type: :movies,
+        title: "Filmes",
+        items: items
+      ),
+      render_component(&Carousel.content_carousel/1, type: :series, title: "Séries", items: items)
+    ]
+
+    for html <- shelves do
+      document = LazyHTML.from_fragment(html)
+
+      assert Enum.count(LazyHTML.query(document, ".media-shelf-track [data-poster-metadata]")) ==
+               2
+
+      assert LazyHTML.query(document, "[data-poster-metadata]")
+             |> LazyHTML.text()
+             |> String.trim() == "2026"
+    end
+  end
+
   test "authenticated poster shelves use compact horizontal mobile cards" do
     movie = %{id: 60, name: "Filme", provider_id: 7}
 

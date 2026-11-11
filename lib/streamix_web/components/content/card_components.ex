@@ -102,8 +102,9 @@ defmodule StreamixWeb.Content.CardComponents do
             {@title}
           </h3>
           <p
-            :if={@subtitle not in [nil, ""]}
-            class="mt-1 truncate text-[10px] leading-none text-text-secondary sm:min-h-4 sm:text-xs sm:leading-normal"
+            data-poster-metadata
+            aria-hidden={if @subtitle in [nil, ""], do: "true"}
+            class="mt-1 min-h-[1em] truncate text-[10px] leading-none text-text-secondary sm:min-h-[1.5em] sm:text-xs sm:leading-normal"
           >
             {@subtitle}
           </p>

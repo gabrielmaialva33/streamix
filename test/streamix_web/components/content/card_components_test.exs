@@ -5,6 +5,32 @@ defmodule StreamixWeb.Content.CardComponentsTest do
 
   alias StreamixWeb.Content.CardComponents
 
+  test "movie and series posters reserve a metadata line even without a year" do
+    for {component, key} <- [
+          {&CardComponents.movie_card/1, :movie},
+          {&CardComponents.series_card/1, :series}
+        ],
+        year <- [nil, "", 2026] do
+      document =
+        component
+        |> render_component([{key, %{id: 44, name: "Título", year: year}}])
+        |> LazyHTML.from_fragment()
+
+      metadata = LazyHTML.query(document, "[data-poster-metadata]")
+      assert Enum.count(metadata) == 1
+
+      assert LazyHTML.text(metadata) |> String.trim() ==
+               if(year in [nil, ""], do: "", else: "2026")
+
+      assert LazyHTML.attribute(metadata, "aria-hidden") ==
+               if(year in [nil, ""], do: ["true"], else: [])
+
+      [classes] = LazyHTML.attribute(metadata, "class")
+      assert "min-h-[1em]" in String.split(classes)
+      assert "sm:min-h-[1.5em]" in String.split(classes)
+    end
+  end
+
   test "movie card exposes one semantic primary action and a sibling favorite control" do
     html =
       render_component(&CardComponents.movie_card/1,
