@@ -545,7 +545,7 @@ defmodule StreamixWeb.PlayerLive do
 
         assign(socket,
           start_at: start_at(type, params, slot),
-          station: %{slug: slug, name: station.name, next_title: next_label(slot.next)}
+          station: %{slug: slug, name: station.name, next_title: StationPaths.label(slot.next)}
         )
 
       {:error, _reason} ->
@@ -565,11 +565,6 @@ defmodule StreamixWeb.PlayerLive do
       _other -> params["t"] |> to_string() |> Integer.parse() |> offset_or_zero()
     end
   end
-
-  defp next_label(%{"subtitle" => subtitle, "title" => title}) when is_binary(subtitle),
-    do: "#{title} · #{subtitle}"
-
-  defp next_label(next), do: next["title"]
 
   defp offset_or_zero({seconds, ""}) when seconds > 0, do: seconds
   defp offset_or_zero(_parsed), do: 0

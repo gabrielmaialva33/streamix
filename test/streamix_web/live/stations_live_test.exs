@@ -67,8 +67,14 @@ defmodule StreamixWeb.StationsLiveTest do
     :ok = Phoenix.PubSub.subscribe(Streamix.PubSub, topic)
     {:ok, _} = Presence.track(self(), topic, "42", %{})
 
-    # The page hears the same diff; once it reached us it reached the view.
-    assert_receive %Phoenix.Socket.Broadcast{event: "presence_diff"}, 5_000
+    # The page hears the same diff; once this viewer's join reached us it
+    # reached the view. (A leave left over from an earlier test may come first.)
+    assert_receive %Phoenix.Socket.Broadcast{
+                     event: "presence_diff",
+                     payload: %{joins: %{"42" => _}}
+                   },
+                   5_000
+
     assert render(view) =~ "1 assistindo"
   end
 

@@ -67,6 +67,50 @@ defmodule StreamixWeb.Content.DisplayTitle do
   end
 
   @doc """
+  An episode's own name, without what repeats the series: the series title,
+  a "(1994)" year, an "S02 E14" or "S02E14" code, "Temporada 04 Episodio 02"
+  and a generic "Episódio 11". A name left in parentheses is unwrapped
+  ("Temporada 04 Episodio 02 (A limpeza do pátio)" → "A limpeza do pátio").
+  Nil when nothing of the episode's own remains.
+  """
+  @spec episode_name(String.t() | nil, String.t() | nil) :: String.t() | nil
+  def episode_name(nil, _series), do: nil
+
+  def episode_name(text, series) when is_binary(text) do
+    series_title = series |> to_string() |> clean() |> String.downcase()
+
+    text
+    |> episode()
+    |> drop_series_prefix(series_title)
+    |> String.replace(~r/^\s*\((?:19|20)\d{2}\)\s*/u, "")
+    |> String.replace(~r/^\s*[-–:·|]*\s*s\d{1,2}\s?e\d{1,4}\b\s*[-–:·|]*\s*/iu, "")
+    |> String.replace(~r/^\s*temporada\s+\d+\s+epis[oó]dio\s+\d+\s*[-–:·|]*\s*/iu, "")
+    |> String.replace(~r/^\s*epis[oó]dio\s+\d+\s*$/iu, "")
+    |> unwrap_parens()
+    |> collapse()
+    |> case do
+      "" -> nil
+      name -> name
+    end
+  end
+
+  defp drop_series_prefix(text, ""), do: text
+
+  defp drop_series_prefix(text, series_title) do
+    if String.starts_with?(String.downcase(text), series_title),
+      do:
+        text |> String.slice(String.length(series_title)..-1//1) |> String.trim_leading(" -–:·|"),
+      else: text
+  end
+
+  defp unwrap_parens(text) do
+    case Regex.run(~r/^\s*\((.+)\)\s*$/u, text) do
+      [_, inner] -> inner
+      nil -> text
+    end
+  end
+
+  @doc """
   A live channel name without the provider's list number and emoji
   ("(01) ⏰ 13:45 • Fenerbahçe x Slavia" → "13:45 • Fenerbahçe x Slavia").
   """

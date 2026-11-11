@@ -69,4 +69,25 @@ defmodule StreamixWeb.Content.DisplayTitleTest do
     assert DisplayTitle.channel("RECORD SIC TV RONDÔNIA FHD") == "RECORD SIC TV RONDÔNIA FHD"
     assert DisplayTitle.channel("(16)") == "(16)"
   end
+
+  describe "episode_name/2" do
+    test "keeps only what is the episode's own, from real provider names" do
+      for {raw, series, expected} <- [
+            {"Temporada 04 Episodio 02 (A limpeza do pátio)", "Chaves (1973)",
+             "A limpeza do pátio"},
+            {"The Office - S05E12 - Artigo da Família Prince", "The Office",
+             "Artigo da Família Prince"},
+            {"Big Bang: A Teoria - S08E22 - A Transmissão", "Big Bang: A Teoria",
+             "A Transmissão"},
+            {"Bob Lula Calça Tentáculos", "Bob Esponja", "Bob Lula Calça Tentáculos"},
+            {"Os Simpsons S02 E14", "Os Simpsons", nil},
+            {"Friends [L] (1994) S05 E23", "Friends [L]", nil},
+            {"Chapolin Colorado (1973) S04 E37", "Chapolin Colorado", nil},
+            {"Episódio 11", "Bob Esponja", nil},
+            {nil, "Lost", nil}
+          ] do
+        assert DisplayTitle.episode_name(raw, series) == expected, inspect(raw)
+      end
+    end
+  end
 end

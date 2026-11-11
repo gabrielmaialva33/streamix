@@ -103,23 +103,13 @@ defmodule StreamixWeb.StationsLive do
       name: station.name,
       description: station.description,
       poster: slot.item["poster"],
-      now: label(slot.item),
-      next: label(slot.next),
+      now: StationPaths.label(slot.item),
+      next: StationPaths.label(slot.next),
       progress: round(Programming.progress(slot) * 100),
       remaining: div(DateTime.diff(slot.ends_at, DateTime.utc_now(), :second), 60),
       viewers: StationPaths.viewers_topic(station.slug) |> Presence.list() |> map_size()
     }
   end
-
-  # "Friends · T2:E3 · Aquele do..." for an episode, "Title (1984)" for a film.
-  defp label(%{"subtitle" => subtitle} = item) when is_binary(subtitle),
-    do: "#{item["title"]} · #{subtitle}"
-
-  defp label(item), do: "#{item["title"]}#{year_suffix(item["year"])}"
-
-  # Catalog rows without a known year store 0; say nothing rather than "(0)".
-  defp year_suffix(year) when is_integer(year) and year > 0, do: " (#{year})"
-  defp year_suffix(_year), do: ""
 
   @impl true
   def render(assigns) do

@@ -9,6 +9,10 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Added
 
+- Station cards and the player's "A seguir" read cleanly: "Chaves · T4:E2 · A limpeza do pátio" instead of
+  "Chaves (1973) · T4:E2 · Temporada 04 Episodio 02 (A limpeza do pátio)". `DisplayTitle.episode_name/2` drops the
+  series title, a year, "S02 E14"/"S02E14", "Temporada X Episodio Y" and a generic "Episódio N", and the cleaning
+  runs at display time, so stored programs need no rebuild.
 - Series stations: random episodes around the clock, from one show ("Chaves 24h", "Os Simpsons 24h", "Friends 24h"
   and ten more) or a marathon of several ("Maratona de Sitcom", "Animação Adulta"). Series are named by TMDB id;
   the public copy with the most episodes plays, its episodes fetched from the provider when none are stored yet, and
