@@ -16,7 +16,7 @@ defmodule Streamix.Iptv.XtreamClient do
   """
 
   alias Streamix.Iptv.{Provider, XtreamCircuitBreaker}
-  alias Streamix.Iptv.Streaming.{ProviderRuntime, UpstreamPolicy}
+  alias Streamix.Iptv.Streaming.{ProviderEndpoints, ProviderRuntime, UpstreamPolicy}
   alias Streamix.Iptv.Sync.Telemetry
   alias Streamix.SafeLog
   alias Streamix.Security.UrlValidator
@@ -41,7 +41,7 @@ defmodule Streamix.Iptv.XtreamClient do
       |> Keyword.put(:domain_policy, UpstreamPolicy.domain_policy(provider))
 
     provider
-    |> Provider.url_chain()
+    |> ProviderEndpoints.chain()
     |> Enum.reduce_while({:error, :games_unavailable}, fn base, _error ->
       url =
         String.trim_trailing(base, "/") <>
@@ -50,8 +50,13 @@ defmodule Streamix.Iptv.XtreamClient do
           "/" <> URI.encode(provider.password, &URI.char_unreserved?/1)
 
       case games_request(url, opts) do
-        {:ok, items} -> {:halt, {:ok, items}}
-        _ -> {:cont, {:error, :games_unavailable}}
+        {:ok, items} ->
+          ProviderEndpoints.report(provider, base, :ok)
+          {:halt, {:ok, items}}
+
+        _ ->
+          ProviderEndpoints.report(provider, base, :down)
+          {:cont, {:error, :games_unavailable}}
       end
     end)
   end
@@ -190,16 +195,19 @@ defmodule Streamix.Iptv.XtreamClient do
   `api_call/5` path because the response is XML.
   """
   def get_xmltv(url, username, password, opts \\ []) do
-    base = String.trim_trailing(url, "/")
-
-    target =
-      "#{base}/xmltv.php?username=#{URI.encode_www_form(username)}&password=#{URI.encode_www_form(password)}"
-
     provider_id = circuit_key(url, username, opts)
 
     tracked_control_call(provider_id, fn ->
       with_circuit_breaker(provider_id, "get_xmltv", fn ->
-        request_document(target, opts, :timer.seconds(120), :empty_xmltv)
+        run_document_call(
+          url,
+          username,
+          password,
+          opts,
+          :timer.seconds(120),
+          :empty_xmltv,
+          &xmltv_target/3
+        )
       end)
     end)
   end
@@ -222,17 +230,19 @@ defmodule Streamix.Iptv.XtreamClient do
   job — we hand back raw bytes so the caller can stream it.
   """
   def get_m3u_plus(url, username, password, opts \\ []) do
-    base = String.trim_trailing(url, "/")
-
-    target =
-      "#{base}/get.php?username=#{URI.encode_www_form(username)}" <>
-        "&password=#{URI.encode_www_form(password)}&type=m3u_plus&output=ts"
-
     provider_id = circuit_key(url, username, opts)
 
     tracked_control_call(provider_id, fn ->
       with_circuit_breaker(provider_id, "get_m3u_plus", fn ->
-        request_document(target, opts, :timer.seconds(180), :empty_m3u)
+        run_document_call(
+          url,
+          username,
+          password,
+          opts,
+          :timer.seconds(180),
+          :empty_m3u,
+          &m3u_target/3
+        )
       end)
     end)
   end
@@ -261,15 +271,118 @@ defmodule Streamix.Iptv.XtreamClient do
   # ============================================================================
 
   defp api_call(base_url, username, password, action, extra_params, opts) do
-    url = build_url(base_url, username, password, action, extra_params)
+    if Keyword.get(opts, :track, true) do
+      tracked_api_call(base_url, username, password, action, extra_params, opts)
+    else
+      # Untracked calls (endpoint health probes) must not write provider
+      # runtime stats or circuit errors: a dead alternate being probed is
+      # not evidence the provider itself degraded.
+      run_api_call(base_url, username, password, action, extra_params, opts)
+    end
+  end
+
+  defp tracked_api_call(base_url, username, password, action, extra_params, opts) do
     action_name = action || "account_info"
 
     provider_id = circuit_key(base_url, username, opts)
 
     tracked_control_call(provider_id, fn ->
-      with_circuit_breaker(provider_id, action_name, fn -> do_api_call(url, 0, opts) end)
+      with_circuit_breaker(provider_id, action_name, fn ->
+        run_api_call(base_url, username, password, action, extra_params, opts)
+      end)
     end)
   end
+
+  defp run_api_call(base_url, username, password, action, extra_params, opts) do
+    with_endpoint_bases(base_url, opts, fn base, call_opts ->
+      base
+      |> build_url(username, password, action, extra_params)
+      |> do_api_call(0, call_opts)
+    end)
+  end
+
+  # Multi-domain providers walk `ProviderEndpoints.chain/1` — ranked by
+  # health/latency — inside a single tracked call + circuit-breaker span,
+  # so one logical request counts as one circuit/runtime outcome no matter
+  # how many domains it tried. Bases skipped on failover-eligible errors
+  # are reported :down and the one that answered is reported :ok; errors
+  # that mean "the panel is up but rejecting us" (401/403/404/429, decode
+  # failures) halt the walk instead of hammering every domain.
+  defp with_endpoint_bases(base_url, opts, fun) do
+    case endpoint_bases(base_url, opts) do
+      [_single] ->
+        fun.(base_url, opts)
+
+      bases ->
+        last = List.last(bases)
+
+        Enum.reduce_while(bases, nil, fn base, _acc ->
+          # A dead domain's transport error must not burn the 3×/10-90s
+          # retry budget while a live domain waits: every base but the
+          # last retries transport failures zero times. Only the final
+          # candidate keeps the configured retry/backoff behaviour; 429
+          # handling is untouched.
+          call_opts = base_call_opts(base, last, opts)
+
+          base |> fun.(call_opts) |> walk_step(opts[:provider], base, base == last)
+        end)
+    end
+  end
+
+  defp base_call_opts(base, last, opts) when base == last, do: opts
+  defp base_call_opts(_base, _last, opts), do: Keyword.put(opts, :transport_max_retries, 0)
+
+  defp run_document_call(url, username, password, opts, timeout, empty_error, target_fun) do
+    with_endpoint_bases(url, opts, fn base, call_opts ->
+      request_document(target_fun.(base, username, password), call_opts, timeout, empty_error)
+    end)
+  end
+
+  defp xmltv_target(base, username, password) do
+    "#{String.trim_trailing(base, "/")}/xmltv.php" <>
+      "?username=#{URI.encode_www_form(username)}" <>
+      "&password=#{URI.encode_www_form(password)}"
+  end
+
+  defp m3u_target(base, username, password) do
+    "#{String.trim_trailing(base, "/")}/get.php" <>
+      "?username=#{URI.encode_www_form(username)}" <>
+      "&password=#{URI.encode_www_form(password)}&type=m3u_plus&output=ts"
+  end
+
+  defp walk_step({:ok, _} = result, provider, base, _last?) do
+    ProviderEndpoints.report(provider, base, :ok)
+    {:halt, result}
+  end
+
+  defp walk_step(result, _provider, _base, true), do: {:halt, result}
+
+  defp walk_step(result, provider, base, false) do
+    if failover_error?(result) do
+      ProviderEndpoints.report(provider, base, :down)
+      {:cont, result}
+    else
+      {:halt, result}
+    end
+  end
+
+  defp endpoint_bases(base_url, opts) do
+    with %Provider{provider_type: :xtream} = provider <- Keyword.get(opts, :provider),
+         true <- base_url in Provider.url_chain(provider),
+         false <- Keyword.get(opts, :endpoint_failover) == false,
+         [_ | _] = chain <- ProviderEndpoints.chain(provider) do
+      chain
+    else
+      _ -> [base_url]
+    end
+  end
+
+  defp failover_error?({:error, :unsafe_url}), do: true
+  defp failover_error?({:error, {:transport_error, _reason}}), do: true
+  defp failover_error?({:error, %Req.TransportError{}}), do: true
+  defp failover_error?({:error, :too_many_redirects}), do: true
+  defp failover_error?({:error, {:http_error, status}}) when status >= 500, do: true
+  defp failover_error?(_result), do: false
 
   defp request_document(target, opts, default_timeout, empty_error) do
     opts = Keyword.put(opts, :domain_policy, UpstreamPolicy.domain_policy(opts[:provider]))
@@ -304,6 +417,7 @@ defmodule Streamix.Iptv.XtreamClient do
   defp do_api_call(url, attempt, opts) do
     request_timeout = Keyword.get(opts, :request_timeout, @timeout)
     max_retries = Keyword.get(opts, :max_retries, @max_retries)
+    max_transport_retries = Keyword.get(opts, :transport_max_retries, max_retries)
 
     opts = Keyword.put(opts, :domain_policy, UpstreamPolicy.domain_policy(opts[:provider]))
 
@@ -344,13 +458,13 @@ defmodule Streamix.Iptv.XtreamClient do
       {:ok, %{status: status}} ->
         {:error, {:http_error, status}}
 
-      {:error, %Req.TransportError{reason: reason}} when attempt < max_retries ->
+      {:error, %Req.TransportError{reason: reason}} when attempt < max_transport_retries ->
         # Same full-jitter backoff as the 429 branch — see comment above.
         delay = full_jitter_delay(attempt)
 
         Logger.warning(
           "[XtreamClient] Transport error #{SafeLog.redact_inspect(reason)}, " <>
-            "retry #{attempt + 1}/#{max_retries}"
+            "retry #{attempt + 1}/#{max_transport_retries}"
         )
 
         Process.sleep(delay)

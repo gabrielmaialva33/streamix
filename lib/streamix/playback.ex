@@ -13,6 +13,7 @@ defmodule Streamix.Playback do
     CapacityTelemetry,
     FailoverPolicy,
     LiveProxy,
+    ProviderEndpoints,
     RedirectResolver,
     SourceSelector,
     StreamErrors,
@@ -65,10 +66,17 @@ defmodule Streamix.Playback do
 
   @doc """
   Builds the failover URL chain for a provider without exposing provider internals.
+
+  The alternates follow `ProviderEndpoints.chain/1`, the ranked domain order.
   """
   def provider_stream_url_chain(provider, original_url) do
-    FailoverPolicy.build_url_chain(original_url, Provider.url_chain(provider))
+    FailoverPolicy.build_url_chain(original_url, ProviderEndpoints.chain(provider))
   end
+
+  @doc """
+  Returns the provider's currently preferred base URL (ranked endpoint order).
+  """
+  defdelegate provider_base_url(provider), to: ProviderEndpoints, as: :base_url
 
   defdelegate sort_stream_sources(sources, opts \\ []), to: SourceSelector, as: :sort
   defdelegate live_channel_stream_url(channel, provider), to: LiveChannel, as: :stream_url

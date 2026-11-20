@@ -3,7 +3,7 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbeTest do
 
   import ExUnit.CaptureLog
 
-  alias Streamix.Iptv.Streaming.DeliveryProbe
+  alias Streamix.Iptv.Streaming.{DeliveryProbe, ProviderEndpoints}
 
   @user "megauser"
   @pass "s3cr3t-Pa55word"
@@ -299,6 +299,19 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbeTest do
                DeliveryProbe.decide(context.provider, :channel, context.channel)
 
       assert hops() == 2
+    end
+
+    test "the probe roots at the ranked provider endpoint", context do
+      provider = Map.put(context.provider, :urls, ["http://#{@cdn}"])
+      ProviderEndpoints.report(provider, "http://#{@cdn}", :ok)
+
+      record(&hls/1)
+
+      assert {:ok, {:hls, root}} =
+               DeliveryProbe.decide(provider, :channel, %{id: 9, stream_id: 601})
+
+      assert root == "http://#{@cdn}/live/#{@user}/#{@pass}/601.ts"
+      assert_received {:hop, "GET", @cdn, "/live/megauser/s3cr3t-Pa55word/601.ts", ""}
     end
 
     test "a dead or failing channel is unavailable", context do

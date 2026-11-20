@@ -217,7 +217,10 @@ config :logger, :default_formatter,
     :native_error_name,
     :native_error_message,
     :api_error_code,
-    :reason_kind
+    :reason_kind,
+    :provider_id,
+    :endpoint_host,
+    :host
   ]
 
 # Use Jason for JSON parsing in Phoenix

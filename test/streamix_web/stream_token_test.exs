@@ -7,6 +7,7 @@ defmodule StreamixWeb.StreamTokenTest do
   alias Streamix.Billing.Plan
   alias Streamix.Billing.Subscription
   alias Streamix.Iptv.{Episode, Season}
+  alias Streamix.Iptv.Streaming.ProviderEndpoints
   alias Streamix.Repo
   alias StreamixWeb.StreamToken
 
@@ -61,6 +62,27 @@ defmodule StreamixWeb.StreamTokenTest do
     assert {:ok, url, "movie", %{content_id: content_id}} = StreamToken.verify_and_get_url(token)
     assert content_id == movie.id
     assert url =~ "/movie/#{provider.username}/#{provider.password}/#{movie.stream_id}.mp4"
+  end
+
+  test "signed content URLs are built from the ranked provider endpoint" do
+    user = user_fixture()
+    plan = plan_fixture()
+    _subscription = subscription_fixture(user, plan)
+
+    provider =
+      provider_fixture(user, %{
+        visibility: "global",
+        is_system: true,
+        urls: ["https://ranked-alt.example.com"]
+      })
+
+    ProviderEndpoints.report(provider, "https://ranked-alt.example.com", :ok)
+
+    movie = movie_fixture(provider, %{stream_id: 777_001})
+    token = StreamToken.sign_movie(movie.id, user.id)
+
+    assert {:ok, url, "movie", _} = StreamToken.verify_and_get_url(token)
+    assert url =~ "https://ranked-alt.example.com/movie/"
   end
 
   test "public and private owned content still verifies without subscription" do

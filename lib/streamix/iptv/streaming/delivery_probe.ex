@@ -53,7 +53,7 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbe do
 
   require Logger
 
-  alias Streamix.Iptv.Streaming.{DirectUrl, RedirectResolver, UpstreamPolicy}
+  alias Streamix.Iptv.Streaming.{DirectUrl, ProviderEndpoints, RedirectResolver, UpstreamPolicy}
   alias Streamix.Iptv.Streaming.XtreamHls.Sessions
   alias Streamix.Iptv.XtreamClient
 
@@ -210,7 +210,7 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbe do
   defp probe(provider, :channel, channel) do
     url =
       XtreamClient.live_stream_url(
-        provider.url,
+        ProviderEndpoints.base_url(provider),
         provider.username,
         provider.password,
         channel.stream_id
@@ -406,7 +406,7 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbe do
   defp stream_url(provider, :movie, stream_id, extension),
     do:
       XtreamClient.movie_stream_url(
-        provider.url,
+        ProviderEndpoints.base_url(provider),
         provider.username,
         provider.password,
         stream_id,
@@ -416,7 +416,7 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbe do
   defp stream_url(provider, :episode, stream_id, extension),
     do:
       XtreamClient.episode_stream_url(
-        provider.url,
+        ProviderEndpoints.base_url(provider),
         provider.username,
         provider.password,
         stream_id,

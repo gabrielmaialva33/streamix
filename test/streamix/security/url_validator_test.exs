@@ -57,5 +57,48 @@ defmodule Streamix.Security.UrlValidatorTest do
         assert {:error, :unsafe_url} = UrlValidator.validate_url("http://224.0.0.1/image.jpg")
       end)
     end
+
+    test "an unresolvable host is resolved once then served from the negative cache" do
+      parent = self()
+      host = "gone-#{System.unique_integer([:positive])}.example.invalid"
+
+      resolver = fn _host, _family, _timeout ->
+        send(parent, :resolve)
+        {:error, :nxdomain}
+      end
+
+      capture_log(fn ->
+        assert {:error, :unsafe_url} =
+                 UrlValidator.validate_url("https://#{host}/image.jpg", resolver: resolver)
+
+        assert {:error, :unsafe_url} =
+                 UrlValidator.validate_url("https://#{host}/image.jpg", resolver: resolver)
+      end)
+
+      # Two families resolved on the first call, nothing on the second.
+      assert_received :resolve
+      assert_received :resolve
+      refute_received :resolve
+    end
+
+    test "resolution is bounded by the DNS timeout" do
+      host = "slow-#{System.unique_integer([:positive])}.example.invalid"
+
+      # Simulates a resolver that hangs past the bounded timeout; the task
+      # is killed long before this sleep ends.
+      resolver = fn _host, _family, _timeout ->
+        :timer.sleep(30_000)
+        {:ok, []}
+      end
+
+      started_at = System.monotonic_time(:millisecond)
+
+      capture_log(fn ->
+        assert {:error, :unsafe_url} =
+                 UrlValidator.validate_url("https://#{host}/image.jpg", resolver: resolver)
+      end)
+
+      assert System.monotonic_time(:millisecond) - started_at < 15_000
+    end
   end
 end

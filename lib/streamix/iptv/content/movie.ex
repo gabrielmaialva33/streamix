@@ -16,6 +16,8 @@ defmodule Streamix.Iptv.Movie do
     XtreamClient
   }
 
+  alias Streamix.Iptv.Streaming.ProviderEndpoints
+
   @type t :: %__MODULE__{}
 
   schema "movies" do
@@ -133,7 +135,7 @@ defmodule Streamix.Iptv.Movie do
     extension = ext || "mp4"
 
     XtreamClient.movie_stream_url(
-      provider.url,
+      ProviderEndpoints.base_url(provider),
       provider.username,
       provider.password,
       stream_id,

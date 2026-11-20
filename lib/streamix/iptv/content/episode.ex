@@ -6,6 +6,7 @@ defmodule Streamix.Iptv.Episode do
   import Ecto.Changeset
 
   alias Streamix.Iptv.{CatalogItem, Season, XtreamClient}
+  alias Streamix.Iptv.Streaming.ProviderEndpoints
 
   @type t :: %__MODULE__{}
 
@@ -69,7 +70,7 @@ defmodule Streamix.Iptv.Episode do
     extension = ext || "mp4"
 
     XtreamClient.episode_stream_url(
-      provider.url,
+      ProviderEndpoints.base_url(provider),
       provider.username,
       provider.password,
       episode_id,

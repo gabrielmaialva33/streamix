@@ -6,6 +6,7 @@ defmodule Streamix.Iptv.LiveChannel do
   import Ecto.Changeset
 
   alias Streamix.Iptv.{CatalogItem, Provider, XtreamClient}
+  alias Streamix.Iptv.Streaming.ProviderEndpoints
 
   @type t :: %__MODULE__{}
 
@@ -56,6 +57,11 @@ defmodule Streamix.Iptv.LiveChannel do
   Builds the stream URL for this live channel.
   """
   def stream_url(%__MODULE__{stream_id: stream_id}, %Provider{} = provider) do
-    XtreamClient.live_stream_url(provider.url, provider.username, provider.password, stream_id)
+    XtreamClient.live_stream_url(
+      ProviderEndpoints.base_url(provider),
+      provider.username,
+      provider.password,
+      stream_id
+    )
   end
 end

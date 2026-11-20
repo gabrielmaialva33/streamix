@@ -24,7 +24,11 @@ defmodule Streamix.Iptv.ProviderHealthMonitor do
 
   use GenServer
 
-  alias Streamix.Iptv.ProviderHealth
+  import Ecto.Query
+
+  alias Streamix.Iptv.{Provider, ProviderHealth}
+  alias Streamix.Iptv.Streaming.ProviderEndpoints
+  alias Streamix.Repo
 
   require Logger
 
@@ -96,11 +100,30 @@ defmodule Streamix.Iptv.ProviderHealthMonitor do
   defp do_refresh do
     sample = build_sample()
     :ets.insert(@table_name, {@cache_key, sample})
+    refresh_due_endpoints()
   rescue
     e ->
       # An individual refresh failure shouldn't crash the monitor —
       # keep the last-known-good sample.
       Logger.warning("[ProviderHealthMonitor] refresh failed: #{Exception.message(e)}")
+  end
+
+  # Multi-domain providers get their endpoint ranking re-probed in a
+  # supervised task, so a dead domain is demoted in the background and the
+  # 30s monitor never blocks on upstream.
+  defp refresh_due_endpoints do
+    Provider
+    |> where([p], p.provider_type == :xtream and p.is_active == true)
+    |> Repo.all()
+    |> Enum.each(&maybe_refresh_endpoints/1)
+  end
+
+  defp maybe_refresh_endpoints(provider) do
+    if length(Provider.url_chain(provider)) > 1 and ProviderEndpoints.refresh_due?(provider) do
+      Task.Supervisor.start_child(Streamix.TaskSupervisor, fn ->
+        ProviderEndpoints.refresh(provider)
+      end)
+    end
   end
 
   defp build_sample do

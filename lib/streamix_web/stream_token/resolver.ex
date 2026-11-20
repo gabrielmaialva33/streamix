@@ -691,20 +691,23 @@ defmodule StreamixWeb.StreamToken.Resolver do
 
   defp build_provider_content_url(provider, "movie", stream_id, extension) do
     ext = extension || "mp4"
-    url = "#{provider.url}/movie/#{provider.username}/#{provider.password}/#{stream_id}.#{ext}"
+    base = Streamix.Playback.provider_base_url(provider)
+    url = "#{base}/movie/#{provider.username}/#{provider.password}/#{stream_id}.#{ext}"
     {:ok, url, provider.id}
   end
 
   defp build_provider_content_url(provider, "series", stream_id, extension) do
     ext = extension || "mp4"
-    url = "#{provider.url}/series/#{provider.username}/#{provider.password}/#{stream_id}.#{ext}"
+    base = Streamix.Playback.provider_base_url(provider)
+    url = "#{base}/series/#{provider.username}/#{provider.password}/#{stream_id}.#{ext}"
     {:ok, url, provider.id}
   end
 
   defp build_provider_content_url(provider, "live", stream_id, _extension) do
     # Use .ts for direct MPEG-TS streaming (not .m3u8 which is a playlist)
     # to avoid mixed content issues with HLS segment URLs.
-    url = "#{provider.url}/live/#{provider.username}/#{provider.password}/#{stream_id}.ts"
+    base = Streamix.Playback.provider_base_url(provider)
+    url = "#{base}/live/#{provider.username}/#{provider.password}/#{stream_id}.ts"
     {:ok, url, provider.id}
   end
 

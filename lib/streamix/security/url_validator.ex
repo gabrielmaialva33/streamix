@@ -32,17 +32,17 @@ defmodule Streamix.Security.UrlValidator do
          :ok <- validate_scheme(uri.scheme),
          :ok <- validate_host_present(uri.host),
          :ok <- validate_userinfo(uri.userinfo) do
-      validate_network_target(uri.host, allow_private_network?)
+      validate_network_target(uri.host, allow_private_network?, opts)
     end
   end
 
   def validate_url(_, _opts), do: {:error, :unsafe_url}
 
-  defp validate_network_target(_host, true), do: :ok
+  defp validate_network_target(_host, true, _opts), do: :ok
 
-  defp validate_network_target(host, false) do
+  defp validate_network_target(host, false, opts) do
     with :ok <- validate_host_not_ip_literal(host) do
-      validate_resolved_ip(host)
+      validate_resolved_ip(host, opts)
     end
   end
 
@@ -87,7 +87,7 @@ defmodule Streamix.Security.UrlValidator do
     case :inet.parse_address(String.to_charlist(host)) do
       {:ok, ip} ->
         if private_ip?(ip) do
-          Logger.warning("SSRF blocked: private IP literal #{host}")
+          Logger.warning("SSRF blocked: private IP literal", host: host)
           {:error, :unsafe_url}
         else
           :ok
@@ -98,19 +98,16 @@ defmodule Streamix.Security.UrlValidator do
     end
   end
 
-  defp validate_resolved_ip(host) do
-    addresses = resolve_all_addresses(host)
+  defp validate_resolved_ip(host, opts) do
+    addresses = resolve_all_addresses(host, opts)
 
     cond do
       addresses == [] ->
-        Logger.warning("SSRF blocked: hostname could not be resolved")
+        Logger.warning("SSRF blocked: hostname could not be resolved", host: host)
         {:error, :unsafe_url}
 
-      unsafe_address = Enum.find(addresses, &private_ip?/1) ->
-        Logger.warning(
-          "SSRF blocked: #{host} resolves to private IP #{format_ip(unsafe_address)}"
-        )
-
+      _unsafe_address = Enum.find(addresses, &private_ip?/1) ->
+        Logger.warning("SSRF blocked: hostname resolves to private IP", host: host)
         {:error, :unsafe_url}
 
       true ->
@@ -118,17 +115,66 @@ defmodule Streamix.Security.UrlValidator do
     end
   end
 
-  defp resolve_all_addresses(host) do
-    host = String.to_charlist(host)
+  @l1_cache :streamix_l1_cache
+  @negative_ttl :timer.minutes(1)
+
+  # A dead domain previously cost two sequential `:inet.getaddrs` calls
+  # (:inet then :inet6), each bounded only by the resolver's own timeouts —
+  # ~23 s measured on a SERVFAIL host, paid on every attempt. Families now
+  # resolve concurrently with a bounded timeout, and "could not be
+  # resolved" is negative-cached per host for 60 s so repeat
+  # attempts are cheap. Positive results are never cached: DNS is allowed
+  # to heal, and a resolved-private verdict is never memoised as safe.
+  defp resolve_all_addresses(host, opts) do
+    if negatively_cached?(host) do
+      []
+    else
+      addresses = do_resolve(host, opts)
+      if addresses == [], do: cache_unresolvable(host)
+      addresses
+    end
+  end
+
+  defp do_resolve(host, opts) do
+    resolver = Keyword.get(opts, :resolver, &default_resolver/3)
+    timeout = resolve_timeout_ms()
+    host_chars = String.to_charlist(host)
 
     [:inet, :inet6]
-    |> Enum.flat_map(fn family ->
-      case :inet.getaddrs(host, family) do
-        {:ok, addresses} -> addresses
-        {:error, _reason} -> []
-      end
+    |> Task.async_stream(
+      fn family -> resolver.(host_chars, family, timeout) end,
+      max_concurrency: 2,
+      timeout: timeout + 500,
+      on_timeout: :kill_task
+    )
+    |> Enum.flat_map(fn
+      {:ok, {:ok, addresses}} -> addresses
+      _ -> []
     end)
     |> Enum.uniq()
+  end
+
+  defp default_resolver(host, family, timeout), do: :inet.getaddrs(host, family, timeout)
+
+  defp resolve_timeout_ms do
+    Application.get_env(:streamix, :url_validator_dns_timeout_ms, 2_000)
+  end
+
+  defp negatively_cached?(host) do
+    ConCache.get(@l1_cache, {:dns_unresolvable, host}) == true
+  rescue
+    _ -> false
+  end
+
+  defp cache_unresolvable(host) do
+    ConCache.put(@l1_cache, {:dns_unresolvable, host}, %ConCache.Item{
+      value: true,
+      ttl: @negative_ttl
+    })
+
+    :ok
+  rescue
+    _ -> :ok
   end
 
   defp private_ip?({0, _, _, _}), do: true
@@ -154,7 +200,4 @@ defmodule Streamix.Security.UrlValidator do
   end
 
   defp private_ip?(_), do: false
-
-  defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
-  defp format_ip(ip) when is_tuple(ip), do: :inet.ntoa(ip) |> to_string()
 end

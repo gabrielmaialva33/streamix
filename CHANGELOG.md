@@ -261,6 +261,9 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Xtream providers fail over across all registered domains for sync, health, metadata, EPG and playback, and
+  prefer the fastest live domain; a dead domain no longer stalls requests for ~23 s or caps live viewing at one
+  stream.
 - Audio no longer crackles or hisses on Bluetooth headphones and phones in the software (AVPlayer) player: the
   AudioWorklet buffer is sized above a Bluetooth sink's render burst (mobile 48, desktop 24), since without
   SharedArrayBuffer every audio chunk is a main-thread round trip.

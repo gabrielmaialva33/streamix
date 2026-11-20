@@ -21,7 +21,7 @@ defmodule Streamix.Iptv.Streaming.XtreamDelivery do
   keep their own route.
   """
 
-  alias Streamix.Iptv.Streaming.DeliveryProbe
+  alias Streamix.Iptv.Streaming.{DeliveryProbe, ProviderEndpoints}
   alias Streamix.Iptv.XtreamClient
 
   @extension ~r/^[a-z0-9]{1,8}$/
@@ -178,7 +178,7 @@ defmodule Streamix.Iptv.Streaming.XtreamDelivery do
 
   defp stream_url(provider, :movie, content, extension) do
     XtreamClient.movie_stream_url(
-      provider.url,
+      ProviderEndpoints.base_url(provider),
       provider.username,
       provider.password,
       content.stream_id,
@@ -188,7 +188,7 @@ defmodule Streamix.Iptv.Streaming.XtreamDelivery do
 
   defp stream_url(provider, :episode, content, extension) do
     XtreamClient.episode_stream_url(
-      provider.url,
+      ProviderEndpoints.base_url(provider),
       provider.username,
       provider.password,
       content.episode_id,
