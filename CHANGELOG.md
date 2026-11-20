@@ -98,6 +98,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Changed
 
+- The release turns off BEAM scheduler busy-waiting (`+sbwt none +sbwtdcpu none +sbwtdio none`, overridable via
+  `ELIXIR_ERL_OPTIONS`): on the shared VPS an idle node spent ~10% of a core spinning.
 - The qdrant image moves to v1.20.2 and the postgres image to TimescaleDB 2.32.0-pg17 in both compose files.
   Production only picks them up when an operator recreates the `qdrant`/`postgres` services by hand; a TimescaleDB
   recreate needs `ALTER EXTENSION timescaledb UPDATE;` before restarting the app.
