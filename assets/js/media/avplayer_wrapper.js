@@ -162,17 +162,20 @@ export class AVPlayerWrapper {
       // Audio/Video sync strategy:
       // - Prefer browser-native WebCodecs/hardware when the full decode pipeline exists
       // - Fall back to WASM decoders for browsers/codecs that still need compatibility
-      // - Minimize AudioWorklet buffer to reduce audio latency
+      // - Size the AudioWorklet buffer above one sink render burst
       // - Enable jitter buffer for smoother sync adjustments
-      // Audio worklet buffer: 10 is the libmedia default. We previously
-      // forced it down to 4 for "low latency", but on low-end Android
-      // Chrome and older iPhones a buffer that small underruns and the
-      // audio crackles or drops out. Detect mobile and back off to a
-      // safer value there.
+      const userAgent = this._navigator.userAgent || "";
+      const isMobile =
+        /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent) ||
+        (/Macintosh/i.test(userAgent) && (this._navigator.maxTouchPoints || 0) > 1);
       const isLowEndMobile =
-        /Android|iPhone|iPad/i.test(this._navigator.userAgent || "") &&
-        (this._navigator.hardwareConcurrency || 4) <= 4;
-      const audioWorkletBufferLength = isLowEndMobile ? 10 : 6;
+        /Android|iPhone|iPad/i.test(userAgent) && (this._navigator.hardwareConcurrency || 4) <= 4;
+      // Without SharedArrayBuffer every audio chunk is a main-thread
+      // round trip, and Bluetooth/large-burst sinks drain the worklet's
+      // double buffer in one render burst. Keep it above one burst;
+      // libmedia offsets the A/V clock by 1.5x the buffer, so lip sync
+      // is unaffected.
+      const audioWorkletBufferLength = isMobile ? 48 : 24;
 
       // Jitter buffer: previously hard-pinned to 0.2-1s for "tight sync".
       // That works on a clean desktop network but starves on flaky
@@ -773,6 +776,15 @@ export class AVPlayerWrapper {
     if (this.player) {
       const player = this.player;
       this.player = null;
+
+      try {
+        const audioStutter = player.getStats?.()?.audioStutter;
+        if (audioStutter > 0) {
+          log.warn("Audio underruns during playback", { audioStutter });
+        }
+      } catch (_error) {
+        // getStats is best-effort telemetry; never block teardown on it
+      }
 
       await stopThenDestroyPlaybackEngine(player, {
         onError: (operation, error) => log.warn(`Error during AVPlayer ${operation}:`, error),

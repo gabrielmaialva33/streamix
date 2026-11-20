@@ -447,6 +447,86 @@ test("preserves the default AVPlayer wrapper export for existing module consumer
   assert.equal(avplayerModule.default, AVPlayerWrapper);
 });
 
+const audioBufferLengthFor = async (navigatorRef) => {
+  let options;
+  const wrapper = createWrapper({
+    createPlayer: (opts) => {
+      options = opts;
+      return createPlayer();
+    },
+    navigatorRef,
+  });
+  await wrapper.init();
+  await wrapper.destroy();
+  return options.audioWorkletBufferLength;
+};
+
+test("audio worklet buffer is large on phones and smaller on desktop", async () => {
+  assert.equal(
+    await audioBufferLengthFor({
+      hardwareConcurrency: 8,
+      userAgent:
+        "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Mobile",
+    }),
+    48,
+  );
+  assert.equal(
+    await audioBufferLengthFor({
+      hardwareConcurrency: 16,
+      userAgent:
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0",
+    }),
+    24,
+  );
+  // iPadOS sends a desktop Macintosh UA; touch points reveal it.
+  assert.equal(
+    await audioBufferLengthFor({
+      hardwareConcurrency: 8,
+      maxTouchPoints: 5,
+      userAgent:
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+    }),
+    48,
+  );
+});
+
+test("destroy logs audio underruns and never fails on missing or throwing getStats", async (t) => {
+  const warnings = [];
+  const previousWarn = console.warn;
+  console.warn = (...args) => warnings.push(args);
+  t.after(() => {
+    console.warn = previousWarn;
+  });
+
+  const wrapper = createWrapper({
+    createPlayer: () => createPlayer({ getStats: () => ({ audioStutter: 3 }) }),
+  });
+  await wrapper.init();
+  await wrapper.destroy();
+  assert.ok(
+    warnings.some(
+      (args) =>
+        String(args[0]).includes("Audio underruns during playback") &&
+        args.some((arg) => arg?.audioStutter === 3),
+    ),
+  );
+
+  const missing = createWrapper();
+  await missing.init();
+  await missing.destroy();
+
+  const throwing = createWrapper({
+    createPlayer: () =>
+      createPlayer({
+        getStats: () => {
+          throw new Error("stats unavailable");
+        },
+      }),
+  });
+  await throwing.init();
+  await throwing.destroy();
+});
+
 test("late play completion after destroy cannot report playback or revive wrapper state", async (t) => {
   const pending = deferred();
   const runtime = createRuntime();

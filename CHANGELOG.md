@@ -256,6 +256,9 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Audio no longer crackles or hisses on Bluetooth headphones and phones in the software (AVPlayer) player: the
+  AudioWorklet buffer is sized above a Bluetooth sink's render burst (mobile 48, desktop 24), since without
+  SharedArrayBuffer every audio chunk is a main-thread round trip.
 - Drive movies and series showed their file name ("007 (1969) - 007 A Serviço Secreto... [1969] 1080p Dual Áudio
   5.1") although TMDB had matched them: TMDB details were only read when a synopsis, cast or images were missing,
   and the matcher had already stored a synopsis. A missing title or year now counts too, so enrichment fills them.
