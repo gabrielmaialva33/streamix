@@ -98,6 +98,9 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Changed
 
+- The qdrant image moves to v1.20.2 and the postgres image to TimescaleDB 2.32.0-pg17 in both compose files.
+  Production only picks them up when an operator recreates the `qdrant`/`postgres` services by hand; a TimescaleDB
+  recreate needs `ALTER EXTENSION timescaledb UPDATE;` before restarting the app.
 - The Drive (GIndex) movie catalog shows each film once: copies sharing a TMDB id (1080p, 4K, dubbed, a second
   folder) collapse to one card, the copy with a poster and a TMDB title first, and the film's page lists the others
   under "Outras versões" with their version badges. Drive movies and series are filtered by genre from the same
