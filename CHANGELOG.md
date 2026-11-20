@@ -231,6 +231,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Security
 
+- Dependency updates fix three advisories: `phoenix_live_view` 1.2.14 (EEF-CVE-2026-126334), `plug` 1.20.4
+  (EEF-CVE-2026-120287) and `idna` 8.0.0 (EEF-CVE-2026-117678), with `swoosh` 1.30.0 allowing the new idna.
 - Watch history, playback progress and favorites are sealed per user: AES-256-GCM rows under a random library key
   that only the user's password (PBKDF2, 600k iterations) or a secret held by their own session can open. Neither the
   database, its backups, Redis, Qdrant, the logs nor the admin panel can tell which content anyone watched. The threat
