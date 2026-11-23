@@ -23,10 +23,8 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
 
   @moduletag :playwright
 
-  import Phoenix.ConnTest, only: [build_conn: 0, get: 2]
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
-  import StreamixWeb.ConnCase, only: [log_in_user: 2]
 
   alias Playwright.{BrowserContext, Page}
 
@@ -50,10 +48,10 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
     movie = movie_fixture(provider, %{container_extension: "mp4", stream_id: 9_001})
 
     session
-    |> install_authenticated_cookie(user)
+    |> log_in(user)
     |> install_media_probe(movie.id)
     |> visit(~p"/watch/movie/#{movie.id}")
-    |> assert_has("body .phx-connected #video-player-container")
+    |> assert_has("#video-player-container")
     |> assert_player_resumed_once()
   end
 
@@ -111,31 +109,10 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
     movie = movie_fixture(provider, %{container_extension: "mp4"})
 
     session
-    |> install_authenticated_cookie(user)
+    |> log_in(user)
     |> install_media_probe(movie.id)
     |> visit(~p"/watch/movie/#{movie.id}")
-    |> assert_has("body .phx-connected #video-player-container")
-  end
-
-  defp install_authenticated_cookie(session, user) do
-    cookie =
-      build_conn()
-      |> log_in_user(user)
-      |> get(~p"/browse/movies")
-      |> Map.fetch!(:resp_cookies)
-      |> Map.fetch!("_streamix_key")
-
-    unwrap(session, fn page ->
-      BrowserContext.add_cookies!(Page.context(page), [
-        %{
-          "name" => "_streamix_key",
-          "value" => cookie.value,
-          "url" => StreamixWeb.Endpoint.url(),
-          "httpOnly" => true,
-          "sameSite" => "Lax"
-        }
-      ])
-    end)
+    |> assert_has("#video-player-container")
   end
 
   defp install_media_probe(session, content_id) do

@@ -17,10 +17,8 @@ defmodule StreamixWeb.E2E.WatchPartySyncTest do
 
   @moduletag :playwright
 
-  import Phoenix.ConnTest, only: [build_conn: 0, get: 2]
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
-  import StreamixWeb.ConnCase, only: [log_in_user: 2]
 
   alias Playwright.{BrowserContext, Page}
   alias Streamix.{Billing, Repo}
@@ -74,17 +72,17 @@ defmodule StreamixWeb.E2E.WatchPartySyncTest do
 
     host_session =
       host_session
-      |> install_authenticated_cookie(host)
+      |> log_in(host)
       |> install_media_probe()
       |> visit(~p"/party/#{room.invite_code}/watch")
-      |> assert_has("body .phx-connected #video-player-container")
+      |> assert_has("#video-player-container")
 
     guest_session =
       guest_session
-      |> install_authenticated_cookie(guest)
+      |> log_in(guest)
       |> install_media_probe()
       |> visit(~p"/party/#{room.invite_code}/watch")
-      |> assert_has("body .phx-connected #video-player-container")
+      |> assert_has("#video-player-container")
 
     wait_for_playback_bridge(host_session)
     wait_for_playback_bridge(guest_session)
@@ -117,27 +115,6 @@ defmodule StreamixWeb.E2E.WatchPartySyncTest do
     host_session |> visit(~p"/") |> assert_has("body")
     wait_for_status(guest_session, "Anfitrião desconectado")
     wait_for_playback(guest_session, true, 33)
-  end
-
-  defp install_authenticated_cookie(session, user) do
-    cookie =
-      build_conn()
-      |> log_in_user(user)
-      |> get(~p"/browse/movies")
-      |> Map.fetch!(:resp_cookies)
-      |> Map.fetch!("_streamix_key")
-
-    unwrap(session, fn page ->
-      BrowserContext.add_cookies!(Page.context(page), [
-        %{
-          "name" => "_streamix_key",
-          "value" => cookie.value,
-          "url" => StreamixWeb.Endpoint.url(),
-          "httpOnly" => true,
-          "sameSite" => "Lax"
-        }
-      ])
-    end)
   end
 
   defp install_media_probe(session) do

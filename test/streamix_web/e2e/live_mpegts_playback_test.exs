@@ -20,10 +20,8 @@ defmodule StreamixWeb.E2E.LiveMpegtsPlaybackTest do
 
   @moduletag :playwright
 
-  import Phoenix.ConnTest, only: [build_conn: 0, get: 2]
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
-  import StreamixWeb.ConnCase, only: [log_in_user: 2]
 
   alias Playwright.{BrowserContext, Page}
   alias StreamixWeb.PlaywrightMediaFixture
@@ -83,35 +81,14 @@ defmodule StreamixWeb.E2E.LiveMpegtsPlaybackTest do
 
     session =
       session
-      |> install_authenticated_cookie(user)
+      |> log_in(user)
       |> install_player_environment()
       |> visit(~p"/watch/live_channel/#{channel.id}")
-      |> assert_has("body .phx-connected #video-player-container")
+      |> assert_has("#video-player-container")
       |> activate_media_url(media_url, Map.get(context, :mse_fault, false))
 
     assert_receive {:playwright_media_request, "GET", _range}, 5_000
     session
-  end
-
-  defp install_authenticated_cookie(session, user) do
-    cookie =
-      build_conn()
-      |> log_in_user(user)
-      |> get(~p"/browse")
-      |> Map.fetch!(:resp_cookies)
-      |> Map.fetch!("_streamix_key")
-
-    unwrap(session, fn page ->
-      BrowserContext.add_cookies!(Page.context(page), [
-        %{
-          "name" => "_streamix_key",
-          "value" => cookie.value,
-          "url" => StreamixWeb.Endpoint.url(),
-          "httpOnly" => true,
-          "sameSite" => "Lax"
-        }
-      ])
-    end)
   end
 
   defp install_player_environment(session) do

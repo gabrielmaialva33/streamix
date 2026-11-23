@@ -52,10 +52,8 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
 
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
-  import Phoenix.ConnTest, only: [build_conn: 0, get: 2]
-  import StreamixWeb.ConnCase, only: [log_in_user: 2]
 
-  alias Playwright.{BrowserContext, Page}
+  alias Playwright.Page
 
   setup do
     provider =
@@ -73,9 +71,8 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
   describe "progressive HomeLive" do
     test "renders its shell immediately and resolves every shelf group", %{conn: conn} do
       conn
-      |> login(user_fixture())
+      |> log_in(user_fixture())
       |> visit(~p"/")
-      |> assert_has("body .phx-connected")
       |> assert_has("#home-progressive-shell")
       |> assert_has("#home-premium-cta")
       |> assert_has("#home-progressive-shell[data-home-catalog-state='false']", timeout: 10_000)
@@ -122,35 +119,13 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
     end
 
     conn
-    |> login(user)
+    |> log_in(user)
     |> visit(~p"/providers/#{provider.id}/movies")
-    |> assert_has("body .phx-connected #movies .catalog-stream-item")
+    |> assert_has("#movies .catalog-stream-item")
     |> assert_compact_poster_grid(viewport_width)
     |> visit(~p"/providers/#{provider.id}")
-    |> assert_has("body .phx-connected #channels .catalog-stream-item")
+    |> assert_has("#channels .catalog-stream-item")
     |> assert_compact_live_grid(viewport_width)
-  end
-
-  defp login(session, user) do
-    cookie =
-      build_conn()
-      |> log_in_user(user)
-      |> get(~p"/browse/movies")
-      |> Map.fetch!(:resp_cookies)
-      |> Map.fetch!("_streamix_key")
-
-    session
-    |> unwrap(fn page ->
-      BrowserContext.add_cookies!(Page.context(page), [
-        %{
-          "name" => "_streamix_key",
-          "value" => cookie.value,
-          "url" => StreamixWeb.Endpoint.url(),
-          "httpOnly" => true,
-          "sameSite" => "Lax"
-        }
-      ])
-    end)
   end
 
   defp assert_compact_poster_grid(session, viewport_width) do

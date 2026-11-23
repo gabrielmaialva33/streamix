@@ -1,15 +1,12 @@
 defmodule StreamixWeb.E2E.GuideMarkerTest do
   use StreamixWeb.PlaywrightCase, async: false
 
-  @endpoint StreamixWeb.Endpoint
   @moduletag :playwright
 
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
-  import Phoenix.ConnTest, only: [build_conn: 0, get: 2]
-  import StreamixWeb.ConnCase, only: [log_in_user: 2]
 
-  alias Playwright.{BrowserContext, Page}
+  alias Playwright.Page
 
   setup %{conn: session} do
     user = user_fixture()
@@ -24,27 +21,7 @@ defmodule StreamixWeb.E2E.GuideMarkerTest do
       end_time: DateTime.add(now, 120, :minute)
     })
 
-    cookie =
-      build_conn()
-      |> log_in_user(user)
-      |> get("/guide")
-      |> Map.fetch!(:resp_cookies)
-      |> Map.fetch!("_streamix_key")
-
-    session =
-      unwrap(session, fn page ->
-        BrowserContext.add_cookies!(Page.context(page), [
-          %{
-            "name" => "_streamix_key",
-            "value" => cookie.value,
-            "url" => StreamixWeb.Endpoint.url(),
-            "httpOnly" => true,
-            "sameSite" => "Lax"
-          }
-        ])
-      end)
-
-    %{conn: session}
+    %{conn: log_in(session, user)}
   end
 
   @tag Playwright.Test.use(viewport: %{width: 1440, height: 1000})

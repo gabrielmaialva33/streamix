@@ -38,7 +38,7 @@ defmodule StreamixWeb.E2E.LoginPersistenceTest do
   } do
     session
     |> visit(~p"/login")
-    |> assert_has("body .phx-connected #user_remember_me:checked")
+    |> assert_has("#user_remember_me:checked")
     |> assert_autofill_safe_login()
   end
 

@@ -28,10 +28,7 @@ defmodule StreamixWeb.E2E.PremiumVisibilityTest do
 
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
-  import Phoenix.ConnTest, only: [build_conn: 0, get: 2]
-  import StreamixWeb.ConnCase, only: [log_in_user: 2]
 
-  alias Playwright.{BrowserContext, Page}
   alias Streamix.Billing.{Plan, Subscription}
   alias Streamix.Repo
 
@@ -90,25 +87,8 @@ defmodule StreamixWeb.E2E.PremiumVisibilityTest do
   # same signed session cookie as ConnCase so browser-specific form timing
   # cannot make this suite flaky.
   defp login(session, user) do
-    cookie =
-      build_conn()
-      |> log_in_user(user)
-      |> get(~p"/browse/movies")
-      |> Map.fetch!(:resp_cookies)
-      |> Map.fetch!("_streamix_key")
-
     session
-    |> unwrap(fn page ->
-      BrowserContext.add_cookies!(Page.context(page), [
-        %{
-          "name" => "_streamix_key",
-          "value" => cookie.value,
-          "url" => StreamixWeb.Endpoint.url(),
-          "httpOnly" => true,
-          "sameSite" => "Lax"
-        }
-      ])
-    end)
+    |> log_in(user)
     |> visit(~p"/browse/movies")
     |> assert_has("#movies")
   end
