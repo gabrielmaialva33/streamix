@@ -17,23 +17,18 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
                          _ -> :webkit
                        end)
 
-  use PhoenixTest.Playwright.Case,
-    async: false,
-    browser: @playwright_browser,
-    browser_pool: false
+  use StreamixWeb.PlaywrightCase, async: false, browser_name: @playwright_browser
 
   use StreamixWeb, :verified_routes
 
   @moduletag :playwright
-
-  setup {StreamixWeb.PlaywrightSupport, :register_context_cleanup}
 
   import Phoenix.ConnTest, only: [build_conn: 0, get: 2]
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
   import StreamixWeb.ConnCase, only: [log_in_user: 2]
 
-  alias PlaywrightEx.BrowserContext
+  alias Playwright.{BrowserContext, Page}
 
   setup do
     {:ok, server} =
@@ -64,15 +59,14 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
 
   @mobile_portrait_opts [
                           viewport: %{width: 390, height: 844},
-                          device_scale_factor: 3.0,
-                          service_workers: "block"
+                          device_scale_factor: 3.0
                         ] ++
                           if(@playwright_browser == :firefox,
                             do: [],
                             else: [is_mobile: true]
                           )
 
-  @tag browser_context_opts: @mobile_portrait_opts
+  @tag Playwright.Test.use(@mobile_portrait_opts)
   test "keeps touch controls reachable in iPhone portrait", %{
     conn: session,
     media_origin: media_origin
@@ -82,7 +76,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
     |> assert_mobile_controls_fit(390, 844)
   end
 
-  @tag browser_context_opts: @mobile_portrait_opts
+  @tag Playwright.Test.use(@mobile_portrait_opts)
   test "keeps the screen awake only while portrait playback is active", %{
     conn: session,
     media_origin: media_origin
@@ -94,15 +88,14 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
 
   @mobile_landscape_opts [
                            viewport: %{width: 844, height: 390},
-                           device_scale_factor: 3.0,
-                           service_workers: "block"
+                           device_scale_factor: 3.0
                          ] ++
                            if(@playwright_browser == :firefox,
                              do: [],
                              else: [is_mobile: true]
                            )
 
-  @tag browser_context_opts: @mobile_landscape_opts
+  @tag Playwright.Test.use(@mobile_landscape_opts)
   test "keeps touch controls reachable in iPhone landscape", %{
     conn: session,
     media_origin: media_origin
@@ -132,20 +125,16 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
       |> Map.fetch!(:resp_cookies)
       |> Map.fetch!("_streamix_key")
 
-    PhoenixTest.Playwright.unwrap(session, fn %{context_id: context_id} ->
-      {:ok, _} =
-        BrowserContext.add_cookies(context_id,
-          timeout: 5_000,
-          cookies: [
-            %{
-              "name" => "_streamix_key",
-              "value" => cookie.value,
-              "url" => StreamixWeb.Endpoint.url(),
-              "httpOnly" => true,
-              "sameSite" => "Lax"
-            }
-          ]
-        )
+    unwrap(session, fn page ->
+      BrowserContext.add_cookies!(Page.context(page), [
+        %{
+          "name" => "_streamix_key",
+          "value" => cookie.value,
+          "url" => StreamixWeb.Endpoint.url(),
+          "httpOnly" => true,
+          "sameSite" => "Lax"
+        }
+      ])
     end)
   end
 
@@ -320,328 +309,322 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
     })();
     """
 
-    PhoenixTest.Playwright.unwrap(session, fn %{context_id: context_id} ->
-      {:ok, _} = BrowserContext.add_init_script(context_id, timeout: 5_000, source: source)
+    unwrap(session, fn page ->
+      BrowserContext.add_init_script!(Page.context(page), source)
     end)
   end
 
   defp assert_player_resumed_once(session) do
-    PhoenixTest.Playwright.evaluate(
-      session,
-      """
-      () => new Promise((resolve, reject) => {
-        const startedAt = Date.now();
+    unwrap(session, fn page ->
+      state =
+        Page.evaluate!(page, """
+        () => new Promise((resolve, reject) => {
+          const startedAt = Date.now();
 
-        function snapshot() {
-          const video = document.querySelector("#video-element");
-          const container = document.querySelector("#video-player-container");
-          const bottomControls = document.querySelector("#player-bottom-controls");
-          const avMount = document.querySelector("#avplayer-mount");
-          const probe = window.__streamixPlayerProbe || {};
-          const hook = container && container.__videoPlayerHook;
-          const orchestratorSnapshot = hook && hook.playbackOrchestrator
-            ? hook.playbackOrchestrator.snapshot()
-            : null;
+          function snapshot() {
+            const video = document.querySelector("#video-element");
+            const container = document.querySelector("#video-player-container");
+            const bottomControls = document.querySelector("#player-bottom-controls");
+            const avMount = document.querySelector("#avplayer-mount");
+            const probe = window.__streamixPlayerProbe || {};
+            const hook = container && container.__videoPlayerHook;
+            const orchestratorSnapshot = hook && hook.playbackOrchestrator
+              ? hook.playbackOrchestrator.snapshot()
+              : null;
 
-          return {
-            currentTime: video ? video.currentTime : 0,
-            autoplay: video ? video.autoplay : true,
-            preload: video ? video.getAttribute("preload") : null,
-            pictureInPictureDisabled: video
-              ? video.hasAttribute("disablepictureinpicture")
-              : false,
-            nativeControls: video ? video.controls : false,
-            lifecycleLogs: container ? container.dataset.playerLifecycleLogs : null,
-            bottomControlsHidden: bottomControls ? bottomControls.classList.contains("hidden") : false,
-            videoCount: document.querySelectorAll("video").length,
-            avChildren: avMount ? avMount.childElementCount : -1,
-            nativeTouchControls: hook ? hook.nativeTouchControls : false,
-            sessionId: hook ? hook.playbackSessionId : 0,
-            destroyed: hook ? Boolean(hook._destroyed) : null,
-            sourceType: hook ? String(hook.sourceType || "") : null,
-            streamType: hook ? String(hook.currentStreamType || "") : null,
-            currentUrlPresent: Boolean(hook && hook.currentUrl),
-            mediaEngineId: hook && hook.mediaElementEngine ? String(hook.mediaElementEngine.id || "") : null,
-            activeEngineId: orchestratorSnapshot ? orchestratorSnapshot.engineId : null,
-            orchestratorPresent: Boolean(orchestratorSnapshot),
-            usingAVPlayer: hook ? Boolean(hook.usingAVPlayer) : false,
-            usingAvbridge: hook ? Boolean(hook.usingAvbridge) : false,
-            usingH265web: hook ? Boolean(hook.usingH265web) : false,
-            streamLoaderPresent: Boolean(hook && hook.streamLoader),
-            playerState: orchestratorSnapshot ? orchestratorSnapshot.lifecycle.state : null,
-            mediaCapability: hook ? hook.mediaCapabilityProfile : null,
-            events: probe.events || [],
-            playCalls: probe.playCalls || 0
-          };
-        }
-
-        function check() {
-          const state = snapshot();
-          const seekIndex = state.events.indexOf("seek:25");
-          const playIndex = state.events.indexOf("play:25");
-
-          if (
-            state.currentTime === 25 &&
-            state.playCalls === 1 &&
-            seekIndex !== -1 &&
-            playIndex !== -1 &&
-            seekIndex < playIndex &&
-            !state.autoplay &&
-            state.preload === "metadata" &&
-            !state.pictureInPictureDisabled &&
-            // An iPhone gets the same gesture chrome as every other device
-            // (double tap to seek, pinch to fill), not Safari's inline controls.
-            !state.nativeControls &&
-            state.lifecycleLogs === "false" &&
-            !state.nativeTouchControls &&
-            !state.bottomControlsHidden &&
-            state.videoCount === 1 &&
-            state.avChildren === 0
-          ) {
-            resolve(state);
-            return;
+            return {
+              currentTime: video ? video.currentTime : 0,
+              autoplay: video ? video.autoplay : true,
+              preload: video ? video.getAttribute("preload") : null,
+              pictureInPictureDisabled: video
+                ? video.hasAttribute("disablepictureinpicture")
+                : false,
+              nativeControls: video ? video.controls : false,
+              lifecycleLogs: container ? container.dataset.playerLifecycleLogs : null,
+              bottomControlsHidden: bottomControls ? bottomControls.classList.contains("hidden") : false,
+              videoCount: document.querySelectorAll("video").length,
+              avChildren: avMount ? avMount.childElementCount : -1,
+              nativeTouchControls: hook ? hook.nativeTouchControls : false,
+              sessionId: hook ? hook.playbackSessionId : 0,
+              destroyed: hook ? Boolean(hook._destroyed) : null,
+              sourceType: hook ? String(hook.sourceType || "") : null,
+              streamType: hook ? String(hook.currentStreamType || "") : null,
+              currentUrlPresent: Boolean(hook && hook.currentUrl),
+              mediaEngineId: hook && hook.mediaElementEngine ? String(hook.mediaElementEngine.id || "") : null,
+              activeEngineId: orchestratorSnapshot ? orchestratorSnapshot.engineId : null,
+              orchestratorPresent: Boolean(orchestratorSnapshot),
+              usingAVPlayer: hook ? Boolean(hook.usingAVPlayer) : false,
+              usingAvbridge: hook ? Boolean(hook.usingAvbridge) : false,
+              usingH265web: hook ? Boolean(hook.usingH265web) : false,
+              streamLoaderPresent: Boolean(hook && hook.streamLoader),
+              playerState: orchestratorSnapshot ? orchestratorSnapshot.lifecycle.state : null,
+              mediaCapability: hook ? hook.mediaCapabilityProfile : null,
+              events: probe.events || [],
+              playCalls: probe.playCalls || 0
+            };
           }
 
-          if (Date.now() - startedAt > 3000) {
-            reject(new Error(`player did not reach expected lifecycle state: ${JSON.stringify(state)}`));
-            return;
+          function check() {
+            const state = snapshot();
+            const seekIndex = state.events.indexOf("seek:25");
+            const playIndex = state.events.indexOf("play:25");
+
+            if (
+              state.currentTime === 25 &&
+              state.playCalls === 1 &&
+              seekIndex !== -1 &&
+              playIndex !== -1 &&
+              seekIndex < playIndex &&
+              !state.autoplay &&
+              state.preload === "metadata" &&
+              !state.pictureInPictureDisabled &&
+              // An iPhone gets the same gesture chrome as every other device
+              // (double tap to seek, pinch to fill), not Safari's inline controls.
+              !state.nativeControls &&
+              state.lifecycleLogs === "false" &&
+              !state.nativeTouchControls &&
+              !state.bottomControlsHidden &&
+              state.videoCount === 1 &&
+              state.avChildren === 0
+            ) {
+              resolve(state);
+              return;
+            }
+
+            if (Date.now() - startedAt > 3000) {
+              reject(new Error(`player did not reach expected lifecycle state: ${JSON.stringify(state)}`));
+              return;
+            }
+
+            setTimeout(check, 50);
           }
 
-          setTimeout(check, 50);
-        }
+          check();
+        })
+        """)
 
-        check();
-      })
-      """,
-      [is_function: true, timeout: 4_000],
-      fn state ->
-        assert state["events"] == ["seek:25", "play:25"]
-      end
-    )
+      assert state["events"] == ["seek:25", "play:25"]
+    end)
   end
 
   defp assert_playback_system_lifecycle(session) do
-    PhoenixTest.Playwright.evaluate(
-      session,
-      """
-      async () => {
-        const waitFor = async (predicate, label) => {
-          const deadline = performance.now() + 3000;
+    unwrap(session, fn page ->
+      state =
+        Page.evaluate!(page, """
+        async () => {
+          const waitFor = async (predicate, label) => {
+            const deadline = performance.now() + 3000;
 
-          while (!predicate() && performance.now() < deadline) {
-            await new Promise((resolve) => setTimeout(resolve, 25));
-          }
+            while (!predicate() && performance.now() < deadline) {
+              await new Promise((resolve) => setTimeout(resolve, 25));
+            }
 
-          if (!predicate()) throw new Error(`timed out waiting for ${label}`);
-        };
+            if (!predicate()) throw new Error(`timed out waiting for ${label}`);
+          };
 
-        let probe;
-        let video;
-        let hook;
+          let probe;
+          let video;
+          let hook;
 
-        await waitFor(() => {
-          probe = window.__streamixPlayerProbe;
-          video = document.getElementById("video-element");
-          hook = document.getElementById("video-player-container")?.__videoPlayerHook;
-          return Boolean(probe && video && hook);
-        }, "player lifecycle probe");
+          await waitFor(() => {
+            probe = window.__streamixPlayerProbe;
+            video = document.getElementById("video-element");
+            hook = document.getElementById("video-player-container")?.__videoPlayerHook;
+            return Boolean(probe && video && hook);
+          }, "player lifecycle probe");
 
-        await waitFor(
-          () => probe.wakeLockRequests.length === 1 && probe.mediaPlaybackState === "playing",
-          "initial playback system state"
-        );
+          await waitFor(
+            () => probe.wakeLockRequests.length === 1 && probe.mediaPlaybackState === "playing",
+            "initial playback system state"
+          );
 
-        const activePosition = probe.mediaPositions.find(
-          (state) => state && state.duration === 120 && state.position === 25 && state.playbackRate === 1
-        );
+          const activePosition = probe.mediaPositions.find(
+            (state) => state && state.duration === 120 && state.position === 25 && state.playbackRate === 1
+          );
 
-        video.pause();
-        await waitFor(
-          () => probe.wakeLockReleases === 1 && probe.mediaPlaybackState === "paused",
-          "pause release"
-        );
+          video.pause();
+          await waitFor(
+            () => probe.wakeLockReleases === 1 && probe.mediaPlaybackState === "paused",
+            "pause release"
+          );
 
-        await video.play();
-        await waitFor(
-          () => probe.wakeLockRequests.length === 2 && probe.mediaPlaybackState === "playing",
-          "resume acquisition"
-        );
+          await video.play();
+          await waitFor(
+            () => probe.wakeLockRequests.length === 2 && probe.mediaPlaybackState === "playing",
+            "resume acquisition"
+          );
 
-        hook.showPlaybackError("Erro terminal de teste");
-        await waitFor(
-          () => probe.wakeLockReleases === 2 && probe.mediaPlaybackState === "none",
-          "terminal error cleanup"
-        );
+          hook.showPlaybackError("Erro terminal de teste");
+          await waitFor(
+            () => probe.wakeLockReleases === 2 && probe.mediaPlaybackState === "none",
+            "terminal error cleanup"
+          );
 
-        return {
-          activePosition,
-          mediaPlaybackStates: probe.mediaPlaybackStates,
-          mediaPlaybackState: probe.mediaPlaybackState,
-          wakeLockRequests: probe.wakeLockRequests,
-          wakeLockReleases: probe.wakeLockReleases
-        };
-      }
-      """,
-      [is_function: true, timeout: 5_000],
-      fn state ->
-        assert state["wakeLockRequests"] == ["screen", "screen"]
-        assert state["wakeLockReleases"] == 2
-        assert state["mediaPlaybackState"] == "none"
-        assert state["activePosition"]["duration"] == 120
-        assert state["activePosition"]["position"] == 25
-        assert state["activePosition"]["playbackRate"] == 1
-        assert "playing" in state["mediaPlaybackStates"]
-        assert "paused" in state["mediaPlaybackStates"]
-        assert "none" in state["mediaPlaybackStates"]
-      end
-    )
+          return {
+            activePosition,
+            mediaPlaybackStates: probe.mediaPlaybackStates,
+            mediaPlaybackState: probe.mediaPlaybackState,
+            wakeLockRequests: probe.wakeLockRequests,
+            wakeLockReleases: probe.wakeLockReleases
+          };
+        }
+        """)
+
+      assert state["wakeLockRequests"] == ["screen", "screen"]
+      assert state["wakeLockReleases"] == 2
+      assert state["mediaPlaybackState"] == "none"
+      assert state["activePosition"]["duration"] == 120
+      assert state["activePosition"]["position"] == 25
+      assert state["activePosition"]["playbackRate"] == 1
+      assert "playing" in state["mediaPlaybackStates"]
+      assert "paused" in state["mediaPlaybackStates"]
+      assert "none" in state["mediaPlaybackStates"]
+    end)
   end
 
   defp assert_mobile_controls_fit(session, expected_width, expected_height) do
-    PhoenixTest.Playwright.evaluate(
-      session,
-      """
-      async () => {
-        const deadline = performance.now() + 3000;
-        let container = document.querySelector("#video-player-container");
-        let hook = container && container.__videoPlayerHook;
+    unwrap(session, fn page ->
+      state =
+        Page.evaluate!(page, """
+        async () => {
+          const deadline = performance.now() + 3000;
+          let container = document.querySelector("#video-player-container");
+          let hook = container && container.__videoPlayerHook;
 
-        while ((!container || !hook) && performance.now() < deadline) {
-          await new Promise((resolve) => setTimeout(resolve, 25));
-          container = document.querySelector("#video-player-container");
-          hook = container && container.__videoPlayerHook;
-        }
-
-        if (!container || !hook) {
-          const lazyError = container?.dataset.lazyHookError || "none";
-          const lazyDetail =
-            window.__streamixLazyHookErrors?.VideoPlayer ||
-            container?.dataset.lazyHookErrorDetail ||
-            "none";
-          throw new Error(`player hook unavailable; lazy error: ${lazyError}; detail: ${lazyDetail}`);
-        }
-
-        hook.nativeTouchControls = false;
-        hook.playerUI.setNativeControlsMode(false);
-        hook.playerUI.setIsPlayingFn(() => true);
-        hook.playerUI.showControls();
-
-        const bottomControls = document.getElementById("player-bottom-controls");
-        const bottomRect = bottomControls.getBoundingClientRect();
-        const ids = [
-          "player-close-btn",
-          "play-pause-btn",
-          "mute-btn",
-          "speed-btn",
-          "tracks-btn",
-          "settings-btn",
-          "fullscreen-btn"
-        ];
-
-        const controls = Object.fromEntries(
-          ids.map((id) => {
-            const element = document.getElementById(id);
-            if (!element) return [id, null];
-            const rect = element.getBoundingClientRect();
-            return [id, {
-              left: rect.left,
-              top: rect.top,
-              right: rect.right,
-              bottom: rect.bottom,
-              width: rect.width,
-              height: rect.height
-            }];
-          })
-        );
-
-        async function waitForOpacity(element, expected, timeoutMs) {
-          const deadline = performance.now() + timeoutMs;
-          let opacity = Number(getComputedStyle(element).opacity);
-
-          while (Math.abs(opacity - expected) > 0.01 && performance.now() < deadline) {
+          while ((!container || !hook) && performance.now() < deadline) {
             await new Promise((resolve) => setTimeout(resolve, 25));
-            opacity = Number(getComputedStyle(element).opacity);
+            container = document.querySelector("#video-player-container");
+            hook = container && container.__videoPlayerHook;
           }
 
-          return opacity;
+          if (!container || !hook) {
+            const lazyError = container?.dataset.lazyHookError || "none";
+            const lazyDetail =
+              window.__streamixLazyHookErrors?.VideoPlayer ||
+              container?.dataset.lazyHookErrorDetail ||
+              "none";
+            throw new Error(`player hook unavailable; lazy error: ${lazyError}; detail: ${lazyDetail}`);
+          }
+
+          hook.nativeTouchControls = false;
+          hook.playerUI.setNativeControlsMode(false);
+          hook.playerUI.setIsPlayingFn(() => true);
+          hook.playerUI.showControls();
+
+          const bottomControls = document.getElementById("player-bottom-controls");
+          const bottomRect = bottomControls.getBoundingClientRect();
+          const ids = [
+            "player-close-btn",
+            "play-pause-btn",
+            "mute-btn",
+            "speed-btn",
+            "tracks-btn",
+            "settings-btn",
+            "fullscreen-btn"
+          ];
+
+          const controls = Object.fromEntries(
+            ids.map((id) => {
+              const element = document.getElementById(id);
+              if (!element) return [id, null];
+              const rect = element.getBoundingClientRect();
+              return [id, {
+                left: rect.left,
+                top: rect.top,
+                right: rect.right,
+                bottom: rect.bottom,
+                width: rect.width,
+                height: rect.height
+              }];
+            })
+          );
+
+          async function waitForOpacity(element, expected, timeoutMs) {
+            const deadline = performance.now() + timeoutMs;
+            let opacity = Number(getComputedStyle(element).opacity);
+
+            while (Math.abs(opacity - expected) > 0.01 && performance.now() < deadline) {
+              await new Promise((resolve) => setTimeout(resolve, 25));
+              opacity = Number(getComputedStyle(element).opacity);
+            }
+
+            return opacity;
+          }
+
+          hook.playerUI.hideControls();
+          const immediateControlsClass = document.getElementById("player-controls").className;
+          const bottomOpacity = await waitForOpacity(bottomControls, 0, 2000);
+          const controlsStyle = getComputedStyle(document.getElementById("player-controls"));
+          const closeStyle = getComputedStyle(document.getElementById("player-close-btn"));
+          const hiddenState = {
+            controlsVisible: hook.playerUI.controlsVisible,
+            isTouchDevice: hook.playerUI.isTouchDevice,
+            sameControlsNode:
+              hook.playerUI.elements.controls === document.getElementById("player-controls"),
+            immediateControlsClass,
+            controlsClass: document.getElementById("player-controls").className,
+            controlsOpacity: Number(controlsStyle.opacity),
+            coarsePointer: matchMedia("(pointer: coarse)").matches,
+            hoverNone: matchMedia("(hover: none)").matches,
+            closeOpacity: Number(closeStyle.opacity),
+            closePointerEvents: closeStyle.pointerEvents,
+            bottomOpacity
+          };
+
+          container.click();
+
+          return {
+            viewport: {width: innerWidth, height: innerHeight},
+            controls,
+            bottomBounds: {
+              top: bottomRect.top,
+              bottom: bottomRect.bottom
+            },
+            centerOverlayCount:
+              container.querySelectorAll("#center-play, .play-overlay, .shortcut-feedback").length,
+            seekButtonCount:
+              container.querySelectorAll("#seek-backward-btn, #seek-forward-btn").length,
+            pipButtonCount: container.querySelectorAll("#pip-btn").length,
+            hiddenState,
+            revealedAfterTap: hook.playerUI.controlsVisible
+          };
         }
+        """)
 
-        hook.playerUI.hideControls();
-        const immediateControlsClass = document.getElementById("player-controls").className;
-        const bottomOpacity = await waitForOpacity(bottomControls, 0, 2000);
-        const controlsStyle = getComputedStyle(document.getElementById("player-controls"));
-        const closeStyle = getComputedStyle(document.getElementById("player-close-btn"));
-        const hiddenState = {
-          controlsVisible: hook.playerUI.controlsVisible,
-          isTouchDevice: hook.playerUI.isTouchDevice,
-          sameControlsNode:
-            hook.playerUI.elements.controls === document.getElementById("player-controls"),
-          immediateControlsClass,
-          controlsClass: document.getElementById("player-controls").className,
-          controlsOpacity: Number(controlsStyle.opacity),
-          coarsePointer: matchMedia("(pointer: coarse)").matches,
-          hoverNone: matchMedia("(hover: none)").matches,
-          closeOpacity: Number(closeStyle.opacity),
-          closePointerEvents: closeStyle.pointerEvents,
-          bottomOpacity
-        };
+      assert state["viewport"] == %{"width" => expected_width, "height" => expected_height}
 
-        container.click();
-
-        return {
-          viewport: {width: innerWidth, height: innerHeight},
-          controls,
-          bottomBounds: {
-            top: bottomRect.top,
-            bottom: bottomRect.bottom
-          },
-          centerOverlayCount:
-            container.querySelectorAll("#center-play, .play-overlay, .shortcut-feedback").length,
-          seekButtonCount:
-            container.querySelectorAll("#seek-backward-btn, #seek-forward-btn").length,
-          pipButtonCount: container.querySelectorAll("#pip-btn").length,
-          hiddenState,
-          revealedAfterTap: hook.playerUI.controlsVisible
-        };
-      }
-      """,
-      [is_function: true, timeout: 5_000],
-      fn state ->
-        assert state["viewport"] == %{"width" => expected_width, "height" => expected_height}
-
-        for {id, rect} <- state["controls"] do
-          assert rect, "#{id} was not rendered"
-          assert rect["width"] >= 44, "#{id} width is below 44px: #{rect["width"]}"
-          assert rect["height"] >= 44, "#{id} height is below 44px: #{rect["height"]}"
-          assert rect["left"] >= 0, "#{id} crosses the left viewport edge"
-          assert rect["top"] >= 0, "#{id} crosses the top viewport edge"
-          assert rect["right"] <= expected_width, "#{id} crosses the right viewport edge"
-          assert rect["bottom"] <= expected_height, "#{id} crosses the bottom viewport edge"
-        end
-
-        for id <- ~w(play-pause-btn mute-btn speed-btn tracks-btn settings-btn fullscreen-btn) do
-          rect = state["controls"][id]
-
-          assert rect["top"] >= state["bottomBounds"]["top"],
-                 "#{id} is not inside the bottom control bar"
-
-          assert rect["bottom"] <= state["bottomBounds"]["bottom"],
-                 "#{id} crosses the bottom control bar"
-        end
-
-        assert state["centerOverlayCount"] == 0
-        assert state["seekButtonCount"] == 0
-        assert state["pipButtonCount"] == 1
-        assert state["hiddenState"]["controlsVisible"] == false
-        assert state["hiddenState"]["closeOpacity"] > 0
-        assert state["hiddenState"]["closePointerEvents"] == "auto"
-
-        assert state["hiddenState"]["bottomOpacity"] <= 0.01,
-               "bottom controls remained visible: #{inspect(state["hiddenState"])}"
-
-        assert state["revealedAfterTap"] == true
+      for {id, rect} <- state["controls"] do
+        assert rect, "#{id} was not rendered"
+        assert rect["width"] >= 44, "#{id} width is below 44px: #{rect["width"]}"
+        assert rect["height"] >= 44, "#{id} height is below 44px: #{rect["height"]}"
+        assert rect["left"] >= 0, "#{id} crosses the left viewport edge"
+        assert rect["top"] >= 0, "#{id} crosses the top viewport edge"
+        assert rect["right"] <= expected_width, "#{id} crosses the right viewport edge"
+        assert rect["bottom"] <= expected_height, "#{id} crosses the bottom viewport edge"
       end
-    )
+
+      for id <- ~w(play-pause-btn mute-btn speed-btn tracks-btn settings-btn fullscreen-btn) do
+        rect = state["controls"][id]
+
+        assert rect["top"] >= state["bottomBounds"]["top"],
+               "#{id} is not inside the bottom control bar"
+
+        assert rect["bottom"] <= state["bottomBounds"]["bottom"],
+               "#{id} crosses the bottom control bar"
+      end
+
+      assert state["centerOverlayCount"] == 0
+      assert state["seekButtonCount"] == 0
+      assert state["pipButtonCount"] == 1
+      assert state["hiddenState"]["controlsVisible"] == false
+      assert state["hiddenState"]["closeOpacity"] > 0
+      assert state["hiddenState"]["closePointerEvents"] == "auto"
+
+      assert state["hiddenState"]["bottomOpacity"] <= 0.01,
+             "bottom controls remained visible: #{inspect(state["hiddenState"])}"
+
+      assert state["revealedAfterTap"] == true
+    end)
   end
 
   defmodule MediaStub do

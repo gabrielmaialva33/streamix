@@ -14,23 +14,18 @@ defmodule StreamixWeb.E2E.LiveMpegtsPlaybackTest do
                          _ -> :webkit
                        end)
 
-  use PhoenixTest.Playwright.Case,
-    async: false,
-    browser: @playwright_browser,
-    browser_pool: false
+  use StreamixWeb.PlaywrightCase, async: false, browser_name: @playwright_browser
 
   use StreamixWeb, :verified_routes
 
   @moduletag :playwright
-
-  setup {StreamixWeb.PlaywrightSupport, :register_context_cleanup}
 
   import Phoenix.ConnTest, only: [build_conn: 0, get: 2]
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
   import StreamixWeb.ConnCase, only: [log_in_user: 2]
 
-  alias PlaywrightEx.BrowserContext
+  alias Playwright.{BrowserContext, Page}
   alias StreamixWeb.PlaywrightMediaFixture
 
   setup_all do
@@ -106,20 +101,16 @@ defmodule StreamixWeb.E2E.LiveMpegtsPlaybackTest do
       |> Map.fetch!(:resp_cookies)
       |> Map.fetch!("_streamix_key")
 
-    PhoenixTest.Playwright.unwrap(session, fn %{context_id: context_id} ->
-      {:ok, _} =
-        BrowserContext.add_cookies(context_id,
-          timeout: 5_000,
-          cookies: [
-            %{
-              "name" => "_streamix_key",
-              "value" => cookie.value,
-              "url" => StreamixWeb.Endpoint.url(),
-              "httpOnly" => true,
-              "sameSite" => "Lax"
-            }
-          ]
-        )
+    unwrap(session, fn page ->
+      BrowserContext.add_cookies!(Page.context(page), [
+        %{
+          "name" => "_streamix_key",
+          "value" => cookie.value,
+          "url" => StreamixWeb.Endpoint.url(),
+          "httpOnly" => true,
+          "sameSite" => "Lax"
+        }
+      ])
     end)
   end
 
@@ -161,206 +152,202 @@ defmodule StreamixWeb.E2E.LiveMpegtsPlaybackTest do
     })();
     """
 
-    PhoenixTest.Playwright.unwrap(session, fn %{context_id: context_id} ->
-      {:ok, _} = BrowserContext.add_init_script(context_id, timeout: 5_000, source: source)
+    unwrap(session, fn page ->
+      BrowserContext.add_init_script!(Page.context(page), source)
     end)
   end
 
   defp activate_media_url(session, media_url, mse_fault?) do
-    PhoenixTest.Playwright.evaluate(
-      session,
-      """
-      async ({mediaUrl, mseFault}) => {
-        const deadline = performance.now() + 5000;
-        let hook = document.getElementById("video-player-container")?.__videoPlayerHook;
+    unwrap(session, fn page ->
+      Page.evaluate!(
+        page,
+        """
+        async ({mediaUrl, mseFault}) => {
+          const deadline = performance.now() + 5000;
+          let hook = document.getElementById("video-player-container")?.__videoPlayerHook;
 
-        while (!hook && performance.now() < deadline) {
-          await new Promise((resolve) => setTimeout(resolve, 25));
-          hook = document.getElementById("video-player-container")?.__videoPlayerHook;
-        }
+          while (!hook && performance.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 25));
+            hook = document.getElementById("video-player-container")?.__videoPlayerHook;
+          }
 
-        if (!hook) throw new Error("VideoPlayer hook did not mount");
+          if (!hook) throw new Error("VideoPlayer hook did not mount");
 
-        if (mseFault) {
-          // PhoenixTest reserves the context UA for SQL sandbox metadata.
-          // Restore browser identity in JavaScript so Firefox policy runs.
-          Object.defineProperty(navigator, "userAgent", {
-            value: "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0",
-            configurable: true
-          });
-        }
+          if (mseFault) {
+            // Fluffy reserves the context UA for SQL sandbox metadata.
+            // Restore browser identity in JavaScript so Firefox policy runs.
+            Object.defineProperty(navigator, "userAgent", {
+              value: "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0",
+              configurable: true
+            });
+          }
 
-        if (mseFault && window.MediaSource?.prototype?.addSourceBuffer) {
-          const originalAddSourceBuffer = MediaSource.prototype.addSourceBuffer;
+          if (mseFault && window.MediaSource?.prototype?.addSourceBuffer) {
+            const originalAddSourceBuffer = MediaSource.prototype.addSourceBuffer;
 
-          MediaSource.prototype.addSourceBuffer = function(type) {
-            if (String(type).toLowerCase().startsWith("video/mp4")) {
-              window.__streamixSyntheticMseFaults += 1;
+            MediaSource.prototype.addSourceBuffer = function(type) {
+              if (String(type).toLowerCase().startsWith("video/mp4")) {
+                window.__streamixSyntheticMseFaults += 1;
 
-              if (window.__streamixSyntheticMseFaults >= 2) {
-                MediaSource.prototype.addSourceBuffer = originalAddSourceBuffer;
-                hook.avPlayerAttempted = false;
+                if (window.__streamixSyntheticMseFaults >= 2) {
+                  MediaSource.prototype.addSourceBuffer = originalAddSourceBuffer;
+                  hook.avPlayerAttempted = false;
+                }
+
+                throw new DOMException("Synthetic MPEG-TS MSE incompatibility", "NotSupportedError");
               }
 
-              throw new DOMException("Synthetic MPEG-TS MSE incompatibility", "NotSupportedError");
-            }
+              return originalAddSourceBuffer.call(this, type);
+            };
+          }
 
-            return originalAddSourceBuffer.call(this, type);
-          };
+          await hook.playbackEngineTransitionController?.cancel("fixture_override");
+          hook.cleanup();
+          await (hook._streamLoaderTeardownPromise || Promise.resolve());
+          hook.streamUrl = mediaUrl;
+          hook.proxyUrl = mediaUrl;
+          hook.currentUrl = mediaUrl;
+          hook.currentStreamType = "ts";
+          hook.useProxy = false;
+          hook.retryCount = 0;
+          hook.fallbackAttempts = 0;
+          hook.avPlayerAttempted = false;
+          hook._terminalPlaybackError = false;
+          hook.mpegtsRecoveryCoordinator?.reset();
+          hook.playerUIController?.showLoading();
+          hook.playerUIController?.hideError();
+          hook.beginPlaybackSession();
+          void hook.playWithMpegts();
+          return true;
         }
-
-        await hook.playbackEngineTransitionController?.cancel("fixture_override");
-        hook.cleanup();
-        await (hook._streamLoaderTeardownPromise || Promise.resolve());
-        hook.streamUrl = mediaUrl;
-        hook.proxyUrl = mediaUrl;
-        hook.currentUrl = mediaUrl;
-        hook.currentStreamType = "ts";
-        hook.useProxy = false;
-        hook.retryCount = 0;
-        hook.fallbackAttempts = 0;
-        hook.avPlayerAttempted = false;
-        hook._terminalPlaybackError = false;
-        hook.mpegtsRecoveryCoordinator?.reset();
-        hook.playerUIController?.showLoading();
-        hook.playerUIController?.hideError();
-        hook.beginPlaybackSession();
-        void hook.playWithMpegts();
-        return true;
-      }
-      """,
-      is_function: true,
-      arg: %{"mediaUrl" => media_url, "mseFault" => mse_fault?},
-      timeout: 6_000
-    )
+        """,
+        %{"mediaUrl" => media_url, "mseFault" => mse_fault?}
+      )
+    end)
   end
 
   defp assert_mpegts_playing(session) do
-    PhoenixTest.Playwright.evaluate(
-      session,
-      """
-      async () => {
-        const deadline = performance.now() + 15000;
-        const state = () => {
-          const container = document.getElementById("video-player-container");
-          const hook = container?.__videoPlayerHook;
-          const bridge = container?.streamixPlayback;
-          return {
-            engine: hook?.getActivePlaybackEngine?.()?.id || null,
-            recovery: hook?.mpegtsRecoveryCoordinator?.snapshot?.() || null,
-            sessionId: hook?.playbackSessionId || 0,
-            terminal: Boolean(hook?._terminalPlaybackError),
-            time: Number(bridge?.getCurrentTime?.() || 0)
-          };
-        };
-
-        let current = state();
-        while (
-          !(current.engine === "mpegts" && current.time >= 1 && !current.terminal) &&
-          performance.now() < deadline
-        ) {
-          await new Promise((resolve) => setTimeout(resolve, 50));
-          current = state();
-        }
-
-        if (!(current.engine === "mpegts" && current.time >= 1 && !current.terminal)) {
-          throw new Error(`real MPEG-TS playback did not start: ${JSON.stringify(current)}`);
-        }
-
-        const before = {time: current.time, sessionId: current.sessionId};
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        current = state();
-
-        return {
-          before,
-          after: {
-            engine: current.engine,
-            recovery: current.recovery,
-            sessionId: current.sessionId,
-            terminal: current.terminal,
-            time: current.time
-          }
-        };
-      }
-      """,
-      [is_function: true, timeout: 17_000],
-      fn state ->
-        assert state["after"]["engine"] == "mpegts"
-        assert state["after"]["sessionId"] == state["before"]["sessionId"]
-        assert state["after"]["time"] > state["before"]["time"] + 0.5
-        assert state["after"]["terminal"] == false
-        assert state["after"]["recovery"]["recreateAttempts"] == 0
-        assert state["after"]["recovery"]["recoveryActive"] == false
-        assert state["after"]["recovery"]["retryScheduled"] == false
-      end
-    )
-  end
-
-  if @playwright_browser == :firefox do
-    defp assert_firefox_avplayer_fallback(session) do
-      PhoenixTest.Playwright.evaluate(
-        session,
-        """
+    unwrap(session, fn page ->
+      state =
+        Page.evaluate!(page, """
         async () => {
-          const deadline = performance.now() + 30000;
+          const deadline = performance.now() + 15000;
           const state = () => {
             const container = document.getElementById("video-player-container");
             const hook = container?.__videoPlayerHook;
+            const bridge = container?.streamixPlayback;
             return {
               engine: hook?.getActivePlaybackEngine?.()?.id || null,
-              avPlayerAttempted: Boolean(hook?.avPlayerAttempted),
-              contentType: hook?.contentType || null,
-              currentStreamType: hook?.currentStreamType || null,
-              hasMpegts: Boolean(hook?.mpegtsPlayer),
-              logs: (window.__streamixPlayerConsole || []).slice(-20),
-              mseFaults: Number(window.__streamixSyntheticMseFaults || 0),
               recovery: hook?.mpegtsRecoveryCoordinator?.snapshot?.() || null,
               sessionId: hook?.playbackSessionId || 0,
               terminal: Boolean(hook?._terminalPlaybackError),
-              usingAVPlayer: Boolean(hook?.usingAVPlayer),
-              wantsAVPlayerFallback: Boolean(hook?.shouldPreferAVPlayerForLiveTs?.())
+              time: Number(bridge?.getCurrentTime?.() || 0)
             };
           };
 
           let current = state();
           while (
-            !(
-              current.engine === "avplayer" &&
-              current.usingAVPlayer &&
-              current.mseFaults >= 2 &&
-              current.recovery?.recreateAttempts === 1 &&
-              !current.recovery?.recoveryActive &&
-              !current.recovery?.retryScheduled &&
-              !current.terminal
-            ) && performance.now() < deadline
+            !(current.engine === "mpegts" && current.time >= 1 && !current.terminal) &&
+            performance.now() < deadline
           ) {
             await new Promise((resolve) => setTimeout(resolve, 50));
             current = state();
           }
 
-          if (!(current.engine === "avplayer" && current.usingAVPlayer && !current.terminal)) {
-            throw new Error(`Firefox fallback did not stabilize: ${JSON.stringify(current)}`);
+          if (!(current.engine === "mpegts" && current.time >= 1 && !current.terminal)) {
+            throw new Error(`real MPEG-TS playback did not start: ${JSON.stringify(current)}`);
           }
 
-          const before = current;
-          await new Promise((resolve) => setTimeout(resolve, 1500));
-          const after = state();
-          return {before, after};
+          const before = {time: current.time, sessionId: current.sessionId};
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          current = state();
+
+          return {
+            before,
+            after: {
+              engine: current.engine,
+              recovery: current.recovery,
+              sessionId: current.sessionId,
+              terminal: current.terminal,
+              time: current.time
+            }
+          };
         }
-        """,
-        [is_function: true, timeout: 32_000],
-        fn state ->
-          assert state["after"]["engine"] == "avplayer"
-          assert state["after"]["usingAVPlayer"] == true
-          assert state["after"]["hasMpegts"] == false
-          assert state["after"]["mseFaults"] >= 2
-          assert state["after"]["sessionId"] == state["before"]["sessionId"]
-          assert state["after"]["terminal"] == false
-          assert state["after"]["recovery"]["recreateAttempts"] == 1
-          assert state["after"]["recovery"]["recoveryActive"] == false
-          assert state["after"]["recovery"]["retryScheduled"] == false
-        end
-      )
+        """)
+
+      assert state["after"]["engine"] == "mpegts"
+      assert state["after"]["sessionId"] == state["before"]["sessionId"]
+      assert state["after"]["time"] > state["before"]["time"] + 0.5
+      assert state["after"]["terminal"] == false
+      assert state["after"]["recovery"]["recreateAttempts"] == 0
+      assert state["after"]["recovery"]["recoveryActive"] == false
+      assert state["after"]["recovery"]["retryScheduled"] == false
+    end)
+  end
+
+  if @playwright_browser == :firefox do
+    defp assert_firefox_avplayer_fallback(session) do
+      unwrap(session, fn page ->
+        state =
+          Page.evaluate!(page, """
+          async () => {
+            const deadline = performance.now() + 30000;
+            const state = () => {
+              const container = document.getElementById("video-player-container");
+              const hook = container?.__videoPlayerHook;
+              return {
+                engine: hook?.getActivePlaybackEngine?.()?.id || null,
+                avPlayerAttempted: Boolean(hook?.avPlayerAttempted),
+                contentType: hook?.contentType || null,
+                currentStreamType: hook?.currentStreamType || null,
+                hasMpegts: Boolean(hook?.mpegtsPlayer),
+                logs: (window.__streamixPlayerConsole || []).slice(-20),
+                mseFaults: Number(window.__streamixSyntheticMseFaults || 0),
+                recovery: hook?.mpegtsRecoveryCoordinator?.snapshot?.() || null,
+                sessionId: hook?.playbackSessionId || 0,
+                terminal: Boolean(hook?._terminalPlaybackError),
+                usingAVPlayer: Boolean(hook?.usingAVPlayer),
+                wantsAVPlayerFallback: Boolean(hook?.shouldPreferAVPlayerForLiveTs?.())
+              };
+            };
+
+            let current = state();
+            while (
+              !(
+                current.engine === "avplayer" &&
+                current.usingAVPlayer &&
+                current.mseFaults >= 2 &&
+                current.recovery?.recreateAttempts === 1 &&
+                !current.recovery?.recoveryActive &&
+                !current.recovery?.retryScheduled &&
+                !current.terminal
+              ) && performance.now() < deadline
+            ) {
+              await new Promise((resolve) => setTimeout(resolve, 50));
+              current = state();
+            }
+
+            if (!(current.engine === "avplayer" && current.usingAVPlayer && !current.terminal)) {
+              throw new Error(`Firefox fallback did not stabilize: ${JSON.stringify(current)}`);
+            }
+
+            const before = current;
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            const after = state();
+            return {before, after};
+          }
+          """)
+
+        assert state["after"]["engine"] == "avplayer"
+        assert state["after"]["usingAVPlayer"] == true
+        assert state["after"]["hasMpegts"] == false
+        assert state["after"]["mseFaults"] >= 2
+        assert state["after"]["sessionId"] == state["before"]["sessionId"]
+        assert state["after"]["terminal"] == false
+        assert state["after"]["recovery"]["recreateAttempts"] == 1
+        assert state["after"]["recovery"]["recoveryActive"] == false
+        assert state["after"]["recovery"]["retryScheduled"] == false
+      end)
     end
   end
 end

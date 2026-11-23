@@ -20,19 +20,17 @@ defmodule StreamixWeb.E2E.WebKitReconnectTest do
                          _ -> :webkit
                        end)
 
-  use PhoenixTest.Playwright.Case, async: false, browser: @playwright_browser
+  use StreamixWeb.PlaywrightCase, async: false, browser_name: @playwright_browser
   use StreamixWeb, :verified_routes
 
   @moduletag :playwright
-
-  setup {StreamixWeb.PlaywrightSupport, :register_context_cleanup}
 
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
   import Phoenix.ConnTest, only: [build_conn: 0, get: 2]
   import StreamixWeb.ConnCase, only: [log_in_user: 2]
 
-  alias PlaywrightEx.BrowserContext
+  alias Playwright.{BrowserContext, Page}
 
   setup do
     provider =
@@ -92,20 +90,16 @@ defmodule StreamixWeb.E2E.WebKitReconnectTest do
       |> Map.fetch!("_streamix_key")
 
     session
-    |> PhoenixTest.Playwright.unwrap(fn %{context_id: context_id} ->
-      {:ok, _} =
-        BrowserContext.add_cookies(context_id,
-          timeout: 5_000,
-          cookies: [
-            %{
-              "name" => "_streamix_key",
-              "value" => cookie.value,
-              "url" => StreamixWeb.Endpoint.url(),
-              "httpOnly" => true,
-              "sameSite" => "Lax"
-            }
-          ]
-        )
+    |> unwrap(fn page ->
+      BrowserContext.add_cookies!(Page.context(page), [
+        %{
+          "name" => "_streamix_key",
+          "value" => cookie.value,
+          "url" => StreamixWeb.Endpoint.url(),
+          "httpOnly" => true,
+          "sameSite" => "Lax"
+        }
+      ])
     end)
     |> visit(~p"/browse/movies")
     |> assert_has("#movies")
@@ -120,9 +114,9 @@ defmodule StreamixWeb.E2E.WebKitReconnectTest do
 
   defp run_js(session, script) do
     try do
-      PhoenixTest.Playwright.evaluate(session, script, fn _ -> :ok end)
+      unwrap(session, &Page.evaluate!(&1, script))
     rescue
-      error in ExUnit.AssertionError ->
+      error in Playwright.PlaywrightError ->
         if String.contains?(error.message, "Execution context was destroyed") do
           :ok
         else

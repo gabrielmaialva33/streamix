@@ -7,25 +7,23 @@ defmodule StreamixWeb.E2E.TorrentSubtitleTracerTest do
   codec or subtitle API is needed.
   """
 
-  use PhoenixTest.Playwright.Case,
+  use StreamixWeb.PlaywrightCase,
     async: false,
     parameterize: [
-      %{browser_pool: false, browser: :chromium},
-      %{browser_pool: false, browser: :firefox}
+      Playwright.Test.parameters(name: "chromium", browser_name: :chromium),
+      Playwright.Test.parameters(name: "firefox", browser_name: :firefox)
     ]
 
   use StreamixWeb, :verified_routes
 
   @moduletag :playwright
 
-  setup {StreamixWeb.PlaywrightSupport, :register_context_cleanup}
-
   import Phoenix.ConnTest, only: [build_conn: 0, get: 2]
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
   import StreamixWeb.ConnCase, only: [log_in_user: 2]
 
-  alias PlaywrightEx.BrowserContext
+  alias Playwright.{BrowserContext, Page}
   alias Streamix.Cache
   alias Streamix.Iptv.TorrentProvider
   alias Streamix.Repo
@@ -112,20 +110,16 @@ defmodule StreamixWeb.E2E.TorrentSubtitleTracerTest do
       |> Map.fetch!(:resp_cookies)
       |> Map.fetch!("_streamix_key")
 
-    PhoenixTest.Playwright.unwrap(session, fn %{context_id: context_id} ->
-      {:ok, _} =
-        BrowserContext.add_cookies(context_id,
-          timeout: 5_000,
-          cookies: [
-            %{
-              "name" => "_streamix_key",
-              "value" => cookie.value,
-              "url" => StreamixWeb.Endpoint.url(),
-              "httpOnly" => true,
-              "sameSite" => "Lax"
-            }
-          ]
-        )
+    unwrap(session, fn page ->
+      BrowserContext.add_cookies!(Page.context(page), [
+        %{
+          "name" => "_streamix_key",
+          "value" => cookie.value,
+          "url" => StreamixWeb.Endpoint.url(),
+          "httpOnly" => true,
+          "sameSite" => "Lax"
+        }
+      ])
     end)
   end
 
@@ -202,101 +196,99 @@ defmodule StreamixWeb.E2E.TorrentSubtitleTracerTest do
     })();
     """
 
-    PhoenixTest.Playwright.unwrap(session, fn %{context_id: context_id} ->
-      {:ok, _} = BrowserContext.add_init_script(context_id, timeout: 5_000, source: source)
+    unwrap(session, fn page ->
+      BrowserContext.add_init_script!(Page.context(page), source)
     end)
   end
 
   defp assert_tracer_state(session) do
-    PhoenixTest.Playwright.evaluate(
-      session,
-      """
-      async () => {
-        const deadline = Date.now() + 8_000;
-        let container;
-        let hook;
-        let nativeSubtitleSnapshot;
-        let subtitleSourceSnapshot;
-        let track;
+    unwrap(session, fn page ->
+      state =
+        Page.evaluate!(page, """
+        async () => {
+          const deadline = Date.now() + 8_000;
+          let container;
+          let hook;
+          let nativeSubtitleSnapshot;
+          let subtitleSourceSnapshot;
+          let track;
 
-        while (Date.now() < deadline) {
-          container = document.querySelector("#video-player-container");
-          hook = container?.__videoPlayerHook;
-          track = document.querySelector("#video-element track");
-          nativeSubtitleSnapshot = hook?.nativeSubtitleController
-            ? hook.nativeSubtitleController.snapshot()
-            : null;
-          subtitleSourceSnapshot = hook?.subtitleSourceResolver
-            ? hook.subtitleSourceResolver.snapshot()
-            : null;
+          while (Date.now() < deadline) {
+            container = document.querySelector("#video-player-container");
+            hook = container?.__videoPlayerHook;
+            track = document.querySelector("#video-element track");
+            nativeSubtitleSnapshot = hook?.nativeSubtitleController
+              ? hook.nativeSubtitleController.snapshot()
+              : null;
+            subtitleSourceSnapshot = hook?.subtitleSourceResolver
+              ? hook.subtitleSourceResolver.snapshot()
+              : null;
 
-          if (
-            hook?.playbackSessionId > 0 &&
-            nativeSubtitleSnapshot?.active &&
-            track?.isConnected
-          ) {
-            break;
+            if (
+              hook?.playbackSessionId > 0 &&
+              nativeSubtitleSnapshot?.active &&
+              track?.isConnected
+            ) {
+              break;
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 100));
           }
 
-          await new Promise((resolve) => setTimeout(resolve, 100));
+          const subtitleResponse = await fetch(
+            "/api/subtitles/#{@imdb_id}?lang=pt-BR&offset_ms=500"
+          );
+          const shifted = await subtitleResponse.text();
+
+          return {
+            streamUrl: container?.dataset.streamUrl,
+            subtitleLang: container?.dataset.subtitleLang,
+            subtitleOffsetMs: container?.dataset.subtitleOffsetMs,
+            trackLabel: track?.label,
+            trackCount: document.querySelectorAll("#video-element track").length,
+            subtitleOptions: document.querySelector("#subtitle-options")?.innerHTML,
+            hookState: hook
+              ? {
+                  engine: hook.playbackOrchestrator?.currentEngineId?.() ?? null,
+                  sourceType: hook.sourceType,
+                  imdbId: hook.imdbId,
+                  sessionId: hook.playbackSessionId,
+                  usingAVPlayer: hook.usingAVPlayer,
+                  nativeSubtitle: nativeSubtitleSnapshot,
+                  subtitleSource: subtitleSourceSnapshot,
+                  sameVideoNode: hook.video === document.querySelector("#video-element"),
+                  nativeTrackConnected: Boolean(
+                    nativeSubtitleSnapshot?.active && track?.isConnected
+                  ),
+                  tracks: hook.subtitleTracks
+                }
+              : null,
+            subtitleStatus: subtitleResponse.status,
+            shifted
+          };
         }
+        """)
 
-        const subtitleResponse = await fetch(
-          "/api/subtitles/#{@imdb_id}?lang=pt-BR&offset_ms=500"
-        );
-        const shifted = await subtitleResponse.text();
+      hook_state = Map.fetch!(state, "hookState")
+      native_subtitle = Map.fetch!(hook_state, "nativeSubtitle")
+      subtitle_source = Map.fetch!(hook_state, "subtitleSource")
 
-        return {
-          streamUrl: container?.dataset.streamUrl,
-          subtitleLang: container?.dataset.subtitleLang,
-          subtitleOffsetMs: container?.dataset.subtitleOffsetMs,
-          trackLabel: track?.label,
-          trackCount: document.querySelectorAll("#video-element track").length,
-          subtitleOptions: document.querySelector("#subtitle-options")?.innerHTML,
-          hookState: hook
-            ? {
-                engine: hook.playbackOrchestrator?.currentEngineId?.() ?? null,
-                sourceType: hook.sourceType,
-                imdbId: hook.imdbId,
-                sessionId: hook.playbackSessionId,
-                usingAVPlayer: hook.usingAVPlayer,
-                nativeSubtitle: nativeSubtitleSnapshot,
-                subtitleSource: subtitleSourceSnapshot,
-                sameVideoNode: hook.video === document.querySelector("#video-element"),
-                nativeTrackConnected: Boolean(
-                  nativeSubtitleSnapshot?.active && track?.isConnected
-                ),
-                tracks: hook.subtitleTracks
-              }
-            : null,
-          subtitleStatus: subtitleResponse.status,
-          shifted
-        };
-      }
-      """,
-      [is_function: true, timeout: 12_000],
-      fn state ->
-        hook_state = Map.fetch!(state, "hookState")
-        native_subtitle = Map.fetch!(hook_state, "nativeSubtitle")
-        subtitle_source = Map.fetch!(hook_state, "subtitleSource")
-
-        assert String.starts_with?(state["streamUrl"], "/api/stream/torrent/")
-        assert state["subtitleLang"] == "pt-BR"
-        assert state["subtitleOffsetMs"] == "500"
-        assert hook_state["engine"] == "native"
-        assert hook_state["usingAVPlayer"] == false
-        assert hook_state["sameVideoNode"]
-        assert hook_state["nativeTrackConnected"]
-        assert native_subtitle["active"]
-        assert subtitle_source["cachedResponses"] == 1
-        assert subtitle_source["activeLeases"] == 1
-        assert state["trackLabel"] == "Português (auto)", inspect(state)
-        assert state["trackCount"] == 1, inspect(state)
-        assert state["subtitleOptions"] =~ "Português (auto)", inspect(state)
-        assert state["subtitleStatus"] == 200
-        assert state["shifted"] =~ "00:00:01.500 --> 00:00:02.500"
-      end
-    )
+      assert String.starts_with?(state["streamUrl"], "/api/stream/torrent/")
+      assert state["subtitleLang"] == "pt-BR"
+      assert state["subtitleOffsetMs"] == "500"
+      assert hook_state["engine"] == "native"
+      assert hook_state["usingAVPlayer"] == false
+      assert hook_state["sameVideoNode"]
+      assert hook_state["nativeTrackConnected"]
+      assert native_subtitle["active"]
+      assert subtitle_source["cachedResponses"] == 1
+      assert subtitle_source["activeLeases"] == 1
+      assert state["trackLabel"] == "Português (auto)", inspect(state)
+      assert state["trackCount"] == 1, inspect(state)
+      assert state["subtitleOptions"] =~ "Português (auto)", inspect(state)
+      assert state["subtitleStatus"] == 200
+      assert state["shifted"] =~ "00:00:01.500 --> 00:00:02.500"
+    end)
   end
 
   defp start_rqbit_stub do

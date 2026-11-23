@@ -32,9 +32,10 @@ pick_free_port() {
 
 playwright_port="${PLAYWRIGHT_DOCKER_PORT:-$(pick_free_port)}"
 
+# The server must run the Playwright version of the client: playwright_ex's
+# driver, which this installs if needed.
 playwright_version=$(
-  cd "${project_root}"
-  node -e 'console.log(require("./assets/package-lock.json").packages["node_modules/playwright"].version)'
+  env MIX_ENV=test mix playwright.cli --version | awk '/^Version / {print $2}'
 )
 
 image="mcr.microsoft.com/playwright:v${playwright_version}-noble"
@@ -102,14 +103,12 @@ docker run --detach \
   --init \
   --network host \
   --name "${container_name}" \
-  --volume "${project_root}:/work:ro" \
-  --workdir /work/assets \
   "${image}" \
-  node node_modules/playwright/cli.js run-server \
+  npx -y "playwright@${playwright_version}" run-server \
   --host 0.0.0.0 \
   --port "${playwright_port}" >/dev/null
 
-for _attempt in $(seq 1 60); do
+for _attempt in $(seq 1 240); do
   if timeout 1 bash -c "</dev/tcp/127.0.0.1/${playwright_port}" 2>/dev/null; then
     break
   fi
