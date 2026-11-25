@@ -236,6 +236,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Security
 
+- Dependency updates fix three more advisories: `phoenix` 1.8.17 (EEF-CVE-2026-129344, EEF-CVE-2026-128361) and
+  `db_connection` 2.10.3 (EEF-CVE-2026-133555).
 - Dependency updates fix three advisories: `phoenix_live_view` 1.2.14 (EEF-CVE-2026-126334), `plug` 1.20.4
   (EEF-CVE-2026-120287) and `idna` 8.0.0 (EEF-CVE-2026-117678), with `swoosh` 1.30.0 allowing the new idna.
 - Watch history, playback progress and favorites are sealed per user: AES-256-GCM rows under a random library key
