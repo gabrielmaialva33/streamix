@@ -220,7 +220,9 @@ config :logger, :default_formatter,
     :reason_kind,
     :provider_id,
     :endpoint_host,
-    :host
+    :host,
+    :content_id,
+    :collection
   ]
 
 # Use Jason for JSON parsing in Phoenix

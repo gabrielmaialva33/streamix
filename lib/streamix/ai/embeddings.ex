@@ -104,6 +104,17 @@ defmodule Streamix.AI.Embeddings do
   end
 
   @doc """
+  Whether an embedding error means the provider refused the input itself
+  (NVIDIA's content safety screening answers 422), as opposed to a failure
+  that retrying or another batch could get past.
+  """
+  @spec rejected_input?(term()) :: boolean()
+  def rejected_input?({:api_error, 422, body}),
+    do: body |> inspect() |> String.contains?("safety")
+
+  def rejected_input?(_reason), do: false
+
+  @doc """
   Returns info about current configuration.
   """
   def info do

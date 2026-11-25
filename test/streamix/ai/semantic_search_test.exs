@@ -44,6 +44,46 @@ defmodule Streamix.AI.SemanticSearchTest do
     refute_received {:batch, :movies, ^third_batch_ids}
   end
 
+  test "a rejected title is isolated and left out; the rest of its batch is indexed" do
+    contents = Enum.map(1..10, &%{id: &1, title: "Content #{&1}", provider_id: 1})
+    test_pid = self()
+
+    rejection =
+      {:api_error, 422,
+       %{"error" => %{"message" => "input rejected by content safety screening"}}}
+
+    batch_indexer = fn batch, _collection ->
+      ids = Enum.map(batch, & &1.id)
+      if 7 in ids, do: {:error, rejection}, else: {:ok, length(ids)}
+    end
+
+    assert SemanticSearch.index_contents(contents, :movies,
+             batch_indexer: batch_indexer,
+             on_rejected: fn content, collection ->
+               send(test_pid, {:rejected, collection, content.id})
+             end,
+             on_batch: fn last_id, count ->
+               send(test_pid, {:checkpoint, last_id, count})
+               :ok
+             end,
+             rate_limit_delay: 0
+           ) == {:ok, 9}
+
+    assert_received {:rejected, :movies, 7}
+    refute_received {:rejected, _, _}
+    assert_received {:checkpoint, 10, 9}
+  end
+
+  test "a failure that is not a rejected input still stops the run" do
+    contents = Enum.map(1..4, &%{id: &1, title: "Content #{&1}", provider_id: 1})
+
+    assert SemanticSearch.index_contents(contents, :movies,
+             batch_indexer: fn _batch, _collection -> {:error, {:api_error, 500, %{}}} end,
+             on_rejected: fn _content, _collection -> flunk("not a rejected input") end,
+             rate_limit_delay: 0
+           ) == {:error, {:batch_failed, :movies, 0, {:api_error, 500, %{}}}}
+  end
+
   test "index_all_movies resumes after a stable database id" do
     user = user_fixture()
     provider = provider_fixture(user)

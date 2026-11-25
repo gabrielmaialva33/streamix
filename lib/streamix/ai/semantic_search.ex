@@ -184,6 +184,7 @@ defmodule Streamix.AI.SemanticSearch do
     rate_limit_delay = Keyword.get(opts, :rate_limit_delay, @rate_limit_delay)
     batch_size = Keyword.get(opts, :batch_size, @batch_size)
     on_batch = Keyword.get(opts, :on_batch, fn _last_id, _indexed_total -> :ok end)
+    on_rejected = Keyword.get(opts, :on_rejected, &drop_rejected/2)
     total_contents = length(contents)
 
     batches =
@@ -197,6 +198,7 @@ defmodule Streamix.AI.SemanticSearch do
       batch_indexer: batch_indexer,
       collection: collection,
       on_batch: on_batch,
+      on_rejected: on_rejected,
       rate_limit_delay: rate_limit_delay,
       total_batches: total_batches,
       total_contents: total_contents
@@ -209,8 +211,48 @@ defmodule Streamix.AI.SemanticSearch do
 
   defp index_content_batch({batch, batch_number}, {:ok, count}, context) do
     batch
-    |> context.batch_indexer.(context.collection)
+    |> index_isolating_rejected(context)
     |> handle_index_batch(batch, batch_number, count, context)
+  end
+
+  # nemotron-3.5 screens its input and answers 422 for the whole request when
+  # one text trips the filter. A single title must not stop the run (it used
+  # to discard the nightly job on every attempt), so a rejected batch is
+  # halved until the rejected titles are alone; those are left out of the
+  # index and every other title in the batch is indexed as usual.
+  defp index_isolating_rejected(batch, context) do
+    case context.batch_indexer.(batch, context.collection) do
+      {:error, reason} = error ->
+        if Embeddings.rejected_input?(reason), do: split_rejected(batch, context), else: error
+
+      result ->
+        result
+    end
+  end
+
+  defp split_rejected([content], context) do
+    context.on_rejected.(content, context.collection)
+    {:ok, 0}
+  end
+
+  defp split_rejected(batch, context) do
+    {left, right} = Enum.split(batch, div(length(batch), 2))
+
+    with {:ok, left_count} <- index_isolating_rejected(left, context),
+         {:ok, right_count} <- index_isolating_rejected(right, context) do
+      {:ok, left_count + right_count}
+    end
+  end
+
+  # The title may still hold a vector from an earlier model, which would no
+  # longer be comparable with the rest of the collection.
+  defp drop_rejected(content, collection) do
+    Logger.warning("[SemanticSearch] Embedding input rejected; title left out of the index",
+      content_id: content.id,
+      collection: collection
+    )
+
+    Qdrant.delete_point(to_string(collection), content.id)
   end
 
   defp handle_index_batch({:ok, indexed}, batch, batch_number, count, context) do
