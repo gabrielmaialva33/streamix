@@ -367,6 +367,16 @@ defmodule StreamixWeb.PlayerLive do
         if state == :slow do
           # Nothing to fall back on: this provider is the only way to play
           # the title, so wait for its probe after all.
+          :telemetry.execute(
+            [:streamix, :player, :source_failover],
+            %{count: 1},
+            %{
+              status: :unavailable,
+              from_content_id: socket.assigns.content.id,
+              reason: :probe_slow
+            }
+          )
+
           {:noreply,
            resolve_source_async(
              socket,

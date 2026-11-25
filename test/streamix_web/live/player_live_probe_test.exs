@@ -198,13 +198,31 @@ defmodule StreamixWeb.PlayerLiveProbeTest do
       only = movie_fixture(probing, %{container_extension: "mp4", stream_id: 9_301})
 
       hold_panel_requests()
+      test = self()
+      handler = "probe-slow-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler,
+        [:streamix, :player, :source_failover],
+        fn _event, _measurements, metadata, _config -> send(test, {:failover, metadata}) end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
 
       {:ok, view, _html} = live(conn, ~p"/watch/movie/#{only.id}")
       assert_receive {:panel_request_held, held}, 1_000
 
       # The budget runs out with nothing to fall back on: still the startup
-      # screen, now waiting for the probe itself.
-      render_async(view, 1_000)
+      # screen, now waiting for the probe itself. That wait is held until
+      # :release, so render_async here would race it; the telemetry event
+      # marks the hand-over instead.
+      only_id = only.id
+
+      assert_receive {:failover,
+                      %{status: :unavailable, reason: :probe_slow, from_content_id: ^only_id}},
+                     2_000
+
       assert render(view) =~ ~s(id="player-startup-screen")
 
       send(held, :release)
