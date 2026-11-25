@@ -28,8 +28,11 @@ defmodule Streamix.AI.NvidiaTest do
   defp put_nvidia(opts), do: Application.put_env(:streamix, :nvidia, opts)
 
   test "reports the size of the configured model" do
-    put_nvidia(api_key: "test", embedding_model: "nvidia/nemotron-3-embed-1b")
+    put_nvidia(api_key: "test", embedding_model: "nvidia/nemotron-3.5-embed-1b")
     assert Nvidia.embedding_dimensions() == 2048
+
+    put_nvidia(api_key: "test", embedding_model: "nvidia/nemotron-3.5-embed-8b")
+    assert Nvidia.embedding_dimensions() == 4096
 
     put_nvidia(api_key: "test", embedding_model: "nvidia/nv-embedqa-e5-v5")
     assert Nvidia.embedding_dimensions() == 1024
@@ -37,8 +40,10 @@ defmodule Streamix.AI.NvidiaTest do
 
   test "defaults to a model that is still served" do
     # nv-embedqa-e5-v5 reached end of life on 2026-08-25 and answers 410, so a
-    # deployment that sets no model at all must not land on it.
+    # deployment that sets no model at all must not land on it. The same
+    # happened to nemotron-3-embed-1b on 2026-11-23.
     put_nvidia(api_key: "test")
+    assert Nvidia.model() == "nvidia/nemotron-3.5-embed-1b"
     assert Nvidia.embedding_dimensions() == 2048
   end
 

@@ -11,7 +11,7 @@ defmodule Streamix.AI.Nvidia do
 
   Set the following environment variables:
   - `NVIDIA_API_KEY` - Your NVIDIA NIM API key
-  - `NVIDIA_EMBEDDING_MODEL` - Model to use (default: nv-embedqa-e5-v5)
+  - `NVIDIA_EMBEDDING_MODEL` - Model to use (default: nvidia/nemotron-3.5-embed-1b)
 
   ## Rate Limits
 
@@ -42,7 +42,12 @@ defmodule Streamix.AI.Nvidia do
   #
   # The default has to be a model that is actually alive, otherwise a fresh
   # deployment is broken before it starts.
-  @default_model "nvidia/nemotron-3-embed-1b"
+  #
+  # 2026-11-23: nemotron-3-embed-1b reached end of life too (410). Its
+  # successor keeps the 2048-dimension vectors, so the Qdrant collections stay
+  # as they are, but vectors from two models are not comparable: the index has
+  # to be rebuilt (the daily IndexEmbeddingsWorker re-embeds every title).
+  @default_model "nvidia/nemotron-3.5-embed-1b"
 
   # Dimensions are a property of the model, so they have to travel with it.
   # Leaving them as a constant while NVIDIA_EMBEDDING_MODEL was configurable
@@ -50,6 +55,8 @@ defmodule Streamix.AI.Nvidia do
   # dimension count is precisely the failure SearchHealth documents it cannot
   # detect. Unknown models fall back to NVIDIA_EMBEDDING_DIMENSIONS.
   @model_dimensions %{
+    "nvidia/nemotron-3.5-embed-1b" => 2048,
+    "nvidia/nemotron-3.5-embed-8b" => 4096,
     "nvidia/nemotron-3-embed-1b" => 2048,
     "nvidia/llama-nemotron-embed-vl-1b-v2" => 2048,
     "nvidia/nv-embedqa-e5-v5" => 1024,
@@ -217,7 +224,9 @@ defmodule Streamix.AI.Nvidia do
       System.get_env("NVIDIA_API_KEY")
   end
 
-  defp model do
+  @doc "The embedding model requests go to: the configured one, else the default."
+  @spec model() :: String.t()
+  def model do
     Application.get_env(:streamix, :nvidia, [])[:embedding_model] ||
       System.get_env("NVIDIA_EMBEDDING_MODEL") ||
       @default_model

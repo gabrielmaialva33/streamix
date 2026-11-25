@@ -263,6 +263,9 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Semantic search and "similar titles" work again: NVIDIA retired `nvidia/nemotron-3-embed-1b` on 2026-11-23 (410
+  Gone), which stopped the nightly embedding index. The default model is now `nvidia/nemotron-3.5-embed-1b` (same
+  2048-dimension vectors); the next `IndexEmbeddingsWorker` run re-embeds every title.
 - Xtream providers fail over across all registered domains for sync, health, metadata, EPG and playback, and
   prefer the fastest live domain; a dead domain no longer stalls requests for ~23 s or caps live viewing at one
   stream.

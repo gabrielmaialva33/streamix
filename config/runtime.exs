@@ -676,7 +676,9 @@ config :streamix, :tag_classifier,
 # id (the old short form returns 404 "page not found").
 # 2026-08-25: the whole nv-embedqa generation reached end of life and answers
 # 410, so the default model moved to nvidia/nemotron-3-embed-1b at 2048
-# dimensions. Changing the model changes the vector size, which means the
+# dimensions. 2026-11-23: that one reached end of life as well; the default is
+# now nvidia/nemotron-3.5-embed-1b, same 2048 dimensions. Changing the model
+# usually changes the vector size, which means the
 # Qdrant collections have to be recreated and reindexed — `Streamix.AI`
 # reports `:dimension_mismatch` until they are.
 # NVIDIA_EMBEDDING_DIMENSIONS is only needed for a model the app does not
