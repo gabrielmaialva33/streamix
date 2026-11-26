@@ -270,6 +270,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Catalog API posters now share the web image normalization and private-target filtering while retaining their own cache version.
+
 - Personalized movie and series shelves apply the selected genre before limiting candidates, so eligible titles beyond the initial window remain discoverable.
 
 - Series detail sync now counts task timeouts as failures and retries the same batch within a five-attempt budget, avoiding lost or endlessly recreated retry jobs.

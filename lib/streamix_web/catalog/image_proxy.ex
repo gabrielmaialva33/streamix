@@ -13,7 +13,7 @@ defmodule StreamixWeb.Catalog.ImageProxy do
   input cardinality so serializers can feed it raw struct fields.
   """
 
-  alias Streamix.PublicUrls
+  alias StreamixWeb.Helpers.ImageProxy, as: SharedImageProxy
 
   # Bumping this forces the CDN to re-fetch images served to catalog
   # clients after a config change. Keep in sync with the previous
@@ -26,15 +26,12 @@ defmodule StreamixWeb.Catalog.ImageProxy do
   def proxy(urls) when is_list(urls), do: Enum.map(urls, &proxy/1)
 
   def proxy(url) when is_binary(url) do
-    tmdb = PublicUrls.tmdb_proxy()
-    imgmxa = PublicUrls.imgmxa_proxy()
-
     url
-    |> String.replace("https://image.tmdb.org", tmdb)
-    |> String.replace("https://imgmxa.net", imgmxa)
-    |> String.replace("http://imgmxa.net", imgmxa)
+    |> SharedImageProxy.proxy_raw()
     |> add_cache_buster()
   end
+
+  defp add_cache_buster(nil), do: nil
 
   defp add_cache_buster(url) do
     if String.contains?(url, "?") do
