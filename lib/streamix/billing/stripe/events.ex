@@ -14,6 +14,20 @@ defmodule Streamix.Billing.Stripe.Events do
     activate_from_stripe_object(object, event)
   end
 
+  def apply_event(
+        %{"type" => "checkout.session.async_payment_succeeded", "data" => %{"object" => object}} =
+          event
+      ) do
+    activate_from_stripe_object(Map.put(object, "payment_status", "paid"), event)
+  end
+
+  def apply_event(
+        %{"type" => "checkout.session.async_payment_failed", "data" => %{"object" => object}} =
+          event
+      ) do
+    activate_from_stripe_object(Map.put(object, "payment_status", "failed"), event)
+  end
+
   def apply_event(%{"type" => "invoice.paid", "data" => %{"object" => object}} = event) do
     activate_from_stripe_object(object, event)
   end
@@ -124,10 +138,15 @@ defmodule Streamix.Billing.Stripe.Events do
       external_id: object["invoice"] || invoice_object_id(object),
       number: object["number"],
       amount_due_cents: object["amount_due"] || stripe_amount_cents(object, plan),
-      amount_paid_cents: object["amount_paid"] || stripe_amount_cents(object, plan),
+      amount_paid_cents:
+        object["amount_paid"] ||
+          if(stripe_payment_status(object) == "paid",
+            do: stripe_amount_cents(object, plan),
+            else: 0
+          ),
       currency: stripe_currency(object, plan),
       hosted_invoice_url: object["hosted_invoice_url"],
-      paid_at: stripe_paid_at(object, event),
+      paid_at: if(stripe_payment_status(object) == "paid", do: stripe_paid_at(object, event)),
       metadata: object["metadata"] || %{}
     }
   end
@@ -185,6 +204,7 @@ defmodule Streamix.Billing.Stripe.Events do
 
   defp subscription_expires_at(_object), do: nil
 
+  defp stripe_payment_status(%{"payment_status" => "failed"}), do: "failed"
   defp stripe_payment_status(%{"payment_status" => "paid"}), do: "paid"
   defp stripe_payment_status(%{"status" => "paid"}), do: "paid"
   defp stripe_payment_status(%{"paid" => true}), do: "paid"

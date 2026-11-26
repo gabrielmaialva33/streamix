@@ -272,6 +272,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Pending Stripe checkouts record payment state without activating access. Asynchronous outcomes are handled, paid records resist late pending/failure updates, and provider transitions preserve administrator-granted plans. Trials activate through explicit subscription state.
+
 - Docker browser runners now reject remote endpoints before any asset installation/build or port allocation, with explicit guidance for local contexts.
 
 - Image resizing coalesces simultaneous requests, admits at most two producers, publishes complete files atomically, and evicts expired images within a 512 MiB / 10,000-entry disk budget. Saturated requests receive a retryable 503.

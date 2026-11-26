@@ -45,12 +45,18 @@ defmodule Streamix.Billing.Subscriptions do
   def sync_provider_subscription!(%{id: user_id} = user, %Plan{} = plan, attrs)
       when is_integer(user_id) and is_map(attrs) do
     Repo.transaction(fn ->
+      lock_user!(user_id)
       now = DateTime.utc_now(:second)
       external_reference = Map.fetch!(attrs, :external_reference)
       status = Map.fetch!(attrs, :status)
 
       if status == "active" do
-        cancel_other_active_subscriptions!(user_id, external_reference, now)
+        cancel_other_active_subscriptions!(
+          user_id,
+          external_reference,
+          now,
+          Map.fetch!(attrs, :provider)
+        )
       end
 
       subscription_attrs = %{
@@ -200,9 +206,17 @@ defmodule Streamix.Billing.Subscriptions do
     |> UserProjection.attach_emails()
   end
 
-  def cancel_other_active_subscriptions!(user_id, external_reference, now) do
+  def lock_user!(user_id) do
+    Repo.query!("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+      "billing:user:#{user_id}"
+    ])
+
+    :ok
+  end
+
+  def cancel_other_active_subscriptions!(user_id, external_reference, now, provider) do
     from(s in Subscription,
-      where: s.user_id == ^user_id and s.status == "active",
+      where: s.user_id == ^user_id and s.status == "active" and s.source == ^provider,
       where: s.external_reference != ^external_reference or is_nil(s.external_reference)
     )
     |> Repo.update_all(set: [status: "canceled", canceled_at: now, updated_at: now])

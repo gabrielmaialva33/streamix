@@ -266,7 +266,7 @@ defmodule Streamix.Billing.StripeTest do
              subscription.external_reference
   end
 
-  test "paid checkout cancels the previous active user plan", %{user: user, plan: new_plan} do
+  test "paid checkout preserves an administrator-granted plan", %{user: user, plan: new_plan} do
     old_plan =
       Billing.ensure_plan!(%{
         name: "Old Premium",
@@ -294,7 +294,7 @@ defmodule Streamix.Billing.StripeTest do
       })
 
     assert result.subscription.plan_id == new_plan.id
-    assert Repo.reload!(old_subscription).status == "canceled"
+    assert Repo.reload!(old_subscription).status == "active"
   end
 
   test "handle_webhook/2 rejects invalid signatures", %{user: user, plan: plan} do
@@ -306,6 +306,90 @@ defmodule Streamix.Billing.StripeTest do
 
     assert {:error, :invalid_signature} =
              Stripe.handle_webhook(raw_body, "t=#{System.system_time(:second)},v1=bad")
+  end
+
+  test "unpaid checkout records pending payment without granting access or replacing a manual grant",
+       %{user: user, plan: plan} do
+    event = checkout_event(user, plan, "unpaid")
+    assert {:ok, result} = Stripe.apply_event(event)
+    assert result.payment.status == "pending"
+    assert result.payment.paid_at == nil
+    assert result.subscription.status == "pending"
+    refute Billing.entitled?(user, :global_catalog)
+
+    manual =
+      Billing.ensure_manual_subscription!(user, plan, %{expires_at: ~U[2028-12-31 00:00:00Z]})
+
+    assert {:ok, _} = Stripe.apply_event(event)
+    assert Repo.reload!(manual).status == "active"
+    assert Repo.reload!(manual).expires_at == ~U[2028-12-31 00:00:00Z]
+  end
+
+  test "async completion grants access and a late failure cannot undo paid payment", %{
+    user: user,
+    plan: plan
+  } do
+    assert {:ok, _} = Stripe.apply_event(checkout_event(user, plan, "unpaid"))
+
+    paid =
+      checkout_event(user, plan, "paid")
+      |> Map.put("type", "checkout.session.async_payment_succeeded")
+
+    assert {:ok, %{payment: payment, subscription: subscription}} = Stripe.apply_event(paid)
+    assert payment.status == "paid"
+    assert subscription.status == "active"
+
+    failed =
+      checkout_event(user, plan, "unpaid")
+      |> Map.put("type", "checkout.session.async_payment_failed")
+
+    assert {:ok, _} = Stripe.apply_event(failed)
+    assert Repo.reload!(subscription).status == "active"
+    assert Repo.reload!(payment).status == "paid"
+  end
+
+  test "no-payment-required checkout waits for an explicit trial subscription", %{
+    user: user,
+    plan: plan
+  } do
+    assert {:ok, %{subscription: pending}} =
+             Stripe.apply_event(checkout_event(user, plan, "no_payment_required"))
+
+    assert pending.status == "pending"
+    refute Billing.entitled?(user, :global_catalog)
+
+    object = %{
+      "id" => "sub_pending_test",
+      "object" => "subscription",
+      "status" => "trialing",
+      "metadata" => %{"user_id" => user.id, "plan_id" => plan.id}
+    }
+
+    assert {:ok, %{subscription: trial}} =
+             Stripe.apply_event(%{
+               "type" => "customer.subscription.updated",
+               "data" => %{"object" => object}
+             })
+
+    assert trial.status == "active"
+    assert Billing.entitled?(user, :global_catalog)
+  end
+
+  defp checkout_event(user, plan, payment_status) do
+    %{
+      "id" => "evt_pending_test",
+      "type" => "checkout.session.completed",
+      "created" => 1_800_000_000,
+      "data" => %{
+        "object" => %{
+          "id" => "cs_pending_test",
+          "object" => "checkout.session",
+          "subscription" => "sub_pending_test",
+          "payment_status" => payment_status,
+          "metadata" => %{"user_id" => user.id, "plan_id" => plan.id}
+        }
+      }
+    }
   end
 
   defp stripe_signature(raw_body) do

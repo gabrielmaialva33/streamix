@@ -27,6 +27,7 @@ defmodule Streamix.Billing.Payments do
   def activate_subscription_from_payment!(%{id: user_id} = user, %Plan{} = plan, attrs)
       when is_integer(user_id) and is_map(attrs) do
     Repo.transaction(fn ->
+      Subscriptions.lock_user!(user_id)
       provider = Map.fetch!(attrs, :provider)
       external_id = Map.get(attrs, :external_id)
       now = DateTime.utc_now(:second)
@@ -35,16 +36,11 @@ defmodule Streamix.Billing.Payments do
         Map.get(attrs, :subscription_external_reference) ||
           payment_subscription_reference(provider, external_id, user, plan)
 
-      Subscriptions.cancel_other_active_subscriptions!(user_id, external_reference, now)
+      paid? = Map.get(attrs, :status, "paid") == "paid"
+      grant? = paid? and Map.get(attrs, :grant_access?, true)
 
       subscription =
-        Subscriptions.ensure_manual_subscription!(user, plan, %{
-          status: "active",
-          source: provider,
-          external_reference: external_reference,
-          starts_at: Map.get(attrs, :starts_at, now),
-          expires_at: Map.get(attrs, :expires_at)
-        })
+        payment_subscription!(user, plan, attrs, external_reference, provider, now, grant?)
 
       payment =
         upsert_payment!(user, plan, subscription, %{
@@ -53,7 +49,7 @@ defmodule Streamix.Billing.Payments do
           external_id: external_id,
           amount_cents: Map.get(attrs, :amount_cents, plan.price_cents),
           currency: Map.get(attrs, :currency, plan.currency),
-          paid_at: Map.get(attrs, :paid_at, now),
+          paid_at: if(paid?, do: Map.get(attrs, :paid_at, now)),
           failure_reason: Map.get(attrs, :failure_reason),
           raw_event: Map.get(attrs, :raw_event, %{})
         })
@@ -66,6 +62,25 @@ defmodule Streamix.Billing.Payments do
     |> case do
       {:ok, result} -> result
       {:error, reason} -> raise inspect(reason)
+    end
+  end
+
+  defp payment_subscription!(user, plan, attrs, reference, provider, now, grant?) do
+    existing = Repo.get_by(Subscription, external_reference: reference)
+
+    if existing && not grant? do
+      existing
+    else
+      if grant?,
+        do: Subscriptions.cancel_other_active_subscriptions!(user.id, reference, now, provider)
+
+      Subscriptions.ensure_manual_subscription!(user, plan, %{
+        status: if(grant?, do: "active", else: "pending"),
+        source: provider,
+        external_reference: reference,
+        starts_at: Map.get(attrs, :starts_at, now),
+        expires_at: Map.get(attrs, :expires_at)
+      })
     end
   end
 
@@ -134,6 +149,19 @@ defmodule Streamix.Billing.Payments do
       |> Map.put(:plan_id, plan.id)
       |> Map.put(:subscription_id, subscription.id)
 
+    existing =
+      if external_id = payment_attrs[:external_id],
+        do: Repo.get_by(Payment, provider: payment_attrs.provider, external_id: external_id)
+
+    if not is_nil(existing) and existing.status == "paid" and
+         payment_attrs.status in ["pending", "failed"] do
+      existing
+    else
+      insert_payment!(payment_attrs)
+    end
+  end
+
+  defp insert_payment!(payment_attrs) do
     if blank_external_id?(payment_attrs) do
       # No external id → can't dedupe via the unique index. Keep the
       # legacy fallback path (first webhook delivery without IDs is
@@ -202,6 +230,18 @@ defmodule Streamix.Billing.Payments do
     # Same idempotency story as payments — partial unique index on
     # (provider, external_id) where external_id IS NOT NULL needs its
     # predicate echoed in the conflict_target via unsafe_fragment.
+    existing =
+      if external_id = invoice_attrs[:external_id],
+        do: Repo.get_by(Invoice, provider: invoice_attrs.provider, external_id: external_id)
+
+    if not is_nil(existing) and existing.status == "paid" and invoice_attrs.status != "paid" do
+      existing
+    else
+      insert_invoice!(invoice_attrs)
+    end
+  end
+
+  defp insert_invoice!(invoice_attrs) do
     if blank_external_id?(invoice_attrs) do
       %Invoice{}
       |> Invoice.changeset(invoice_attrs)
