@@ -20,8 +20,7 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
 
   @compact_mobile_opts [
                          viewport: %{width: 360, height: 800},
-                         device_scale_factor: 3.0,
-                         service_workers: "block"
+                         device_scale_factor: 3.0
                        ] ++
                          if(@playwright_browser == :firefox,
                            do: [],
@@ -30,8 +29,7 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
 
   @mobile_opts [
                  viewport: %{width: 390, height: 844},
-                 device_scale_factor: 3.0,
-                 service_workers: "block"
+                 device_scale_factor: 3.0
                ] ++
                  if(@playwright_browser == :firefox,
                    do: [],
@@ -40,27 +38,20 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
 
   @large_mobile_opts [
                        viewport: %{width: 430, height: 932},
-                       device_scale_factor: 3.0,
-                       service_workers: "block"
+                       device_scale_factor: 3.0
                      ] ++
                        if(@playwright_browser == :firefox,
                          do: [],
                          else: [is_mobile: true]
                        )
 
-  use PhoenixTest.Playwright.Case, async: false, browser: @playwright_browser
+  use StreamixWeb.PlaywrightCase, async: false, browser_name: @playwright_browser
   use StreamixWeb, :verified_routes
 
   @moduletag :playwright
 
-  setup {StreamixWeb.PlaywrightSupport, :register_context_cleanup}
-
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
-  import Phoenix.ConnTest, only: [build_conn: 0, get: 2]
-  import StreamixWeb.ConnCase, only: [log_in_user: 2]
-
-  alias PlaywrightEx.BrowserContext
 
   setup do
     provider =
@@ -78,9 +69,8 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
   describe "progressive HomeLive" do
     test "renders its shell immediately and resolves every shelf group", %{conn: conn} do
       conn
-      |> login(user_fixture())
+      |> log_in(user_fixture())
       |> visit(~p"/")
-      |> assert_has("body .phx-connected")
       |> assert_has("#home-progressive-shell")
       |> assert_has("#home-premium-cta")
       |> assert_has("#home-progressive-shell[data-home-catalog-state='false']", timeout: 10_000)
@@ -96,17 +86,17 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
     end
   end
 
-  @tag browser_context_opts: @compact_mobile_opts
+  @tag Playwright.Test.use(@compact_mobile_opts)
   test "compact mobile catalog stays readable at 360px", %{conn: conn} do
     assert_mobile_catalog(conn, 360)
   end
 
-  @tag browser_context_opts: @mobile_opts
+  @tag Playwright.Test.use(@mobile_opts)
   test "standard mobile catalog stays readable at 390px", %{conn: conn} do
     assert_mobile_catalog(conn, 390)
   end
 
-  @tag browser_context_opts: @large_mobile_opts
+  @tag Playwright.Test.use(@large_mobile_opts)
   test "large mobile catalog stays readable at 430px", %{conn: conn} do
     assert_mobile_catalog(conn, 430)
   end
@@ -127,45 +117,18 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
     end
 
     conn
-    |> login(user)
+    |> log_in(user)
     |> visit(~p"/providers/#{provider.id}/movies")
-    |> assert_has("body .phx-connected #movies .catalog-stream-item")
+    |> assert_has("#movies .catalog-stream-item")
     |> assert_compact_poster_grid(viewport_width)
     |> visit(~p"/providers/#{provider.id}")
-    |> assert_has("body .phx-connected #channels .catalog-stream-item")
+    |> assert_has("#channels .catalog-stream-item")
     |> assert_compact_live_grid(viewport_width)
   end
 
-  defp login(session, user) do
-    cookie =
-      build_conn()
-      |> log_in_user(user)
-      |> get(~p"/browse/movies")
-      |> Map.fetch!(:resp_cookies)
-      |> Map.fetch!("_streamix_key")
-
-    session
-    |> PhoenixTest.Playwright.unwrap(fn %{context_id: context_id} ->
-      {:ok, _} =
-        BrowserContext.add_cookies(context_id,
-          timeout: 5_000,
-          cookies: [
-            %{
-              "name" => "_streamix_key",
-              "value" => cookie.value,
-              "url" => StreamixWeb.Endpoint.url(),
-              "httpOnly" => true,
-              "sameSite" => "Lax"
-            }
-          ]
-        )
-    end)
-  end
-
   defp assert_compact_poster_grid(session, viewport_width) do
-    PhoenixTest.Playwright.evaluate(
-      session,
-      """
+    state =
+      Fluffy.Playwright.evaluate(session, """
       () => {
         const items = Array.from(document.querySelectorAll("#movies > .catalog-stream-item")).slice(0, 6);
         const rects = items.map((item) => {
@@ -183,40 +146,37 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
           horizontalOverflow: document.documentElement.scrollWidth - innerWidth
         };
       }
-      """,
-      [is_function: true],
-      fn state ->
-        assert state["viewportWidth"] == viewport_width
-        assert length(state["rects"]) == 6
+      """)
 
-        # Two readable columns on phones (a third from 540 px): a 4vw page
-        # gutter on each side and a 10 px gap.
-        [first, second, third | _rest] = state["rects"]
-        assert_in_delta first["top"], second["top"], 2
-        assert third["top"] > first["bottom"]
+    assert state["viewportWidth"] == viewport_width
+    assert length(state["rects"]) == 6
 
-        expected_width = (viewport_width * 0.92 - 10) / 2
+    # Two readable columns on phones (a third from 540 px): a 4vw page
+    # gutter on each side and a 10 px gap.
+    [first, second, third | _rest] = state["rects"]
+    assert_in_delta first["top"], second["top"], 2
+    assert third["top"] > first["bottom"]
 
-        for rect <- Enum.take(state["rects"], 2) do
-          assert_in_delta rect["width"], expected_width, 6
-          assert rect["height"] > rect["width"] * 1.6
-          assert rect["right"] <= viewport_width
-        end
+    expected_width = (viewport_width * 0.92 - 10) / 2
 
-        # The favorite keeps a 44 px target inside its own card.
-        assert state["favorite"]["width"] >= 44
-        assert state["favorite"]["height"] >= 44
-        assert state["favorite"]["right"] <= first["right"]
-        assert state["toolbarHeight"] <= 130
-        assert state["horizontalOverflow"] <= 1
-      end
-    )
+    for rect <- Enum.take(state["rects"], 2) do
+      assert_in_delta rect["width"], expected_width, 6
+      assert rect["height"] > rect["width"] * 1.6
+      assert rect["right"] <= viewport_width
+    end
+
+    # The favorite keeps a 44 px target inside its own card.
+    assert state["favorite"]["width"] >= 44
+    assert state["favorite"]["height"] >= 44
+    assert state["favorite"]["right"] <= first["right"]
+    assert state["toolbarHeight"] <= 130
+    assert state["horizontalOverflow"] <= 1
+    session
   end
 
   defp assert_compact_live_grid(session, viewport_width) do
-    PhoenixTest.Playwright.evaluate(
-      session,
-      """
+    state =
+      Fluffy.Playwright.evaluate(session, """
       () => {
         const items = Array.from(document.querySelectorAll("#channels > .catalog-stream-item")).slice(0, 4);
         const rects = items.map((item) => {
@@ -233,32 +193,29 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
           horizontalOverflow: document.documentElement.scrollWidth - innerWidth
         };
       }
-      """,
-      [is_function: true],
-      fn state ->
-        assert length(state["rects"]) == 4
+      """)
 
-        [first, second, third | _rest] = state["rects"]
-        assert_in_delta first["top"], second["top"], 2
-        assert third["top"] > first["bottom"]
+    assert length(state["rects"]) == 4
 
-        expected_width = (viewport_width - 42) / 2
+    [first, second, third | _rest] = state["rects"]
+    assert_in_delta first["top"], second["top"], 2
+    assert third["top"] > first["bottom"]
 
-        # Two stable 14 px title lines make a channel card ~190 px tall in
-        # Chromium; WebKit sets the same lines taller (up to ~212 px).
-        for rect <- Enum.take(state["rects"], 2) do
-          assert_in_delta rect["width"], expected_width, 7
-          assert rect["height"] <= 220
-          assert rect["right"] <= viewport_width
-        end
+    expected_width = (viewport_width - 42) / 2
 
-        assert state["favorite"]["width"] >= 44
-        assert state["favorite"]["height"] >= 44
-        assert state["favorite"]["right"] <= first["right"]
-        # Type tabs have a line of their own above the catalog and search rows.
-        assert state["toolbarHeight"] <= 160
-        assert state["horizontalOverflow"] <= 1
-      end
-    )
+    # Two stable 14 px title lines make a channel card ~190 px tall in
+    # Chromium; WebKit sets the same lines taller (up to ~212 px).
+    for rect <- Enum.take(state["rects"], 2) do
+      assert_in_delta rect["width"], expected_width, 7
+      assert rect["height"] <= 220
+      assert rect["right"] <= viewport_width
+    end
+
+    assert state["favorite"]["width"] >= 44
+    assert state["favorite"]["height"] >= 44
+    assert state["favorite"]["right"] <= first["right"]
+    # Type tabs have a line of their own above the catalog and search rows.
+    assert state["toolbarHeight"] <= 160
+    assert state["horizontalOverflow"] <= 1
   end
 end

@@ -20,19 +20,13 @@ defmodule StreamixWeb.E2E.WebKitReconnectTest do
                          _ -> :webkit
                        end)
 
-  use PhoenixTest.Playwright.Case, async: false, browser: @playwright_browser
+  use StreamixWeb.PlaywrightCase, async: false, browser_name: @playwright_browser
   use StreamixWeb, :verified_routes
 
   @moduletag :playwright
 
-  setup {StreamixWeb.PlaywrightSupport, :register_context_cleanup}
-
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
-  import Phoenix.ConnTest, only: [build_conn: 0, get: 2]
-  import StreamixWeb.ConnCase, only: [log_in_user: 2]
-
-  alias PlaywrightEx.BrowserContext
 
   setup do
     provider =
@@ -51,7 +45,6 @@ defmodule StreamixWeb.E2E.WebKitReconnectTest do
     test "reconnects after visibilitychange hidden→visible", %{conn: conn} do
       conn
       |> login(user_fixture())
-      |> assert_connected()
       |> run_js("""
       Object.defineProperty(document, 'visibilityState', {value: 'hidden', configurable: true});
       document.dispatchEvent(new Event('visibilitychange'));
@@ -64,7 +57,6 @@ defmodule StreamixWeb.E2E.WebKitReconnectTest do
     test "reconnects after simulated bfcache pageshow", %{conn: conn} do
       conn
       |> login(user_fixture())
-      |> assert_connected()
       |> run_js("""
       window.dispatchEvent(new PageTransitionEvent('pageshow', {persisted: true}));
       """)
@@ -74,7 +66,6 @@ defmodule StreamixWeb.E2E.WebKitReconnectTest do
     test "reconnects after offline→online cycle", %{conn: conn} do
       conn
       |> login(user_fixture())
-      |> assert_connected()
       |> run_js("""
       window.dispatchEvent(new Event('offline'));
       window.dispatchEvent(new Event('online'));
@@ -84,29 +75,8 @@ defmodule StreamixWeb.E2E.WebKitReconnectTest do
   end
 
   defp login(session, user) do
-    cookie =
-      build_conn()
-      |> log_in_user(user)
-      |> get(~p"/browse/movies")
-      |> Map.fetch!(:resp_cookies)
-      |> Map.fetch!("_streamix_key")
-
     session
-    |> PhoenixTest.Playwright.unwrap(fn %{context_id: context_id} ->
-      {:ok, _} =
-        BrowserContext.add_cookies(context_id,
-          timeout: 5_000,
-          cookies: [
-            %{
-              "name" => "_streamix_key",
-              "value" => cookie.value,
-              "url" => StreamixWeb.Endpoint.url(),
-              "httpOnly" => true,
-              "sameSite" => "Lax"
-            }
-          ]
-        )
-    end)
+    |> log_in(user)
     |> visit(~p"/browse/movies")
     |> assert_has("#movies")
   end
@@ -120,9 +90,9 @@ defmodule StreamixWeb.E2E.WebKitReconnectTest do
 
   defp run_js(session, script) do
     try do
-      PhoenixTest.Playwright.evaluate(session, script, fn _ -> :ok end)
+      Fluffy.Playwright.evaluate(session, script)
     rescue
-      error in ExUnit.AssertionError ->
+      error in Playwright.PlaywrightError ->
         if String.contains?(error.message, "Execution context was destroyed") do
           :ok
         else

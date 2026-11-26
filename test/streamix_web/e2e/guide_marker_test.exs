@@ -1,16 +1,10 @@
 defmodule StreamixWeb.E2E.GuideMarkerTest do
-  use PhoenixTest.Playwright.Case, async: false
+  use StreamixWeb.PlaywrightCase, async: false
 
-  @endpoint StreamixWeb.Endpoint
   @moduletag :playwright
-  setup {StreamixWeb.PlaywrightSupport, :register_context_cleanup}
 
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
-  import Phoenix.ConnTest, only: [build_conn: 0, get: 2]
-  import StreamixWeb.ConnCase, only: [log_in_user: 2]
-
-  alias PlaywrightEx.BrowserContext
 
   setup %{conn: session} do
     user = user_fixture()
@@ -25,41 +19,23 @@ defmodule StreamixWeb.E2E.GuideMarkerTest do
       end_time: DateTime.add(now, 120, :minute)
     })
 
-    cookie =
-      build_conn()
-      |> log_in_user(user)
-      |> get("/guide")
-      |> Map.fetch!(:resp_cookies)
-      |> Map.fetch!("_streamix_key")
-
-    session =
-      PhoenixTest.Playwright.unwrap(session, fn %{context_id: context_id} ->
-        {:ok, _} =
-          BrowserContext.add_cookies(context_id,
-            timeout: 5_000,
-            cookies: [
-              %{
-                "name" => "_streamix_key",
-                "value" => cookie.value,
-                "url" => StreamixWeb.Endpoint.url(),
-                "httpOnly" => true,
-                "sameSite" => "Lax"
-              }
-            ]
-          )
-      end)
-
-    %{conn: session}
+    %{conn: log_in(session, user)}
   end
 
-  @tag browser_context_opts: [viewport: %{width: 1440, height: 1000}]
+  @tag Playwright.Test.use(viewport: %{width: 1440, height: 1000})
   test "desktop now line runs behind the programmes, never over their text", %{conn: session} do
-    session
-    |> visit("/guide")
-    |> assert_has("[data-current-program=true]")
-    |> PhoenixTest.Playwright.screenshot("guide-marker-1440.png")
-    |> PhoenixTest.Playwright.evaluate(
-      """
+    session =
+      session
+      |> visit("/guide")
+      |> assert_has("[data-current-program=true]")
+
+    Fluffy.Playwright.screenshot(session,
+      path: "screenshots/guide-marker-1440.png",
+      full_page: true
+    )
+
+    result =
+      Fluffy.Playwright.evaluate(session, """
       () => {
         const marker = document.querySelector('.guide-now-line');
         const rect = marker.getBoundingClientRect();
@@ -79,37 +55,37 @@ defmodule StreamixWeb.E2E.GuideMarkerTest do
           overflow: document.documentElement.scrollWidth - innerWidth
         };
       }
-      """,
-      [is_function: true],
-      fn result ->
-        # The old full-height red marker was drawn over titles.
-        assert result["display"] == "block"
-        assert result["crosses"]
-        assert result["background"] != "rgba(0, 0, 0, 0)"
-        assert result["coveredByProgram"]
-        assert result["overflow"] <= 1
-      end
-    )
+      """)
+
+    # The old full-height red marker was drawn over titles.
+    assert result["display"] == "block"
+    assert result["crosses"]
+    assert result["background"] != "rgba(0, 0, 0, 0)"
+    assert result["coveredByProgram"]
+    assert result["overflow"] <= 1
   end
 
-  @tag browser_context_opts: [viewport: %{width: 390, height: 844}]
+  @tag Playwright.Test.use(viewport: %{width: 390, height: 844})
   test "phone keeps compact scrolling programme cards without the desktop marker", %{
     conn: session
   } do
-    session
-    |> visit("/guide")
-    |> assert_has("[data-current-program=true]")
-    |> PhoenixTest.Playwright.screenshot("guide-marker-390.png")
-    |> PhoenixTest.Playwright.evaluate(
-      """
+    session =
+      session
+      |> visit("/guide")
+      |> assert_has("[data-current-program=true]")
+
+    Fluffy.Playwright.screenshot(session,
+      path: "screenshots/guide-marker-390.png",
+      full_page: true
+    )
+
+    result =
+      Fluffy.Playwright.evaluate(session, """
       () => ({display: getComputedStyle(document.querySelector('.guide-now-line')).display,
         overflow: document.documentElement.scrollWidth - innerWidth})
-      """,
-      [is_function: true],
-      fn result ->
-        assert result["display"] == "none"
-        assert result["overflow"] <= 1
-      end
-    )
+      """)
+
+    assert result["display"] == "none"
+    assert result["overflow"] <= 1
   end
 end

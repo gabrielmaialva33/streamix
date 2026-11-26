@@ -15,41 +15,34 @@ defmodule StreamixWeb.E2E.LoginPersistenceTest do
                          _ -> :webkit
                        end)
 
-  use PhoenixTest.Playwright.Case,
-    async: false,
-    browser: @playwright_browser,
-    browser_pool: false
+  use StreamixWeb.PlaywrightCase, async: false, browser_name: @playwright_browser
 
   use StreamixWeb, :verified_routes
 
   @moduletag :playwright
 
-  setup {StreamixWeb.PlaywrightSupport, :register_context_cleanup}
-
   @mobile_context_opts [
                          viewport: %{width: 390, height: 844},
-                         device_scale_factor: 3.0,
-                         service_workers: "block"
+                         device_scale_factor: 3.0
                        ] ++
                          if(@playwright_browser == :firefox,
                            do: [],
                            else: [is_mobile: true]
                          )
 
-  @tag browser_context_opts: @mobile_context_opts
+  @tag Playwright.Test.use(@mobile_context_opts)
   test "keeps persistent login selected while the password manager fills credentials", %{
     conn: session
   } do
     session
     |> visit(~p"/login")
-    |> assert_has("body .phx-connected #user_remember_me:checked")
+    |> assert_has("#user_remember_me:checked")
     |> assert_autofill_safe_login()
   end
 
   defp assert_autofill_safe_login(session) do
-    PhoenixTest.Playwright.evaluate(
-      session,
-      """
+    state =
+      Fluffy.Playwright.evaluate(session, """
       async () => {
         const setValue = (element, value) => {
           const setter = Object.getOwnPropertyDescriptor(
@@ -90,17 +83,14 @@ defmodule StreamixWeb.E2E.LoginPersistenceTest do
           touchTargetHeight: labelRect.height
         };
       }
-      """,
-      [is_function: true],
-      fn state ->
-        assert state["checked"], inspect(state)
-        refute state["formHasLiveChange"], inspect(state)
-        assert state["emailAutocomplete"] == "username", inspect(state)
-        assert state["passwordAutocomplete"] == "current-password", inspect(state)
-        assert state["checkboxSize"]["width"] >= 20, inspect(state)
-        assert state["checkboxSize"]["height"] >= 20, inspect(state)
-        assert state["touchTargetHeight"] >= 44, inspect(state)
-      end
-    )
+      """)
+
+    assert state["checked"], inspect(state)
+    refute state["formHasLiveChange"], inspect(state)
+    assert state["emailAutocomplete"] == "username", inspect(state)
+    assert state["passwordAutocomplete"] == "current-password", inspect(state)
+    assert state["checkboxSize"]["width"] >= 20, inspect(state)
+    assert state["checkboxSize"]["height"] >= 20, inspect(state)
+    assert state["touchTargetHeight"] >= 44, inspect(state)
   end
 end

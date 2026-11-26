@@ -73,7 +73,7 @@ config :streamix, :provider_health_monitor_enabled, false
 # bytes through Finch in unit tests.
 config :streamix, :stream_proxy_backend, :redirect
 
-# PhoenixTest + Playwright
+# Fluffy + Playwright
 #
 # The default browser is chromium, but CI matrices flip this across
 # chromium/firefox/webkit by exporting PLAYWRIGHT_BROWSER. Any unknown value
@@ -87,52 +87,38 @@ playwright_browser =
     _ -> :chromium
   end
 
+# WebKit gets 5 s of headroom for its actions and assertions on CI runners;
+# Chromium and Firefox keep 2 s so their waits are unchanged.
+playwright_timeout = if(playwright_browser == :webkit, do: 5_000, else: 2_000)
+
 playwright_options = [
-  browser: playwright_browser,
+  browser_name: playwright_browser,
   headless: System.get_env("PLAYWRIGHT_HEADED") != "true",
-  # Since phoenix_test_playwright 0.19 (playwright_ex 0.15) this timeout also
-  # bounds the driver's `initialize` handshake, not only operations. WebKit
-  # starts slower than the 2 s default on CI runners and failed every suite in
-  # setup_all with `playwright_initialization_failed`; Chromium and Firefox
-  # keep the default so their assertion waits are unchanged.
-  timeout: if(playwright_browser == :webkit, do: 5_000, else: 2_000),
-  # Closing the browser context is synchronous in StreamixWeb.PlaywrightSupport,
-  # but Bandit still needs a short drain window before the sandbox owner exits.
-  ecto_sandbox_stop_owner_delay: 1_000,
+  action_timeout: playwright_timeout,
+  navigation_timeout: playwright_timeout,
+  expect: [timeout: playwright_timeout],
   # Keep browser E2E contexts deterministic. Service-worker activation can
   # reload a page while Playwright is evaluating it, destroying the execution
   # context and turning unrelated player assertions into flakes.
-  browser_context_opts: [service_workers: "block"],
-  # `nil`, not `false`. phoenix_test_playwright documents this option as
-  # "`false` to disable" and forwards the value untouched, but playwright_ex
-  # only ever treats `nil` as off. Up to 0.7.1 it tested truthiness
-  # (`if module = config.js_logger`), so `false` worked; 0.10.0 rewrote the
-  # check as `when not is_nil(module)`, which `false` passes — the first
-  # console message from the page then calls `false.log/3` and takes the
-  # connection process down. The supervisor is `:rest_for_one` with the
-  # transport ahead of the connection, so the node driver survives and the
-  # restarted connection re-sends `initialize`, tripping
-  # `assert(!this._initialized)` in RootDispatcher. That surfaces as a second,
-  # unrelated-looking `playwright_initialization_failed`; both errors are this
-  # one value.
-  js_logger: nil,
-  trace: System.get_env("PW_TRACE", "false") in ~w(t true),
-  screenshot: System.get_env("PW_SCREENSHOT", "false") in ~w(t true)
+  service_workers: :block,
+  trace: if(System.get_env("PW_TRACE", "false") in ~w(t true), do: :on, else: :off),
+  screenshot: if(System.get_env("PW_SCREENSHOT", "false") in ~w(t true), do: :on, else: :off)
 ]
 
 playwright_options =
   case System.get_env("PLAYWRIGHT_WS_ENDPOINT") do
     endpoint when is_binary(endpoint) and endpoint != "" ->
-      Keyword.merge(playwright_options, ws_endpoint: endpoint, browser_pool: false)
+      Keyword.put(playwright_options, :connect_options, ws_endpoint: endpoint)
 
     _ ->
       playwright_options
   end
 
-config :phoenix_test,
-  otp_app: :streamix,
-  endpoint: StreamixWeb.Endpoint,
-  playwright: playwright_options
+config :playwright, :test, playwright_options
+
+config :fluffy, endpoint: StreamixWeb.Endpoint, ecto_repos: [Streamix.Repo]
+# The endpoint and LiveAcceptance read the sandbox metadata from the User-Agent.
+config :fluffy, Fluffy.Sandbox, header: "user-agent"
 
 # In test we don't send emails
 config :streamix, Streamix.Mailer, adapter: Swoosh.Adapters.Test

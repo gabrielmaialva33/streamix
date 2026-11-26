@@ -13,7 +13,7 @@ defmodule StreamixWeb.E2E.PremiumVisibilityTest do
 
   # async: false avoids Bandit connection reuse flakiness across parallel
   # sandboxed tests. If this suite grows, switch back to async: true and
-  # tune `ecto_sandbox_stop_owner_delay` or pin Bandit to one handler.
+  # pin Bandit to one handler.
   @playwright_browser (case System.get_env("PLAYWRIGHT_BROWSER") do
                          "chromium" -> :chromium
                          "firefox" -> :firefox
@@ -21,24 +21,19 @@ defmodule StreamixWeb.E2E.PremiumVisibilityTest do
                          _ -> :chromium
                        end)
 
-  use PhoenixTest.Playwright.Case, async: false, browser: @playwright_browser
+  use StreamixWeb.PlaywrightCase, async: false, browser_name: @playwright_browser
   use StreamixWeb, :verified_routes
 
   @moduletag :playwright
 
-  setup {StreamixWeb.PlaywrightSupport, :register_context_cleanup}
-
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
-  import Phoenix.ConnTest, only: [build_conn: 0, get: 2]
-  import StreamixWeb.ConnCase, only: [log_in_user: 2]
 
-  alias PlaywrightEx.BrowserContext
   alias Streamix.Billing.{Plan, Subscription}
   alias Streamix.Repo
 
   setup do
-    # PhoenixTest.Playwright.Case already set up the per-test sandbox and
+    # StreamixWeb.PlaywrightCase already set up the per-test sandbox and
     # wired the User-Agent header. We just seed fixtures here.
     provider =
       provider_fixture(admin_user_fixture(), %{
@@ -92,29 +87,8 @@ defmodule StreamixWeb.E2E.PremiumVisibilityTest do
   # same signed session cookie as ConnCase so browser-specific form timing
   # cannot make this suite flaky.
   defp login(session, user) do
-    cookie =
-      build_conn()
-      |> log_in_user(user)
-      |> get(~p"/browse/movies")
-      |> Map.fetch!(:resp_cookies)
-      |> Map.fetch!("_streamix_key")
-
     session
-    |> PhoenixTest.Playwright.unwrap(fn %{context_id: context_id} ->
-      {:ok, _} =
-        BrowserContext.add_cookies(context_id,
-          timeout: 5_000,
-          cookies: [
-            %{
-              "name" => "_streamix_key",
-              "value" => cookie.value,
-              "url" => StreamixWeb.Endpoint.url(),
-              "httpOnly" => true,
-              "sameSite" => "Lax"
-            }
-          ]
-        )
-    end)
+    |> log_in(user)
     |> visit(~p"/browse/movies")
     |> assert_has("#movies")
   end

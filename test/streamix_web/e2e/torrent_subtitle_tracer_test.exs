@@ -7,25 +7,20 @@ defmodule StreamixWeb.E2E.TorrentSubtitleTracerTest do
   codec or subtitle API is needed.
   """
 
-  use PhoenixTest.Playwright.Case,
+  use StreamixWeb.PlaywrightCase,
     async: false,
     parameterize: [
-      %{browser_pool: false, browser: :chromium},
-      %{browser_pool: false, browser: :firefox}
+      Playwright.Test.parameters(name: "chromium", browser_name: :chromium),
+      Playwright.Test.parameters(name: "firefox", browser_name: :firefox)
     ]
 
   use StreamixWeb, :verified_routes
 
   @moduletag :playwright
 
-  setup {StreamixWeb.PlaywrightSupport, :register_context_cleanup}
-
-  import Phoenix.ConnTest, only: [build_conn: 0, get: 2]
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
-  import StreamixWeb.ConnCase, only: [log_in_user: 2]
 
-  alias PlaywrightEx.BrowserContext
   alias Streamix.Cache
   alias Streamix.Iptv.TorrentProvider
   alias Streamix.Repo
@@ -97,36 +92,11 @@ defmodule StreamixWeb.E2E.TorrentSubtitleTracerTest do
       |> Repo.insert!()
 
     session
-    |> install_authenticated_cookie(user)
+    |> log_in(user)
     |> install_media_stub()
     |> visit(~p"/watch/torrent/#{stream.id}?return_to=/torrent")
     |> assert_has("#video-player-container", timeout: 8_000)
     |> assert_tracer_state()
-  end
-
-  defp install_authenticated_cookie(session, user) do
-    cookie =
-      build_conn()
-      |> log_in_user(user)
-      |> get(~p"/torrent")
-      |> Map.fetch!(:resp_cookies)
-      |> Map.fetch!("_streamix_key")
-
-    PhoenixTest.Playwright.unwrap(session, fn %{context_id: context_id} ->
-      {:ok, _} =
-        BrowserContext.add_cookies(context_id,
-          timeout: 5_000,
-          cookies: [
-            %{
-              "name" => "_streamix_key",
-              "value" => cookie.value,
-              "url" => StreamixWeb.Endpoint.url(),
-              "httpOnly" => true,
-              "sameSite" => "Lax"
-            }
-          ]
-        )
-    end)
   end
 
   defp install_media_stub(session) do
@@ -202,15 +172,12 @@ defmodule StreamixWeb.E2E.TorrentSubtitleTracerTest do
     })();
     """
 
-    PhoenixTest.Playwright.unwrap(session, fn %{context_id: context_id} ->
-      {:ok, _} = BrowserContext.add_init_script(context_id, timeout: 5_000, source: source)
-    end)
+    Fluffy.Playwright.add_init_script(session, source)
   end
 
   defp assert_tracer_state(session) do
-    PhoenixTest.Playwright.evaluate(
-      session,
-      """
+    state =
+      Fluffy.Playwright.evaluate(session, """
       async () => {
         const deadline = Date.now() + 8_000;
         let container;
@@ -273,30 +240,27 @@ defmodule StreamixWeb.E2E.TorrentSubtitleTracerTest do
           shifted
         };
       }
-      """,
-      [is_function: true, timeout: 12_000],
-      fn state ->
-        hook_state = Map.fetch!(state, "hookState")
-        native_subtitle = Map.fetch!(hook_state, "nativeSubtitle")
-        subtitle_source = Map.fetch!(hook_state, "subtitleSource")
+      """)
 
-        assert String.starts_with?(state["streamUrl"], "/api/stream/torrent/")
-        assert state["subtitleLang"] == "pt-BR"
-        assert state["subtitleOffsetMs"] == "500"
-        assert hook_state["engine"] == "native"
-        assert hook_state["usingAVPlayer"] == false
-        assert hook_state["sameVideoNode"]
-        assert hook_state["nativeTrackConnected"]
-        assert native_subtitle["active"]
-        assert subtitle_source["cachedResponses"] == 1
-        assert subtitle_source["activeLeases"] == 1
-        assert state["trackLabel"] == "Português (auto)", inspect(state)
-        assert state["trackCount"] == 1, inspect(state)
-        assert state["subtitleOptions"] =~ "Português (auto)", inspect(state)
-        assert state["subtitleStatus"] == 200
-        assert state["shifted"] =~ "00:00:01.500 --> 00:00:02.500"
-      end
-    )
+    hook_state = Map.fetch!(state, "hookState")
+    native_subtitle = Map.fetch!(hook_state, "nativeSubtitle")
+    subtitle_source = Map.fetch!(hook_state, "subtitleSource")
+
+    assert String.starts_with?(state["streamUrl"], "/api/stream/torrent/")
+    assert state["subtitleLang"] == "pt-BR"
+    assert state["subtitleOffsetMs"] == "500"
+    assert hook_state["engine"] == "native"
+    assert hook_state["usingAVPlayer"] == false
+    assert hook_state["sameVideoNode"]
+    assert hook_state["nativeTrackConnected"]
+    assert native_subtitle["active"]
+    assert subtitle_source["cachedResponses"] == 1
+    assert subtitle_source["activeLeases"] == 1
+    assert state["trackLabel"] == "Português (auto)", inspect(state)
+    assert state["trackCount"] == 1, inspect(state)
+    assert state["subtitleOptions"] =~ "Português (auto)", inspect(state)
+    assert state["subtitleStatus"] == 200
+    assert state["shifted"] =~ "00:00:01.500 --> 00:00:02.500"
   end
 
   defp start_rqbit_stub do

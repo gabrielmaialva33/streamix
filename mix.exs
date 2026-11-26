@@ -111,8 +111,8 @@ defmodule Streamix.MixProject do
       {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
       # E2E cross-browser testing (Chromium/Firefox/WebKit)
-      {:phoenix_test_playwright, "~> 0.12", only: :test, runtime: false},
-      {:websockex, "~> 0.4", only: :test}
+      {:fluffy, "~> 0.9.0-rc.7", only: :test},
+      {:playwright, "~> 1.65.0-rc.6", hex: :playwright_ex, only: :test}
     ]
   end
 
@@ -169,7 +169,7 @@ defmodule Streamix.MixProject do
 
   defp dialyzer_test_apps do
     if Mix.env() == :test do
-      [:phoenix_test, :phoenix_test_playwright, :playwright_ex]
+      [:fluffy, :playwright]
     else
       []
     end

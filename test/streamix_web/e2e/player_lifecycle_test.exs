@@ -17,23 +17,14 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
                          _ -> :webkit
                        end)
 
-  use PhoenixTest.Playwright.Case,
-    async: false,
-    browser: @playwright_browser,
-    browser_pool: false
+  use StreamixWeb.PlaywrightCase, async: false, browser_name: @playwright_browser
 
   use StreamixWeb, :verified_routes
 
   @moduletag :playwright
 
-  setup {StreamixWeb.PlaywrightSupport, :register_context_cleanup}
-
-  import Phoenix.ConnTest, only: [build_conn: 0, get: 2]
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
-  import StreamixWeb.ConnCase, only: [log_in_user: 2]
-
-  alias PlaywrightEx.BrowserContext
 
   setup do
     {:ok, server} =
@@ -55,24 +46,23 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
     movie = movie_fixture(provider, %{container_extension: "mp4", stream_id: 9_001})
 
     session
-    |> install_authenticated_cookie(user)
+    |> log_in(user)
     |> install_media_probe(movie.id)
     |> visit(~p"/watch/movie/#{movie.id}")
-    |> assert_has("body .phx-connected #video-player-container")
+    |> assert_has("#video-player-container")
     |> assert_player_resumed_once()
   end
 
   @mobile_portrait_opts [
                           viewport: %{width: 390, height: 844},
-                          device_scale_factor: 3.0,
-                          service_workers: "block"
+                          device_scale_factor: 3.0
                         ] ++
                           if(@playwright_browser == :firefox,
                             do: [],
                             else: [is_mobile: true]
                           )
 
-  @tag browser_context_opts: @mobile_portrait_opts
+  @tag Playwright.Test.use(@mobile_portrait_opts)
   test "keeps touch controls reachable in iPhone portrait", %{
     conn: session,
     media_origin: media_origin
@@ -82,7 +72,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
     |> assert_mobile_controls_fit(390, 844)
   end
 
-  @tag browser_context_opts: @mobile_portrait_opts
+  @tag Playwright.Test.use(@mobile_portrait_opts)
   test "keeps the screen awake only while portrait playback is active", %{
     conn: session,
     media_origin: media_origin
@@ -94,15 +84,14 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
 
   @mobile_landscape_opts [
                            viewport: %{width: 844, height: 390},
-                           device_scale_factor: 3.0,
-                           service_workers: "block"
+                           device_scale_factor: 3.0
                          ] ++
                            if(@playwright_browser == :firefox,
                              do: [],
                              else: [is_mobile: true]
                            )
 
-  @tag browser_context_opts: @mobile_landscape_opts
+  @tag Playwright.Test.use(@mobile_landscape_opts)
   test "keeps touch controls reachable in iPhone landscape", %{
     conn: session,
     media_origin: media_origin
@@ -118,35 +107,10 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
     movie = movie_fixture(provider, %{container_extension: "mp4"})
 
     session
-    |> install_authenticated_cookie(user)
+    |> log_in(user)
     |> install_media_probe(movie.id)
     |> visit(~p"/watch/movie/#{movie.id}")
-    |> assert_has("body .phx-connected #video-player-container")
-  end
-
-  defp install_authenticated_cookie(session, user) do
-    cookie =
-      build_conn()
-      |> log_in_user(user)
-      |> get(~p"/browse/movies")
-      |> Map.fetch!(:resp_cookies)
-      |> Map.fetch!("_streamix_key")
-
-    PhoenixTest.Playwright.unwrap(session, fn %{context_id: context_id} ->
-      {:ok, _} =
-        BrowserContext.add_cookies(context_id,
-          timeout: 5_000,
-          cookies: [
-            %{
-              "name" => "_streamix_key",
-              "value" => cookie.value,
-              "url" => StreamixWeb.Endpoint.url(),
-              "httpOnly" => true,
-              "sameSite" => "Lax"
-            }
-          ]
-        )
-    end)
+    |> assert_has("#video-player-container")
   end
 
   defp install_media_probe(session, content_id) do
@@ -320,15 +284,12 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
     })();
     """
 
-    PhoenixTest.Playwright.unwrap(session, fn %{context_id: context_id} ->
-      {:ok, _} = BrowserContext.add_init_script(context_id, timeout: 5_000, source: source)
-    end)
+    Fluffy.Playwright.add_init_script(session, source)
   end
 
   defp assert_player_resumed_once(session) do
-    PhoenixTest.Playwright.evaluate(
-      session,
-      """
+    state =
+      Fluffy.Playwright.evaluate(session, """
       () => new Promise((resolve, reject) => {
         const startedAt = Date.now();
 
@@ -412,18 +373,14 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
 
         check();
       })
-      """,
-      [is_function: true, timeout: 4_000],
-      fn state ->
-        assert state["events"] == ["seek:25", "play:25"]
-      end
-    )
+      """)
+
+    assert state["events"] == ["seek:25", "play:25"]
   end
 
   defp assert_playback_system_lifecycle(session) do
-    PhoenixTest.Playwright.evaluate(
-      session,
-      """
+    state =
+      Fluffy.Playwright.evaluate(session, """
       async () => {
         const waitFor = async (predicate, label) => {
           const deadline = performance.now() + 3000;
@@ -481,26 +438,22 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
           wakeLockReleases: probe.wakeLockReleases
         };
       }
-      """,
-      [is_function: true, timeout: 5_000],
-      fn state ->
-        assert state["wakeLockRequests"] == ["screen", "screen"]
-        assert state["wakeLockReleases"] == 2
-        assert state["mediaPlaybackState"] == "none"
-        assert state["activePosition"]["duration"] == 120
-        assert state["activePosition"]["position"] == 25
-        assert state["activePosition"]["playbackRate"] == 1
-        assert "playing" in state["mediaPlaybackStates"]
-        assert "paused" in state["mediaPlaybackStates"]
-        assert "none" in state["mediaPlaybackStates"]
-      end
-    )
+      """)
+
+    assert state["wakeLockRequests"] == ["screen", "screen"]
+    assert state["wakeLockReleases"] == 2
+    assert state["mediaPlaybackState"] == "none"
+    assert state["activePosition"]["duration"] == 120
+    assert state["activePosition"]["position"] == 25
+    assert state["activePosition"]["playbackRate"] == 1
+    assert "playing" in state["mediaPlaybackStates"]
+    assert "paused" in state["mediaPlaybackStates"]
+    assert "none" in state["mediaPlaybackStates"]
   end
 
   defp assert_mobile_controls_fit(session, expected_width, expected_height) do
-    PhoenixTest.Playwright.evaluate(
-      session,
-      """
+    state =
+      Fluffy.Playwright.evaluate(session, """
       async () => {
         const deadline = performance.now() + 3000;
         let container = document.querySelector("#video-player-container");
@@ -604,44 +557,41 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
           revealedAfterTap: hook.playerUI.controlsVisible
         };
       }
-      """,
-      [is_function: true, timeout: 5_000],
-      fn state ->
-        assert state["viewport"] == %{"width" => expected_width, "height" => expected_height}
+      """)
 
-        for {id, rect} <- state["controls"] do
-          assert rect, "#{id} was not rendered"
-          assert rect["width"] >= 44, "#{id} width is below 44px: #{rect["width"]}"
-          assert rect["height"] >= 44, "#{id} height is below 44px: #{rect["height"]}"
-          assert rect["left"] >= 0, "#{id} crosses the left viewport edge"
-          assert rect["top"] >= 0, "#{id} crosses the top viewport edge"
-          assert rect["right"] <= expected_width, "#{id} crosses the right viewport edge"
-          assert rect["bottom"] <= expected_height, "#{id} crosses the bottom viewport edge"
-        end
+    assert state["viewport"] == %{"width" => expected_width, "height" => expected_height}
 
-        for id <- ~w(play-pause-btn mute-btn speed-btn tracks-btn settings-btn fullscreen-btn) do
-          rect = state["controls"][id]
+    for {id, rect} <- state["controls"] do
+      assert rect, "#{id} was not rendered"
+      assert rect["width"] >= 44, "#{id} width is below 44px: #{rect["width"]}"
+      assert rect["height"] >= 44, "#{id} height is below 44px: #{rect["height"]}"
+      assert rect["left"] >= 0, "#{id} crosses the left viewport edge"
+      assert rect["top"] >= 0, "#{id} crosses the top viewport edge"
+      assert rect["right"] <= expected_width, "#{id} crosses the right viewport edge"
+      assert rect["bottom"] <= expected_height, "#{id} crosses the bottom viewport edge"
+    end
 
-          assert rect["top"] >= state["bottomBounds"]["top"],
-                 "#{id} is not inside the bottom control bar"
+    for id <- ~w(play-pause-btn mute-btn speed-btn tracks-btn settings-btn fullscreen-btn) do
+      rect = state["controls"][id]
 
-          assert rect["bottom"] <= state["bottomBounds"]["bottom"],
-                 "#{id} crosses the bottom control bar"
-        end
+      assert rect["top"] >= state["bottomBounds"]["top"],
+             "#{id} is not inside the bottom control bar"
 
-        assert state["centerOverlayCount"] == 0
-        assert state["seekButtonCount"] == 0
-        assert state["pipButtonCount"] == 1
-        assert state["hiddenState"]["controlsVisible"] == false
-        assert state["hiddenState"]["closeOpacity"] > 0
-        assert state["hiddenState"]["closePointerEvents"] == "auto"
+      assert rect["bottom"] <= state["bottomBounds"]["bottom"],
+             "#{id} crosses the bottom control bar"
+    end
 
-        assert state["hiddenState"]["bottomOpacity"] <= 0.01,
-               "bottom controls remained visible: #{inspect(state["hiddenState"])}"
+    assert state["centerOverlayCount"] == 0
+    assert state["seekButtonCount"] == 0
+    assert state["pipButtonCount"] == 1
+    assert state["hiddenState"]["controlsVisible"] == false
+    assert state["hiddenState"]["closeOpacity"] > 0
+    assert state["hiddenState"]["closePointerEvents"] == "auto"
 
-        assert state["revealedAfterTap"] == true
-      end
-    )
+    assert state["hiddenState"]["bottomOpacity"] <= 0.01,
+           "bottom controls remained visible: #{inspect(state["hiddenState"])}"
+
+    assert state["revealedAfterTap"] == true
   end
 
   defmodule MediaStub do

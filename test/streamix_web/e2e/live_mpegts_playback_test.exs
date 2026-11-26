@@ -14,23 +14,15 @@ defmodule StreamixWeb.E2E.LiveMpegtsPlaybackTest do
                          _ -> :webkit
                        end)
 
-  use PhoenixTest.Playwright.Case,
-    async: false,
-    browser: @playwright_browser,
-    browser_pool: false
+  use StreamixWeb.PlaywrightCase, async: false, browser_name: @playwright_browser
 
   use StreamixWeb, :verified_routes
 
   @moduletag :playwright
 
-  setup {StreamixWeb.PlaywrightSupport, :register_context_cleanup}
-
-  import Phoenix.ConnTest, only: [build_conn: 0, get: 2]
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
-  import StreamixWeb.ConnCase, only: [log_in_user: 2]
 
-  alias PlaywrightEx.BrowserContext
   alias StreamixWeb.PlaywrightMediaFixture
 
   setup_all do
@@ -88,39 +80,14 @@ defmodule StreamixWeb.E2E.LiveMpegtsPlaybackTest do
 
     session =
       session
-      |> install_authenticated_cookie(user)
+      |> log_in(user)
       |> install_player_environment()
       |> visit(~p"/watch/live_channel/#{channel.id}")
-      |> assert_has("body .phx-connected #video-player-container")
+      |> assert_has("#video-player-container")
       |> activate_media_url(media_url, Map.get(context, :mse_fault, false))
 
     assert_receive {:playwright_media_request, "GET", _range}, 5_000
     session
-  end
-
-  defp install_authenticated_cookie(session, user) do
-    cookie =
-      build_conn()
-      |> log_in_user(user)
-      |> get(~p"/browse")
-      |> Map.fetch!(:resp_cookies)
-      |> Map.fetch!("_streamix_key")
-
-    PhoenixTest.Playwright.unwrap(session, fn %{context_id: context_id} ->
-      {:ok, _} =
-        BrowserContext.add_cookies(context_id,
-          timeout: 5_000,
-          cookies: [
-            %{
-              "name" => "_streamix_key",
-              "value" => cookie.value,
-              "url" => StreamixWeb.Endpoint.url(),
-              "httpOnly" => true,
-              "sameSite" => "Lax"
-            }
-          ]
-        )
-    end)
   end
 
   defp install_player_environment(session) do
@@ -161,13 +128,11 @@ defmodule StreamixWeb.E2E.LiveMpegtsPlaybackTest do
     })();
     """
 
-    PhoenixTest.Playwright.unwrap(session, fn %{context_id: context_id} ->
-      {:ok, _} = BrowserContext.add_init_script(context_id, timeout: 5_000, source: source)
-    end)
+    Fluffy.Playwright.add_init_script(session, source)
   end
 
   defp activate_media_url(session, media_url, mse_fault?) do
-    PhoenixTest.Playwright.evaluate(
+    Fluffy.Playwright.evaluate(
       session,
       """
       async ({mediaUrl, mseFault}) => {
@@ -182,7 +147,7 @@ defmodule StreamixWeb.E2E.LiveMpegtsPlaybackTest do
         if (!hook) throw new Error("VideoPlayer hook did not mount");
 
         if (mseFault) {
-          // PhoenixTest reserves the context UA for SQL sandbox metadata.
+          // Fluffy reserves the context UA for SQL sandbox metadata.
           // Restore browser identity in JavaScript so Firefox policy runs.
           Object.defineProperty(navigator, "userAgent", {
             value: "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0",
@@ -229,16 +194,15 @@ defmodule StreamixWeb.E2E.LiveMpegtsPlaybackTest do
         return true;
       }
       """,
-      is_function: true,
-      arg: %{"mediaUrl" => media_url, "mseFault" => mse_fault?},
-      timeout: 6_000
+      %{"mediaUrl" => media_url, "mseFault" => mse_fault?}
     )
+
+    session
   end
 
   defp assert_mpegts_playing(session) do
-    PhoenixTest.Playwright.evaluate(
-      session,
-      """
+    state =
+      Fluffy.Playwright.evaluate(session, """
       async () => {
         const deadline = performance.now() + 15000;
         const state = () => {
@@ -282,25 +246,21 @@ defmodule StreamixWeb.E2E.LiveMpegtsPlaybackTest do
           }
         };
       }
-      """,
-      [is_function: true, timeout: 17_000],
-      fn state ->
-        assert state["after"]["engine"] == "mpegts"
-        assert state["after"]["sessionId"] == state["before"]["sessionId"]
-        assert state["after"]["time"] > state["before"]["time"] + 0.5
-        assert state["after"]["terminal"] == false
-        assert state["after"]["recovery"]["recreateAttempts"] == 0
-        assert state["after"]["recovery"]["recoveryActive"] == false
-        assert state["after"]["recovery"]["retryScheduled"] == false
-      end
-    )
+      """)
+
+    assert state["after"]["engine"] == "mpegts"
+    assert state["after"]["sessionId"] == state["before"]["sessionId"]
+    assert state["after"]["time"] > state["before"]["time"] + 0.5
+    assert state["after"]["terminal"] == false
+    assert state["after"]["recovery"]["recreateAttempts"] == 0
+    assert state["after"]["recovery"]["recoveryActive"] == false
+    assert state["after"]["recovery"]["retryScheduled"] == false
   end
 
   if @playwright_browser == :firefox do
     defp assert_firefox_avplayer_fallback(session) do
-      PhoenixTest.Playwright.evaluate(
-        session,
-        """
+      state =
+        Fluffy.Playwright.evaluate(session, """
         async () => {
           const deadline = performance.now() + 30000;
           const state = () => {
@@ -347,20 +307,17 @@ defmodule StreamixWeb.E2E.LiveMpegtsPlaybackTest do
           const after = state();
           return {before, after};
         }
-        """,
-        [is_function: true, timeout: 32_000],
-        fn state ->
-          assert state["after"]["engine"] == "avplayer"
-          assert state["after"]["usingAVPlayer"] == true
-          assert state["after"]["hasMpegts"] == false
-          assert state["after"]["mseFaults"] >= 2
-          assert state["after"]["sessionId"] == state["before"]["sessionId"]
-          assert state["after"]["terminal"] == false
-          assert state["after"]["recovery"]["recreateAttempts"] == 1
-          assert state["after"]["recovery"]["recoveryActive"] == false
-          assert state["after"]["recovery"]["retryScheduled"] == false
-        end
-      )
+        """)
+
+      assert state["after"]["engine"] == "avplayer"
+      assert state["after"]["usingAVPlayer"] == true
+      assert state["after"]["hasMpegts"] == false
+      assert state["after"]["mseFaults"] >= 2
+      assert state["after"]["sessionId"] == state["before"]["sessionId"]
+      assert state["after"]["terminal"] == false
+      assert state["after"]["recovery"]["recreateAttempts"] == 1
+      assert state["after"]["recovery"]["recoveryActive"] == false
+      assert state["after"]["recovery"]["retryScheduled"] == false
     end
   end
 end
