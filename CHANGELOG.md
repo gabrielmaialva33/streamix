@@ -270,6 +270,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Series detail sync now counts task timeouts as failures and retries the same batch within a five-attempt budget, avoiding lost or endlessly recreated retry jobs.
+
 - GIndex requests that exhaust their pacing deadline now return retry guidance without bypassing the upstream rate cap.
 
 - Restored the Phoenix and deployment guides linked from onboarding, with an offline link check in the test suite.

@@ -8,10 +8,10 @@ defmodule Streamix.Workers.SyncSeriesDetailsWorker do
 
   ## Error Handling
 
-  - Failed series are automatically re-enqueued with exponential backoff
-  - If >80% of a batch fails, the job snoozes (likely API/network issue)
-  - Individual failures don't block the entire batch
-  - Failed series IDs are logged for debugging
+  - Every failed or timed-out series fails the existing job
+  - Oban retries the bounded batch at most five times with capped exponential backoff
+  - Successful series may be refreshed again; no successor job resets the budget
+  - Errors are logged without content identifiers
 
   ## Usage
 
@@ -38,118 +38,54 @@ defmodule Streamix.Workers.SyncSeriesDetailsWorker do
   require Logger
 
   @default_batch_size 50
-  @failure_threshold 0.8
-  @retry_base_delay 60
-  @max_retry_delay 900
-
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"series_ids" => series_ids}, attempt: attempt}) do
-    total = length(series_ids)
-    Logger.info("[SyncSeriesDetails] Processing #{total} series (attempt #{attempt})")
-
+  def perform(%Oban.Job{args: %{"series_ids" => series_ids}}) do
     series_list = Repo.all(from s in Series, where: s.id in ^series_ids)
 
-    # Process batch and track individual results
-    {successes, failures} = process_batch(series_list)
-
-    success_count = length(successes)
-    failure_count = length(failures)
-    failure_rate = if total > 0, do: failure_count / total, else: 0.0
-
-    Logger.info(
-      "[SyncSeriesDetails] Batch completed: #{success_count} success, #{failure_count} failed " <>
-        "(#{Float.round(failure_rate * 100, 1)}% failure rate)"
-    )
-
-    cond do
-      # All succeeded
-      failure_count == 0 ->
+    case process_batch(series_list) do
+      0 ->
         :ok
 
-      # High failure rate - likely API/network issue, snooze and retry entire batch
-      failure_rate >= @failure_threshold ->
-        snooze_seconds = min(@retry_base_delay * attempt, @max_retry_delay)
-
-        Logger.warning(
-          "[SyncSeriesDetails] High failure rate (#{Float.round(failure_rate * 100, 1)}%), " <>
-            "snoozing for #{snooze_seconds}s"
-        )
-
-        {:snooze, snooze_seconds}
-
-      # Partial failure - re-enqueue only failed items
-      true ->
-        failed_ids = Enum.map(failures, & &1.id)
-
-        Logger.info(
-          "[SyncSeriesDetails] Re-enqueueing #{failure_count} failed series: #{inspect(failed_ids)}"
-        )
-
-        schedule_retry_for_failures(failed_ids, attempt)
-        :ok
+      failed_count ->
+        # Keep failure on this job: a fresh job would reset max_attempts and
+        # introduce an insert failure that can silently lose pending work.
+        {:error, {:series_sync_failed, failed_count}}
     end
+  end
+
+  @impl Oban.Worker
+  def backoff(%Oban.Job{attempt: attempt}) do
+    exponent = attempt |> Kernel.-(1) |> max(0) |> min(4)
+    min(60 * Integer.pow(2, exponent), 900)
   end
 
   defp process_batch(series_list) do
-    series_list
-    |> Task.async_stream(
-      fn series ->
-        case Streamix.Catalog.sync_series_details(series) do
-          {:ok, _result} -> {:ok, series}
-          {:error, reason} -> {:error, series, reason}
-        end
-      end,
-      # Concurrency 2 keeps us under the upstream's per-host rate limit
-      # (cb.choki returns 429s above ~3 parallel get_series_info calls).
-      # Timeout sits 15s above XtreamClient.@timeout (30s) so the inner
-      # request gets to surface its own error/retry instead of being
-      # killed by the outer Task — the previous 30s/30s tie killed every
-      # in-flight request on its own deadline.
+    Streamix.TaskSupervisor
+    |> Task.Supervisor.async_stream_nolink(
+      series_list,
+      &Streamix.Catalog.sync_series_details/1,
       max_concurrency: 2,
-      timeout: 45_000,
+      timeout: Application.get_env(:streamix, :series_details_timeout_ms, 45_000),
       on_timeout: :kill_task
     )
-    |> Enum.reduce({[], []}, fn
-      {:ok, {:ok, series}}, {successes, failures} ->
-        {[series | successes], failures}
+    |> Enum.count(fn
+      {:ok, {:ok, _result}} ->
+        false
 
-      {:ok, {:error, series, reason}}, {successes, failures} ->
-        Logger.debug("[SyncSeriesDetails] Failed series #{series.id}",
+      {:ok, {:error, reason}} ->
+        Logger.warning("Series detail synchronization failed",
           reason: SafeLog.redact_inspect(reason)
         )
 
-        {successes, [series | failures]}
+        true
 
-      {:exit, reason}, {successes, failures} ->
-        Logger.warning("[SyncSeriesDetails] Task exit", reason: SafeLog.redact_inspect(reason))
-        {successes, failures}
-    end)
-  end
-
-  defp schedule_retry_for_failures(failed_ids, attempt) do
-    # Exponential backoff: 1min, 2min, 4min, 8min, capped at 15min
-    delay_seconds =
-      min((@retry_base_delay * :math.pow(2, attempt - 1)) |> trunc(), @max_retry_delay)
-
-    %{series_ids: failed_ids, retry_attempt: attempt + 1}
-    |> __MODULE__.new(schedule_in: delay_seconds)
-    |> Oban.insert()
-    |> case do
-      {:ok, _job} ->
-        :ok
-
-      {:error, reason} ->
-        # Surfacing this matters: a dropped retry insert leaves the failed
-        # series stuck with partial details forever. Return a snooze so the
-        # current job retries the whole batch via Oban's normal attempt
-        # budget instead of silently completing.
-        Logger.error(
-          "[SyncSeriesDetails] failed to enqueue retry for #{length(failed_ids)} series: " <>
-            "#{inspect(reason)}"
+      {:exit, reason} ->
+        Logger.warning("Series detail synchronization task exited",
+          reason: SafeLog.redact_inspect(reason)
         )
 
-        {:error, {:retry_enqueue_failed, reason}}
-    end
+        true
+    end)
   end
 
   @doc """
