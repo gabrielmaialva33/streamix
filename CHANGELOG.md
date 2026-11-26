@@ -272,7 +272,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   Gone), which stopped the nightly embedding index. The default model is now `nvidia/nemotron-3.5-embed-1b` (same
   2048-dimension vectors); the next `IndexEmbeddingsWorker` run re-embeds every title. The new model screens its
   input and refuses a whole request when one text trips the filter; such a title is now isolated and left out of the
-  index instead of discarding the run.
+  index instead of discarding the run. A 5xx from NVIDIA (the endpoint answers some requests with "service inference
+  failed") is retried with backoff, four times while indexing and once for a search query.
 - Xtream providers fail over across all registered domains for sync, health, metadata, EPG and playback, and
   prefer the fastest live domain; a dead domain no longer stalls requests for ~23 s or caps live viewing at one
   stream.

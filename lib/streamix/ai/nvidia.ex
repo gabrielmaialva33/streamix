@@ -33,6 +33,14 @@ defmodule Streamix.AI.Nvidia do
   @base_url "https://integrate.api.nvidia.com/v1"
   @max_rate_limit_retries 5
 
+  # 2026-11-25: the hosted nemotron-3.5 endpoint answers a share of requests
+  # with 500 "service inference failed", for any input (the same text fails
+  # and then succeeds a second later). Without a retry, one such answer failed
+  # a whole indexing batch and three of them discarded the nightly reindex.
+  # Indexing can afford to wait; a search query is on a person's request path,
+  # so it gets one quick retry only.
+  @server_error_retries %{"passage" => 4, "query" => 1}
+
   # 2026-08-25: NVIDIA retired a whole generation of embedding models on one
   # day — nv-embedqa-e5-v5, llama-3.2-nv-embedqa-1b-v2 and baai/bge-m3 all
   # answer 410 Gone. Semantic search had been degraded since, silently: the
@@ -173,7 +181,7 @@ defmodule Streamix.AI.Nvidia do
 
   # Private functions
 
-  defp do_embed_batch(texts, input_type, rate_limit_attempt \\ 0) do
+  defp do_embed_batch(texts, input_type, rate_limit_attempt \\ 0, server_error_attempt \\ 0) do
     url = "#{@base_url}/embeddings"
 
     body =
@@ -191,7 +199,15 @@ defmodule Streamix.AI.Nvidia do
       {"Accept", "application/json"}
     ]
 
-    case Req.post(url, body: body, headers: headers, receive_timeout: 30_000, retry: false) do
+    request_options =
+      Keyword.merge(
+        [body: body, headers: headers, receive_timeout: 30_000, retry: false],
+        Application.get_env(:streamix, :nvidia, [])[:req_options] || []
+      )
+
+    max_server_error_retries = Map.get(@server_error_retries, to_string(input_type), 1)
+
+    case Req.post(url, request_options) do
       {:ok, %Req.Response{status: 200, body: body}} ->
         embeddings =
           body["data"]
@@ -204,10 +220,17 @@ defmodule Streamix.AI.Nvidia do
         delay = 2_000 * Integer.pow(2, rate_limit_attempt)
         Logger.warning("[NVIDIA] Rate limited, retrying in #{delay}ms")
         Process.sleep(delay)
-        do_embed_batch(texts, input_type, rate_limit_attempt + 1)
+        do_embed_batch(texts, input_type, rate_limit_attempt + 1, server_error_attempt)
 
       {:ok, %Req.Response{status: 429}} ->
         {:error, :rate_limit_retries_exhausted}
+
+      {:ok, %Req.Response{status: status}}
+      when status in 500..599 and server_error_attempt < max_server_error_retries ->
+        delay = server_error_backoff() * Integer.pow(2, server_error_attempt)
+        Logger.warning("[NVIDIA] Server error, retrying", reason: status)
+        Process.sleep(delay)
+        do_embed_batch(texts, input_type, rate_limit_attempt, server_error_attempt + 1)
 
       {:ok, %Req.Response{status: status, body: body}} ->
         Logger.error("[NVIDIA] API error #{status}: #{inspect(body)}")
@@ -217,6 +240,10 @@ defmodule Streamix.AI.Nvidia do
         Logger.error("[NVIDIA] Request failed", reason: SafeLog.redact_inspect(reason))
         {:error, {:request_failed, reason}}
     end
+  end
+
+  defp server_error_backoff do
+    Application.get_env(:streamix, :nvidia, [])[:server_error_backoff_ms] || 1_000
   end
 
   defp api_key do
