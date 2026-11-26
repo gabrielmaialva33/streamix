@@ -110,6 +110,19 @@ defmodule Streamix.Gindex.Transport do
 
   @spec request_after_quota(request_state()) :: {:ok, Req.Response.t()} | {:error, term()}
   defp request_after_quota(state) do
+    case Pacer.acquire(:gdrive, pacing_timeout(state)) do
+      :ok ->
+        send_request(state)
+
+      {:error, :timeout} ->
+        # Local admission failure is not evidence that the upstream is unhealthy.
+        Logger.warning("[GIndex Client] pacing deadline exhausted")
+        emit_request_stop(:pacer_timeout, state.base_url, request_operation(state))
+        {:error, {:rate_limited, 429, 1}}
+    end
+  end
+
+  defp send_request(state) do
     %{
       base_url: base_url,
       body: body,
@@ -121,11 +134,6 @@ defmodule Streamix.Gindex.Transport do
     } = state
 
     operation = request_operation(state)
-
-    case Pacer.acquire(:gdrive, pacing_timeout(state)) do
-      :ok -> :ok
-      {:error, :timeout} -> Logger.warning("[GIndex Client] pacer timeout, proceeding anyway")
-    end
 
     case Req.request(build_request_opts(method, url, body, opts)) do
       {:ok, response} ->

@@ -270,6 +270,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- GIndex requests that exhaust their pacing deadline now return retry guidance without bypassing the upstream rate cap.
+
 - Restored the Phoenix and deployment guides linked from onboarding, with an offline link check in the test suite.
 
 - Idle torrent sessions now stay stopped after the last viewer leaves instead of restarting downloads.

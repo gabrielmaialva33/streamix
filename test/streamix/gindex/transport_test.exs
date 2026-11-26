@@ -18,6 +18,26 @@ defmodule Streamix.Gindex.TransportTest do
     :ok
   end
 
+  test "a pacing timeout returns retry guidance without sending HTTP" do
+    Application.put_env(:streamix, Streamix.Gindex.Pacer, gdrive: 0)
+    parent = self()
+    base_url = "https://pacing.example.com"
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      send(parent, :unexpected_outbound_request)
+      Plug.Conn.send_resp(conn, 200, "{}")
+    end)
+
+    assert {:error, {:rate_limited, 429, 1}} =
+             Transport.request(:get, base_url, nil, base_url,
+               workload: :playback,
+               quota_fun: fn :playback -> {:ok, :ok, 1} end,
+               plug: {Req.Test, __MODULE__}
+             )
+
+    refute_received :unexpected_outbound_request
+  end
+
   test "retries an intermittent worker TypeError on the same endpoint" do
     Req.Test.expect(__MODULE__, fn conn ->
       assert conn.host == "sync.example.com"
