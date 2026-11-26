@@ -6,7 +6,7 @@ defmodule Streamix.Billing.Stripe do
   alias Streamix.Billing
   alias Streamix.Billing.Plan
   alias Streamix.Billing.Stripe.Client
-  alias Streamix.Billing.Stripe.Events
+  alias Streamix.Billing.Stripe.EventProcessor
   alias Streamix.Billing.Stripe.Webhook
 
   def create_checkout_session(%{id: user_id, email: email} = user, %Plan{} = plan, attrs)
@@ -44,14 +44,23 @@ defmodule Streamix.Billing.Stripe do
         |> Billing.list_billing_customers()
         |> Enum.map(&reconcile_customer(&1, secret_key))
 
-      {:ok, %{customers: length(results), results: results}}
+      failed = Enum.count(results, &(&1.status == :error))
+
+      summary = %{
+        customers: length(results),
+        succeeded: length(results) - failed,
+        failed: failed,
+        results: results
+      }
+
+      if failed == 0, do: {:ok, summary}, else: {:error, summary}
     end
   end
 
   def handle_webhook(raw_body, signature_header) when is_binary(raw_body) do
     with {:ok, webhook_secret} <- fetch_webhook_secret(),
          {:ok, event} <- verify_webhook(raw_body, signature_header, webhook_secret) do
-      Events.apply_event(event)
+      EventProcessor.apply_event(event)
     end
   end
 
@@ -65,16 +74,24 @@ defmodule Streamix.Billing.Stripe do
   def verify_webhook(_raw_body, _signature_header, _webhook_secret),
     do: {:error, :missing_signature}
 
-  defdelegate apply_event(event), to: Events
+  defdelegate apply_event(event), to: EventProcessor
+
+  def retrieve_subscription(subscription_id) do
+    with {:ok, secret_key} <- fetch_secret_key(),
+         do: Client.retrieve_subscription(secret_key, subscription_id)
+  end
 
   defp reconcile_customer(customer, secret_key) do
-    with {:ok, subscriptions} <- Client.list_subscriptions(secret_key, customer.external_id) do
-      synced =
-        Enum.map(subscriptions, fn subscription ->
-          Events.sync_subscription_from_object(subscription, %{id: customer.user_id})
-        end)
+    case Client.list_subscriptions(secret_key, customer.external_id) do
+      {:ok, subscriptions} ->
+        synced =
+          Enum.map(subscriptions, &EventProcessor.reconcile(&1["id"], %{id: customer.user_id}))
 
-      %{customer_id: customer.id, synced: synced}
+        status = if Enum.all?(synced, &match?({:ok, _}, &1)), do: :ok, else: :error
+        %{customer_id: customer.id, status: status, synced: synced}
+
+      {:error, _reason} ->
+        %{customer_id: customer.id, status: :error, reason: :upstream_failed}
     end
   end
 

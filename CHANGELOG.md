@@ -272,6 +272,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Stripe webhooks persist transactional receipts and refresh current subscription state before applying financial events, so delayed deliveries cannot resurrect canceled plans. Reconciliation reports partial failures and retries through Oban with aggregate-only logs. Manual grants remain independent.
+
 - Pending Stripe checkouts record payment state without activating access. Asynchronous outcomes are handled, paid records resist late pending/failure updates, and provider transitions preserve administrator-granted plans. Trials activate through explicit subscription state.
 
 - Docker browser runners now reject remote endpoints before any asset installation/build or port allocation, with explicit guidance for local contexts.

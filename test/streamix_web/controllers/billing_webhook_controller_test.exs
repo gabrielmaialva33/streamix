@@ -5,6 +5,16 @@ defmodule StreamixWeb.BillingWebhookControllerTest do
 
   import Streamix.AccountsFixtures
 
+  defmodule FakeStripeClient do
+    def get(_url, _opts) do
+      {:ok,
+       %Req.Response{
+         status: 200,
+         body: Application.fetch_env!(:streamix, :stripe)[:test_subscription]
+       }}
+    end
+  end
+
   setup do
     original = Application.get_env(:streamix, :stripe)
 
@@ -31,6 +41,26 @@ defmodule StreamixWeb.BillingWebhookControllerTest do
         grants_global_access: false,
         features: %{global_catalog: true}
       })
+
+    now = DateTime.to_unix(DateTime.utc_now(:second))
+    config = Application.fetch_env!(:streamix, :stripe)
+
+    Application.put_env(
+      :streamix,
+      :stripe,
+      Keyword.merge(config,
+        secret_key: "sk_test_controller",
+        http_client: FakeStripeClient,
+        test_subscription: %{
+          "id" => "sub_controller_test",
+          "object" => "subscription",
+          "status" => "active",
+          "current_period_start" => now - 60,
+          "current_period_end" => now + 3600,
+          "metadata" => %{"user_id" => user.id, "plan_id" => plan.id}
+        }
+      )
+    )
 
     %{user: user, plan: plan}
   end

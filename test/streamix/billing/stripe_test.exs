@@ -4,11 +4,54 @@ defmodule Streamix.Billing.StripeTest do
   alias Streamix.Billing
   alias Streamix.Billing.{CheckoutSession, Payment, Stripe, Subscription}
   alias Streamix.Repo
+  alias Streamix.Workers.ReconcileStripeSubscriptionsWorker
 
   import Streamix.AccountsFixtures
 
   defmodule FakeStripeClient do
     def get(url, opts) do
+      customer =
+        url
+        |> URI.parse()
+        |> Map.get(:query)
+        |> then(&URI.decode_query(&1 || ""))
+        |> Map.get("customer")
+
+      case if(customer == "cus_failure", do: :timeout, else: Process.get(:stripe_get_error)) do
+        nil -> get_success(url, opts)
+        reason -> {:error, reason}
+      end
+    end
+
+    defp get_success("https://api.stripe.test/v1/subscriptions/" <> id = url, opts) do
+      send(self(), {:stripe_get, url, opts})
+      now = DateTime.to_unix(DateTime.utc_now(:second))
+      {user, plan} = Process.get(:stripe_subject)
+
+      {:ok,
+       %Req.Response{
+         status: 200,
+         body:
+           Map.merge(
+             %{
+               "id" => id,
+               "object" => "subscription",
+               "status" => Process.get(:stripe_subscription_status, "active"),
+               "customer" =>
+                 if(id == "sub_reconcile_123", do: "cus_reconcile_test", else: "cus_test_123"),
+               "current_period_start" => now - 60,
+               "current_period_end" => now + 2_592_000,
+               "metadata" => %{
+                 "user_id" => user.id,
+                 "plan_id" => Process.get(:stripe_plan_id, plan.id)
+               }
+             },
+             Process.get(:stripe_subscription_overrides, %{})
+           )
+       }}
+    end
+
+    defp get_success(url, opts) do
       send(self(), {:stripe_get, url, opts})
 
       price_id = Process.get(:stripe_reconcile_price_id, "price_reconcile_test")
@@ -99,6 +142,7 @@ defmodule Streamix.Billing.StripeTest do
         features: %{global_catalog: true}
       })
 
+    Process.put(:stripe_subject, {user, plan})
     %{user: user, plan: plan}
   end
 
@@ -188,10 +232,7 @@ defmodule Streamix.Billing.StripeTest do
     assert Billing.entitled?(user, :global_catalog)
     assert Repo.get_by!(Payment, provider: "stripe", external_id: "cs_test_completed")
 
-    assert {:ok, %{subscription: %Subscription{} = replayed_subscription}} =
-             Stripe.handle_webhook(raw_body, signature)
-
-    assert replayed_subscription.id == subscription.id
+    assert {:ok, :duplicate} = Stripe.handle_webhook(raw_body, signature)
 
     assert Repo.aggregate(Payment, :count) == 1
   end
@@ -255,9 +296,9 @@ defmodule Streamix.Billing.StripeTest do
     assert {:ok, %{customers: 1, results: [%{synced: [{:ok, %{subscription: subscription}}]}]}} =
              Stripe.reconcile_subscriptions()
 
-    assert_received {:stripe_get, url, opts}
-    assert url =~ "customer=cus_reconcile_test"
-    assert url =~ "status=all"
+    assert_received {:stripe_get, "https://api.stripe.test/v1/subscriptions?" <> query, opts}
+    assert query =~ "customer=cus_reconcile_test"
+    assert query =~ "status=all"
     assert {"authorization", "Bearer sk_test_123"} in opts[:headers]
 
     assert subscription.external_reference == "stripe:sub_reconcile_123"
@@ -343,6 +384,8 @@ defmodule Streamix.Billing.StripeTest do
       checkout_event(user, plan, "unpaid")
       |> Map.put("type", "checkout.session.async_payment_failed")
 
+    Process.put(:stripe_subscription_status, "active")
+    failed = Map.put(failed, "id", "evt_failed_late")
     assert {:ok, _} = Stripe.apply_event(failed)
     assert Repo.reload!(subscription).status == "active"
     assert Repo.reload!(payment).status == "paid"
@@ -365,8 +408,11 @@ defmodule Streamix.Billing.StripeTest do
       "metadata" => %{"user_id" => user.id, "plan_id" => plan.id}
     }
 
+    Process.put(:stripe_subscription_status, "trialing")
+
     assert {:ok, %{subscription: trial}} =
              Stripe.apply_event(%{
+               "id" => "evt_trial_updated",
                "type" => "customer.subscription.updated",
                "data" => %{"object" => object}
              })
@@ -375,9 +421,171 @@ defmodule Streamix.Billing.StripeTest do
     assert Billing.entitled?(user, :global_catalog)
   end
 
+  test "cancellation cannot be undone by a replayed checkout or a distinct late paid event", %{
+    user: user,
+    plan: plan
+  } do
+    paid = checkout_event(user, plan, "paid")
+    assert {:ok, %{subscription: subscription}} = Stripe.apply_event(paid)
+
+    deleted = %{
+      "id" => "evt_deleted",
+      "type" => "customer.subscription.deleted",
+      "data" => %{
+        "object" => %{
+          "id" => "sub_pending_test",
+          "object" => "subscription",
+          "status" => "canceled"
+        }
+      }
+    }
+
+    Process.put(:stripe_subscription_status, "canceled")
+    assert {:ok, _} = Stripe.apply_event(deleted)
+    assert {:ok, _} = Stripe.apply_event(paid)
+    assert Repo.reload!(subscription).status == "canceled"
+    late = paid |> Map.put("id", "evt_distinct_late_paid") |> Map.put("type", "invoice.paid")
+    assert {:ok, _} = Stripe.apply_event(late)
+    assert Repo.reload!(subscription).status == "canceled"
+    refute Billing.entitled?(user, :global_catalog)
+  end
+
+  test "a failed authoritative fetch changes nothing and is retryable", %{user: user, plan: plan} do
+    event = checkout_event(user, plan, "paid")
+    Process.put(:stripe_get_error, :timeout)
+    assert {:error, _} = Stripe.apply_event(event)
+    refute Billing.entitled?(user, :global_catalog)
+    assert Repo.aggregate(Payment, :count) == 0
+    Process.delete(:stripe_get_error)
+    assert {:ok, %{subscription: subscription}} = Stripe.apply_event(event)
+    assert subscription.status == "active"
+  end
+
+  test "reconciliation propagates a per-customer upstream error", %{user: user} do
+    Billing.upsert_billing_customer!(user, :stripe, "cus_failed")
+    Process.put(:stripe_get_error, :timeout)
+    assert {:error, %{customers: 1, failed: 1}} = Stripe.reconcile_subscriptions()
+  end
+
+  test "reconciliation propagates an unknown subscription subject and the worker retries", %{
+    user: user
+  } do
+    Billing.upsert_billing_customer!(user, :stripe, "cus_reconcile_test")
+    Process.put(:stripe_plan_id, 9_999_999)
+    assert {:error, %{failed: 1}} = Stripe.reconcile_subscriptions()
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert {:error, {:stripe_reconciliation_incomplete, 1}} =
+                 ReconcileStripeSubscriptionsWorker.perform(%Oban.Job{})
+      end)
+
+    assert log =~ "Stripe reconciliation incomplete"
+    refute log =~ "cus_reconcile_test"
+    refute log =~ "unknown_billing_subject"
+  end
+
+  test "a distinct stale invoice failure uses the current paid subscription", %{
+    user: user,
+    plan: plan
+  } do
+    event = checkout_event(user, plan, "paid")
+    assert {:ok, %{subscription: subscription}} = Stripe.apply_event(event)
+
+    failed =
+      event
+      |> Map.put("id", "evt_old_invoice_failure")
+      |> Map.put("type", "invoice.payment_failed")
+
+    assert {:ok, _} = Stripe.apply_event(failed)
+    assert Repo.reload!(subscription).status == "active"
+  end
+
+  test "active subscription without a bounded billing period is not granted", %{
+    user: user,
+    plan: plan
+  } do
+    event = checkout_event(user, plan, "paid")
+    Process.put(:stripe_subscription_overrides, %{"current_period_end" => nil})
+    assert {:error, :missing_billing_period} = Stripe.apply_event(event)
+    refute Billing.entitled?(user, :global_catalog)
+  end
+
+  test "mixed reconciliation failures use all three Oban attempts", %{user: user} do
+    Billing.upsert_billing_customer!(user, :stripe, "cus_reconcile_test")
+    Billing.upsert_billing_customer!(user_fixture(), :stripe, "cus_failure")
+    assert {:error, %{customers: 2, succeeded: 1, failed: 1}} = Stripe.reconcile_subscriptions()
+    job = %{} |> ReconcileStripeSubscriptionsWorker.new() |> Oban.insert!()
+
+    ExUnit.CaptureLog.capture_log(fn ->
+      for attempt <- 1..3 do
+        Oban.drain_queue(queue: :billing, with_scheduled: true)
+        current = Repo.get!(Oban.Job, job.id)
+        assert current.attempt == attempt
+        assert current.state == if(attempt == 3, do: "discarded", else: "retryable")
+      end
+    end)
+  end
+
+  test "old checkout metadata cannot restore an old plan after an authoritative plan change", %{
+    user: user,
+    plan: plan
+  } do
+    event = checkout_event(user, plan, "paid")
+    assert {:ok, %{subscription: subscription}} = Stripe.apply_event(event)
+
+    replacement =
+      Billing.ensure_plan!(%{
+        name: "Replacement",
+        slug: "replacement-order-test",
+        price_cents: 2999,
+        currency: "BRL",
+        billing_interval: "month",
+        active: true
+      })
+
+    Process.put(:stripe_plan_id, replacement.id)
+
+    updated = %{
+      "id" => "evt_new_plan",
+      "type" => "customer.subscription.updated",
+      "data" => %{"object" => %{"id" => "sub_pending_test", "object" => "subscription"}}
+    }
+
+    assert {:ok, _} = Stripe.apply_event(updated)
+    assert {:ok, _} = Stripe.apply_event(Map.put(event, "id", "evt_old_plan_paid_late"))
+    assert Repo.reload!(subscription).plan_id == replacement.id
+    assert Repo.reload!(subscription).status == "active"
+  end
+
+  test "subscription-item periods bound access when top-level period fields are absent", %{
+    user: user,
+    plan: plan
+  } do
+    event = checkout_event(user, plan, "paid")
+    now = DateTime.to_unix(DateTime.utc_now(:second))
+
+    Process.put(:stripe_subscription_overrides, %{
+      "current_period_start" => nil,
+      "current_period_end" => nil,
+      "items" => %{
+        "data" => [%{"current_period_start" => now - 60, "current_period_end" => now + 3600}]
+      }
+    })
+
+    assert {:ok, %{subscription: subscription}} = Stripe.apply_event(event)
+    assert subscription.expires_at == DateTime.from_unix!(now + 3600)
+    assert Billing.entitled?(user, :global_catalog)
+  end
+
   defp checkout_event(user, plan, payment_status) do
+    Process.put(
+      :stripe_subscription_status,
+      if(payment_status == "paid", do: "active", else: "incomplete")
+    )
+
     %{
-      "id" => "evt_pending_test",
+      "id" => "evt_pending_#{payment_status}",
       "type" => "checkout.session.completed",
       "created" => 1_800_000_000,
       "data" => %{

@@ -5,69 +5,47 @@ defmodule Streamix.Billing.Stripe.Events do
 
   alias Streamix.Accounts
   alias Streamix.Billing
-  alias Streamix.Billing.Plan
+  alias Streamix.Billing.{BillingCustomer, Plan, Subscription}
   alias Streamix.Repo
 
-  def apply_event(
-        %{"type" => "checkout.session.completed", "data" => %{"object" => object}} = event
-      ) do
-    activate_from_stripe_object(object, event)
+  @payment_events ~w(checkout.session.completed checkout.session.async_payment_succeeded checkout.session.async_payment_failed invoice.paid invoice.payment_failed)
+
+  def record_payment_event(
+        %{"type" => type, "data" => %{"object" => object}} = event,
+        subscription
+      )
+      when type in @payment_events do
+    object =
+      case type do
+        "checkout.session.async_payment_succeeded" -> Map.put(object, "payment_status", "paid")
+        "checkout.session.async_payment_failed" -> Map.put(object, "payment_status", "failed")
+        "invoice.payment_failed" -> Map.put(object, "payment_status", "failed")
+        _ -> object
+      end
+
+    # Identity comes from the refreshed subscription, not stale checkout metadata.
+    metadata = (object["metadata"] || %{}) |> Map.put("user_id", subscription.user_id)
+    metadata = Map.put_new(metadata, "plan_id", subscription.plan_id)
+    activate_from_stripe_object(Map.put(object, "metadata", metadata), event)
   end
 
-  def apply_event(
-        %{"type" => "checkout.session.async_payment_succeeded", "data" => %{"object" => object}} =
-          event
-      ) do
-    activate_from_stripe_object(Map.put(object, "payment_status", "paid"), event)
-  end
-
-  def apply_event(
-        %{"type" => "checkout.session.async_payment_failed", "data" => %{"object" => object}} =
-          event
-      ) do
-    activate_from_stripe_object(Map.put(object, "payment_status", "failed"), event)
-  end
-
-  def apply_event(%{"type" => "invoice.paid", "data" => %{"object" => object}} = event) do
-    activate_from_stripe_object(object, event)
-  end
-
-  def apply_event(%{"type" => "invoice.payment_failed", "data" => %{"object" => object}}) do
-    mark_subscription_from_object(object, "pending")
-  end
-
-  def apply_event(%{"type" => "customer.subscription.updated", "data" => %{"object" => object}}) do
-    sync_subscription_from_object(object)
-  end
-
-  def apply_event(
-        %{"type" => "customer.subscription.deleted", "data" => %{"object" => object}} = _event
-      ) do
-    case object["id"] do
-      subscription_id when is_binary(subscription_id) ->
-        {:ok, Billing.cancel_subscription_by_external_reference!("stripe:#{subscription_id}")}
-
-      _ ->
-        {:ok, :ignored}
-    end
-  end
-
-  def apply_event(_event), do: {:ok, :ignored}
+  def record_payment_event(_event, _subscription), do: {:ok, :ignored}
 
   def sync_subscription_from_object(object, fallback_user \\ nil) do
     with %{id: user_id} = user when is_integer(user_id) <-
            user_from_stripe_object(object, fallback_user),
-         %Plan{} = plan <- plan_from_stripe_object(object) do
+         %Plan{} = plan <- plan_from_stripe_object(object),
+         :ok <- validate_owner(object, user_id),
+         {:ok, starts_at, expires_at} <- billing_period(object) do
       maybe_upsert_customer!(user, object)
 
       subscription =
         Billing.sync_provider_subscription!(user, plan, %{
           provider: "stripe",
-          external_reference: stripe_subscription_reference(object),
+          external_reference: subscription_reference(object),
           status: subscription_status(object["status"]),
-          starts_at:
-            unix_to_datetime(object["current_period_start"]) || DateTime.utc_now(:second),
-          expires_at: subscription_expires_at(object),
+          starts_at: starts_at,
+          expires_at: expires_at,
           canceled_at: unix_to_datetime(object["canceled_at"])
         })
 
@@ -87,8 +65,9 @@ defmodule Streamix.Billing.Stripe.Events do
       result =
         Billing.activate_subscription_from_payment!(user, plan, %{
           provider: "stripe",
+          grant_access?: false,
           external_id: stripe_payment_external_id(object, event),
-          subscription_external_reference: stripe_subscription_reference(object),
+          subscription_external_reference: subscription_reference(object),
           status: stripe_payment_status(object),
           amount_cents: stripe_amount_cents(object, plan),
           currency: stripe_currency(object, plan),
@@ -108,27 +87,6 @@ defmodule Streamix.Billing.Stripe.Events do
     case fetch_metadata_id(object, "user_id") do
       {:ok, user_id} -> Accounts.get_user(user_id) || fallback_user
       {:error, :missing_metadata} -> fallback_user
-    end
-  end
-
-  defp mark_subscription_from_object(object, status) do
-    with reference when is_binary(reference) <- stripe_subscription_reference(object),
-         {:ok, user_id} <- fetch_metadata_id(object, "user_id"),
-         %{id: ^user_id} = user <- Accounts.get_user(user_id),
-         %Plan{} = plan <- plan_from_stripe_object(object) do
-      subscription =
-        Billing.sync_provider_subscription!(user, plan, %{
-          provider: "stripe",
-          external_reference: reference,
-          status: status,
-          starts_at: unix_to_datetime(object["period_start"]) || DateTime.utc_now(:second),
-          expires_at: unix_to_datetime(object["period_end"])
-        })
-
-      {:ok, %{subscription: subscription}}
-    else
-      nil -> {:ok, :ignored}
-      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -176,7 +134,7 @@ defmodule Streamix.Billing.Stripe.Events do
     object["payment_intent"] || object["id"] || event["id"]
   end
 
-  defp stripe_subscription_reference(object) do
+  def subscription_reference(object) do
     id =
       cond do
         is_binary(object["subscription"]) -> object["subscription"]
@@ -199,10 +157,39 @@ defmodule Streamix.Billing.Stripe.Events do
   defp subscription_status(status) when status in ~w(canceled unpaid), do: "canceled"
   defp subscription_status(_status), do: "pending"
 
-  defp subscription_expires_at(%{"cancel_at_period_end" => true} = object),
-    do: unix_to_datetime(object["current_period_end"])
+  defp billing_period(object) do
+    starts_at =
+      unix_to_datetime(period_field(object, "current_period_start")) || DateTime.utc_now(:second)
 
-  defp subscription_expires_at(_object), do: nil
+    expires_at =
+      unix_to_datetime(period_field(object, "current_period_end") || object["trial_end"])
+
+    cond do
+      object["status"] in ~w(active trialing) and is_nil(expires_at) ->
+        {:error, :missing_billing_period}
+
+      expires_at && DateTime.compare(expires_at, starts_at) != :gt ->
+        {:error, :invalid_billing_period}
+
+      true ->
+        {:ok, starts_at, expires_at}
+    end
+  end
+
+  defp period_field(object, field),
+    do: object[field] || get_in(object, ["items", "data", Access.at(0), field])
+
+  defp validate_owner(object, user_id) do
+    subscription = Repo.get_by(Subscription, external_reference: subscription_reference(object))
+
+    customer =
+      if id = object["customer"],
+        do: Repo.get_by(BillingCustomer, provider: "stripe", external_id: id)
+
+    if Enum.any?([subscription, customer], &(not is_nil(&1) and &1.user_id != user_id)),
+      do: {:error, :billing_subject_mismatch},
+      else: :ok
+  end
 
   defp stripe_payment_status(%{"payment_status" => "failed"}), do: "failed"
   defp stripe_payment_status(%{"payment_status" => "paid"}), do: "paid"

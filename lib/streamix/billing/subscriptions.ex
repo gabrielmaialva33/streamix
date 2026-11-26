@@ -31,10 +31,7 @@ defmodule Streamix.Billing.Subscriptions do
     if DateTime.compare(new, old) == :lt do
       require Logger
 
-      Logger.warning(
-        "[Billing] subscription #{inspect(old)} expires_at shrank to #{inspect(new)}; " <>
-          "verify Stripe payload ordering / proration policy"
-      )
+      Logger.warning("[Billing] subscription expiration shortened by authoritative state")
     end
 
     :ok
@@ -50,7 +47,7 @@ defmodule Streamix.Billing.Subscriptions do
       external_reference = Map.fetch!(attrs, :external_reference)
       status = Map.fetch!(attrs, :status)
 
-      if status == "active" do
+      if status == "active" and Map.fetch!(attrs, :provider) != "stripe" do
         cancel_other_active_subscriptions!(
           user_id,
           external_reference,

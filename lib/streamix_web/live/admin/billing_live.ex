@@ -26,8 +26,21 @@ defmodule StreamixWeb.Admin.BillingLive do
          |> put_flash(:info, "Reconciliação Stripe concluída")
          |> load_billing()}
 
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Falha ao reconciliar Stripe: #{inspect(reason)}")}
+      {:error, %{failed: failed}} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Reconciliação incompleta: #{failed} cliente(s) com falha. Tente novamente."
+         )}
+
+      {:error, _reason} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Não foi possível reconciliar Stripe. Verifique a configuração."
+         )}
     end
   end
 

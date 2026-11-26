@@ -22,6 +22,25 @@ defmodule Streamix.Billing.Stripe.Client do
     )
   end
 
+  def retrieve_subscription(secret_key, subscription_id) do
+    if Regex.match?(~r/^sub_[A-Za-z0-9_]+$/, subscription_id) do
+      url = config_value(:subscriptions_url, @subscriptions_url) <> "/" <> subscription_id
+
+      case http_client().get(url,
+             headers: authorization_headers(secret_key),
+             finch: [name: Streamix.Finch],
+             receive_timeout: 5_000,
+             retry: false
+           ) do
+        {:ok, %Req.Response{status: 200, body: body}} when is_map(body) -> {:ok, body}
+        {:ok, %Req.Response{status: status}} -> {:error, {:stripe_status, status}}
+        {:error, _reason} -> {:error, :stripe_unavailable}
+      end
+    else
+      {:error, :invalid_subscription_id}
+    end
+  end
+
   def list_subscriptions(secret_key, customer_id) do
     url = config_value(:subscriptions_url, @subscriptions_url)
     query = URI.encode_query(%{customer: customer_id, status: "all", limit: "100"})
