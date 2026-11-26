@@ -1,23 +1,15 @@
 defmodule Streamix.Accounts.IpTracker do
   @moduledoc """
   Extracts IP address and device info from HTTP requests.
-  Handles Cloudflare headers for real client IP.
+  Delegates forwarding trust and address normalization to the network boundary.
   """
 
   alias Streamix.Accounts.AccessLog
   alias Streamix.Repo
+  alias Streamix.Security.ClientIp
 
-  @doc """
-  Extracts client IP from conn, handling proxies and Cloudflare.
-  Priority: CF-Connecting-IP > X-Forwarded-For > X-Real-IP > remote_ip
-  """
-  def get_client_ip(conn) do
-    conn
-    |> get_header("cf-connecting-ip")
-    |> or_else(fn -> get_forwarded_for(conn) end)
-    |> or_else(fn -> get_header(conn, "x-real-ip") end)
-    |> or_else(fn -> format_ip(conn.remote_ip) end)
-  end
+  @doc "Extracts the client IP through the configured trusted proxy chain."
+  def get_client_ip(conn), do: ClientIp.from_conn(conn)
 
   @doc """
   Extracts all request info for tracking.
@@ -67,28 +59,6 @@ defmodule Streamix.Accounts.IpTracker do
       [] -> nil
     end
   end
-
-  defp get_forwarded_for(conn) do
-    case get_header(conn, "x-forwarded-for") do
-      nil ->
-        nil
-
-      value ->
-        value
-        |> String.split(",")
-        |> List.first()
-        |> String.trim()
-    end
-  end
-
-  defp format_ip(ip_tuple) when is_tuple(ip_tuple) do
-    ip_tuple
-    |> Tuple.to_list()
-    |> Enum.join(".")
-  end
-
-  defp or_else(nil, func), do: func.()
-  defp or_else(value, _func), do: value
 
   defp task_launcher do
     Application.get_env(:streamix, :ip_tracker_task_launcher, Streamix.TaskLauncher)

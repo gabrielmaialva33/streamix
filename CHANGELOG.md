@@ -239,6 +239,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Security
 
+- Client IP and rate-limit buckets now trust only an explicitly configured `TRUSTED_PROXY_CIDRS` chain, parse from the nearest hop and normalize IPv6. Configure the actual proxy peers before deploying behind a proxy; the default uses only the socket peer.
+
 - Live upstream recovery logs now use opaque content references instead of provider/content keys.
 
 - Dependency updates fix three more advisories: `phoenix` 1.8.17 (EEF-CVE-2026-129344, EEF-CVE-2026-128361) and

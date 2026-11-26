@@ -50,6 +50,13 @@ end
 # Opt-in Xtream domain whitelist header; absent override uses Endpoint.url/0 (PHX_HOST).
 config :streamix, :iptv_x_domain, get_env.("IPTV_X_DOMAIN")
 
+# No forwarding header is trusted unless the actual socket peer is allowlisted.
+config :streamix,
+       :trusted_proxy_cidrs,
+       get_env.("TRUSTED_PROXY_CIDRS")
+       |> RuntimeConfig.csv()
+       |> Streamix.Security.ClientIp.parse_cidrs!()
+
 # Database URL. Development may read .env; test and production use process env.
 # Example: ecto://user:pass@host/database
 database_url =

@@ -6,8 +6,28 @@ defmodule Streamix.Accounts.IpTrackerTest do
 
   alias Streamix.Accounts.{AccessLog, IpTracker}
 
+  test "untrusted peers cannot forge tracking identity through any forwarding header" do
+    conn =
+      Plug.Test.conn(:get, "/")
+      |> Map.put(:remote_ip, {203, 0, 113, 9})
+      |> put_req_header("cf-connecting-ip", "198.51.100.1")
+      |> put_req_header("x-real-ip", "198.51.100.2")
+      |> put_req_header("x-forwarded-for", "198.51.100.3")
+
+    assert IpTracker.get_client_ip(conn) == "203.0.113.9"
+  end
+
+  test "normalizes IPv6 peer addresses" do
+    conn = Plug.Test.conn(:get, "/") |> Map.put(:remote_ip, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 1})
+    assert IpTracker.get_client_ip(conn) == "2001:db8::1"
+  end
+
   describe "log_access_async/2" do
     setup do
+      old_proxies = Application.get_env(:streamix, :trusted_proxy_cidrs, [])
+      Application.put_env(:streamix, :trusted_proxy_cidrs, [{{127, 0, 0, 1}, 32}])
+      on_exit(fn -> Application.put_env(:streamix, :trusted_proxy_cidrs, old_proxies) end)
+
       previous_launcher =
         Application.get_env(:streamix, :ip_tracker_task_launcher, Streamix.TaskLauncher)
 
@@ -40,7 +60,7 @@ defmodule Streamix.Accounts.IpTrackerTest do
       conn =
         Plug.Test.conn(:get, "/login")
         |> put_req_header("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
-        |> put_req_header("x-real-ip", "203.0.113.10")
+        |> put_req_header("x-forwarded-for", "203.0.113.10")
         |> put_req_header("cf-ipcountry", "BR")
         |> put_req_header("cf-ipcity", "Sao Paulo")
 
