@@ -24,8 +24,12 @@ defmodule Streamix.AI.UserAnalytics.PersonalizedContent do
     days = Keyword.get(opts, :days, 7)
     show_adult = Keyword.get(opts, :show_adult, false)
 
-    Catalog.list_trending_movies(limit: limit * 2, days: days, show_adult: show_adult)
-    |> filter_by_genre(genre)
+    Catalog.list_trending_movies(
+      limit: limit * 2,
+      days: days,
+      show_adult: show_adult,
+      genre: genre
+    )
     |> maybe_reorder_by_user_taste(key, personalization_input(opts))
     |> Enum.take(limit)
   end
@@ -45,18 +49,9 @@ defmodule Streamix.AI.UserAnalytics.PersonalizedContent do
     genre = opts[:genre] || "all"
     show_adult = Keyword.get(opts, :show_adult, false)
 
-    Catalog.list_top_10_series(limit: limit * 2, show_adult: show_adult)
-    |> filter_by_genre(genre)
+    Catalog.list_top_10_series(limit: limit * 2, show_adult: show_adult, genre: genre)
     |> maybe_reorder_by_user_taste(key, personalization_input(opts))
     |> Enum.take(limit)
-  end
-
-  defp filter_by_genre(items, genre) when genre in ["all", nil, ""], do: items
-
-  defp filter_by_genre(items, genre) when is_binary(genre) do
-    Enum.filter(items, fn item ->
-      genre in item_slugs(item)
-    end)
   end
 
   defp personalization_input(opts) do

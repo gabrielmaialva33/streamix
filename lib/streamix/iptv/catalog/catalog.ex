@@ -423,6 +423,7 @@ defmodule Streamix.Iptv.Catalog do
 
     public_movies_query()
     |> with_provider_filters(opts)
+    |> with_shelf_genre(opts, :movie)
     |> maybe_exclude_adult(show_adult, :movie)
     |> where([movie: movie], movie.year >= ^(current_year - 2) and movie.year <= ^current_year)
     |> with_movie_poster()
@@ -473,6 +474,7 @@ defmodule Streamix.Iptv.Catalog do
 
     public_series_query()
     |> with_provider_filters(opts)
+    |> with_shelf_genre(opts, :series)
     |> maybe_exclude_adult(show_adult, :series)
     |> where([series: series], not is_nil(series.rating))
     |> with_series_cover()
@@ -530,6 +532,18 @@ defmodule Streamix.Iptv.Catalog do
     |> Keyword.put(:limit, limit)
     |> Keyword.put(:offset, offset)
     |> Keyword.put(:show_adult, show_adult)
+  end
+
+  defp with_shelf_genre(query, opts, binding) do
+    case Keyword.get(opts, :genre) do
+      genre when genre in [nil, "", "all"] ->
+        query
+
+      slug when is_binary(slug) ->
+        from [{^binding, item}] in query,
+          join: genre in assoc(item, :genres),
+          where: genre.slug == ^slug
+    end
   end
 
   defp with_movie_poster(query), do: where(query, [movie: movie], not is_nil(movie.stream_icon))
