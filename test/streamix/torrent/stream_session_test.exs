@@ -49,6 +49,27 @@ defmodule Streamix.Torrent.StreamSessionTest do
     assert is_pid(StreamSession.whereis(@info_hash))
   end
 
+  test "a child whose first join never arrives expires without restarting" do
+    supervisor = Streamix.Torrent.StreamSessionSupervisor
+
+    {:ok, pid} =
+      DynamicSupervisor.start_child(
+        supervisor,
+        {StreamSession, info_hash: @info_hash, magnet_uri: @magnet}
+      )
+
+    state = :sys.get_state(pid)
+    assert is_reference(state.idle_timer)
+    assert Process.read_timer(state.idle_timer) > 0
+    assert state.viewers == %{}
+    monitor = Process.monitor(pid)
+    Process.cancel_timer(state.idle_timer)
+    send(pid, :check_idle)
+    assert_receive {:DOWN, ^monitor, :process, ^pid, :normal}, 1_000
+    assert DynamicSupervisor.which_children(supervisor) == []
+    assert StreamSession.whereis(@info_hash) == nil
+  end
+
   test "second join piggy-backs on the same process" do
     viewer = self()
     {:ok, _} = StreamSession.start_or_join(@info_hash, @magnet, viewer)

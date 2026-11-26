@@ -272,6 +272,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Torrent sessions also expire when their initial caller disappears before the first viewer joins.
+
 - Stripe webhooks persist transactional receipts and refresh current subscription state before applying financial events, so delayed deliveries cannot resurrect canceled plans. Reconciliation reports partial failures and retries through Oban with aggregate-only logs. Manual grants remain independent.
 
 - Pending Stripe checkouts record payment state without activating access. Asynchronous outcomes are handled, paid records resist late pending/failure updates, and provider transitions preserve administrator-granted plans. Trials activate through explicit subscription state.

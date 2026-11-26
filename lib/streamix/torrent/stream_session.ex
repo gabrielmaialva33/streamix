@@ -186,7 +186,7 @@ defmodule Streamix.Torrent.StreamSession do
       retry_timer: nil
     }
 
-    {:ok, state, {:continue, :ensure_added}}
+    {:ok, maybe_schedule_idle(state), {:continue, :ensure_added}}
   end
 
   @impl true
