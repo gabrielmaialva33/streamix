@@ -58,6 +58,27 @@ defmodule Streamix.Iptv.SearchDocuments do
   end
 
   @doc """
+  The ids `list/3` would index for `kind`, across every provider: the set a
+  search collection should hold and nothing more.
+  """
+  @spec list_ids(kind()) :: [integer()]
+  def list_ids(kind) when kind in [:movies, :series, :animes] do
+    kind
+    |> schema_for()
+    |> then(
+      &from(content in &1,
+        join: provider in Provider,
+        on: provider.id == content.provider_id,
+        where: not is_nil(content.title) and provider.is_active == true,
+        select: content.id
+      )
+    )
+    |> VodAvailability.exclude_dead()
+    |> scope_to_kind(kind)
+    |> Repo.all(timeout: 60_000)
+  end
+
+  @doc """
   Documents for the given content ids of one kind, in no particular order.
   Unlike `list/3` it applies no provider, liveness or kind scoping: the
   caller already chose the rows.

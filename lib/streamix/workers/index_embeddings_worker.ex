@@ -113,7 +113,7 @@ defmodule Streamix.Workers.IndexEmbeddingsWorker do
          ) do
       {:ok, count} ->
         Logger.info("[IndexEmbeddings] Indexed #{count} movies this attempt")
-        :ok
+        prune_stale(semantic_search, :movies, provider_id)
 
       {:error, reason} ->
         Logger.error("[IndexEmbeddings] Failed to index movies",
@@ -134,7 +134,7 @@ defmodule Streamix.Workers.IndexEmbeddingsWorker do
          ) do
       {:ok, count} ->
         Logger.info("[IndexEmbeddings] Indexed #{count} series this attempt")
-        :ok
+        prune_stale(semantic_search, :series, provider_id)
 
       {:error, reason} ->
         Logger.error("[IndexEmbeddings] Failed to index series",
@@ -155,7 +155,7 @@ defmodule Streamix.Workers.IndexEmbeddingsWorker do
          ) do
       {:ok, count} ->
         Logger.info("[IndexEmbeddings] Indexed #{count} animes this attempt")
-        :ok
+        prune_stale(semantic_search, :animes, provider_id)
 
       {:error, reason} ->
         Logger.error("[IndexEmbeddings] Failed to index animes",
@@ -164,6 +164,27 @@ defmodule Streamix.Workers.IndexEmbeddingsWorker do
 
         {:error, reason}
     end
+  end
+
+  # Only a whole-catalog run knows every title a collection should hold; a
+  # provider-scoped run would read every other provider's points as stale.
+  # Pruning is housekeeping, so a failure is logged and the job still succeeds.
+  defp prune_stale(_semantic_search, _collection, provider_id) when not is_nil(provider_id),
+    do: :ok
+
+  defp prune_stale(semantic_search, collection, nil) do
+    case semantic_search.prune_stale(collection) do
+      {:ok, deleted} ->
+        Logger.info("[IndexEmbeddings] Pruned #{deleted} stale #{collection} points")
+
+      {:error, reason} ->
+        Logger.warning("[IndexEmbeddings] Could not prune stale points",
+          collection: collection,
+          reason: SafeLog.redact_inspect(reason)
+        )
+    end
+
+    :ok
   end
 
   defp checkpoint_opts(job_id, collection, after_id) do

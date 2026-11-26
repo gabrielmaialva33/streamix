@@ -404,6 +404,56 @@ defmodule Streamix.AI.Qdrant do
   end
 
   @doc """
+  Every point id in `collection`, read page by page without payloads or
+  vectors.
+  """
+  @spec list_point_ids(String.t()) :: {:ok, [integer() | String.t()]} | {:error, term()}
+  def list_point_ids(collection), do: scroll_ids(collection, nil, [])
+
+  defp scroll_ids(collection, offset, acc) do
+    url = "#{base_url()}/collections/#{collection}/points/scroll"
+
+    body =
+      %{limit: 10_000, with_payload: false, with_vector: false}
+      |> then(&if(offset, do: Map.put(&1, :offset, offset), else: &1))
+      |> Jason.encode!()
+
+    case req_post(url, body) do
+      {:ok, %Req.Response{status: 200, body: %{"result" => %{"points" => points} = result}}} ->
+        acc = Enum.reduce(points, acc, &[&1["id"] | &2])
+
+        case result["next_page_offset"] do
+          nil -> {:ok, Enum.reverse(acc)}
+          next -> scroll_ids(collection, next, acc)
+        end
+
+      {:ok, %Req.Response{status: status}} ->
+        {:error, {:scroll_failed, status}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc "Deletes `ids` from `collection`, a thousand per request."
+  @spec delete_points(String.t(), [integer() | String.t()]) :: :ok | {:error, term()}
+  def delete_points(_collection, []), do: :ok
+
+  def delete_points(collection, ids) when is_list(ids) do
+    url = "#{base_url()}/collections/#{collection}/points/delete"
+
+    ids
+    |> Enum.chunk_every(1_000)
+    |> Enum.reduce_while(:ok, fn chunk, :ok ->
+      case req_post(url, Jason.encode!(%{points: chunk})) do
+        {:ok, %Req.Response{status: 200}} -> {:cont, :ok}
+        {:ok, %Req.Response{status: status}} -> {:halt, {:error, {:delete_failed, status}}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  @doc """
   Returns collection info including vector count.
   """
   def collection_info(collection) do

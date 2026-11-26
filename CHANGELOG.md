@@ -274,6 +274,9 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   input and refuses a whole request when one text trips the filter; such a title is now isolated and left out of the
   index instead of discarding the run. A 5xx from NVIDIA (the endpoint answers some requests with "service inference
   failed") is retried with backoff, four times while indexing and once for a search query.
+- Semantic search no longer answers with titles that left the index. Indexing only ever added and updated Qdrant
+  points, so titles removed from the catalog, from an inactive provider or (for anime) reclassified kept matching
+  with vectors from a retired model; a whole-catalog run now deletes those points after each collection.
 - Xtream providers fail over across all registered domains for sync, health, metadata, EPG and playback, and
   prefer the fastest live domain; a dead domain no longer stalls requests for ~23 s or caps live viewing at one
   stream.

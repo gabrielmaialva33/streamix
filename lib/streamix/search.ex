@@ -32,6 +32,10 @@ defmodule Streamix.Search do
     to: Streamix.Iptv.SearchDocuments,
     as: :list
 
+  defdelegate list_search_document_ids(kind),
+    to: Streamix.Iptv.SearchDocuments,
+    as: :list_ids
+
   defdelegate search_documents_for_ids(kind, ids),
     to: Streamix.Iptv.SearchDocuments,
     as: :for_ids

@@ -107,6 +107,25 @@ defmodule Streamix.Iptv.SearchDocumentsTest do
     refute anime.id in series_ids
   end
 
+  test "list_search_document_ids returns exactly the ids the indexer would index" do
+    user = user_fixture()
+    provider = provider_fixture(user)
+    inactive = provider_fixture(user, %{is_active: false})
+
+    anime = series_content_fixture(provider, %{title: "A", gindex_path: "/1:/Animes/A/"})
+    series = series_content_fixture(provider, %{title: "S", gindex_path: "/1:/Séries/S/"})
+    hidden = series_content_fixture(inactive, %{title: "H"})
+
+    anime_ids = Streamix.Search.list_search_document_ids(:animes)
+    series_ids = Streamix.Search.list_search_document_ids(:series)
+
+    assert anime.id in anime_ids
+    refute series.id in anime_ids
+    assert series.id in series_ids
+    refute anime.id in series_ids
+    refute hidden.id in series_ids
+  end
+
   test "keeps series without a gindex path in the series collection" do
     user = user_fixture()
     provider = provider_fixture(user)

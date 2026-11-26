@@ -84,6 +84,29 @@ defmodule Streamix.AI.SemanticSearchTest do
            ) == {:error, {:batch_failed, :movies, 0, {:api_error, 500, %{}}}}
   end
 
+  test "prune_stale deletes the points no indexed title owns" do
+    test_pid = self()
+
+    assert SemanticSearch.prune_stale(:animes,
+             live_ids: [1, 2, 3],
+             point_ids: fn "animes" -> {:ok, [1, 2, 3, 40, 50]} end,
+             delete_points: fn name, ids ->
+               send(test_pid, {:deleted, name, ids})
+               :ok
+             end
+           ) == {:ok, 2}
+
+    assert_received {:deleted, "animes", [40, 50]}
+  end
+
+  test "prune_stale deletes nothing when the catalog read comes back empty" do
+    assert SemanticSearch.prune_stale(:movies,
+             live_ids: [],
+             point_ids: fn _ -> flunk("must not list points") end,
+             delete_points: fn _, _ -> flunk("must not delete") end
+           ) == {:error, :no_documents}
+  end
+
   test "index_all_movies resumes after a stable database id" do
     user = user_fixture()
     provider = provider_fixture(user)

@@ -353,6 +353,41 @@ defmodule Streamix.AI.SemanticSearch do
   end
 
   @doc """
+  Deletes the points of `collection` whose title is no longer indexed: gone
+  from the catalog, its provider inactive, or (for anime) reclassified.
+
+  Indexing only upserts, so such points kept answering searches with vectors
+  from whatever model wrote them; after the 2026-11 model change 785 of the
+  847 anime points were series that had left the anime folder. An empty
+  catalog read deletes nothing, so a failed query cannot wipe the index.
+  Returns `{:ok, deleted_count}`.
+  """
+  @spec prune_stale(:movies | :series | :animes, keyword()) ::
+          {:ok, non_neg_integer()} | {:error, term()}
+  def prune_stale(collection, opts \\ []) when collection in [:movies, :series, :animes] do
+    live_ids =
+      Keyword.get_lazy(opts, :live_ids, fn ->
+        Streamix.Search.list_search_document_ids(collection)
+      end)
+
+    point_ids = Keyword.get(opts, :point_ids, &Qdrant.list_point_ids/1)
+    delete = Keyword.get(opts, :delete_points, &Qdrant.delete_points/2)
+    name = to_string(collection)
+
+    if live_ids == [] do
+      {:error, :no_documents}
+    else
+      live = MapSet.new(live_ids)
+
+      with {:ok, ids} <- point_ids.(name),
+           stale = Enum.reject(ids, &MapSet.member?(live, &1)),
+           :ok <- delete.(name, stale) do
+        {:ok, length(stale)}
+      end
+    end
+  end
+
+  @doc """
   Returns stats about indexed content.
   """
   def stats do

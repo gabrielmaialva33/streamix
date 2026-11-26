@@ -31,6 +31,30 @@ defmodule Streamix.Workers.IndexEmbeddingsWorkerTest do
     assert_receive {:animes, nil}
   end
 
+  test "a whole-catalog run prunes each collection after indexing it" do
+    assert IndexEmbeddingsWorker.perform(%Oban.Job{args: %{}}) == :ok
+
+    assert_receive {:prune, :movies}
+    assert_receive {:prune, :series}
+    assert_receive {:prune, :animes}
+  end
+
+  test "a provider-scoped run never prunes" do
+    assert IndexEmbeddingsWorker.perform(%Oban.Job{args: %{"provider_id" => 9}}) == :ok
+
+    assert_receive {:animes, 9}
+    refute_receive {:prune, _}
+  end
+
+  test "a failed prune is logged and does not fail the job" do
+    Application.put_env(:streamix, :index_embeddings_test_results, %{
+      {:prune, :movies} => {:error, :qdrant_down}
+    })
+
+    assert IndexEmbeddingsWorker.perform(%Oban.Job{args: %{}}) == :ok
+    assert_receive {:prune, :animes}
+  end
+
   test "indexes only animes when the job asks for that collection" do
     assert IndexEmbeddingsWorker.perform(%Oban.Job{args: %{"collection" => "animes"}}) == :ok
 
@@ -156,6 +180,11 @@ defmodule Streamix.Workers.IndexEmbeddingsWorkerTest do
       report({:animes, provider_id})
       report({:animes_after_id, Keyword.fetch!(opts, :after_id)})
       maybe_checkpoint(:animes, opts, result(:animes, {:ok, 4}))
+    end
+
+    def prune_stale(collection) do
+      report({:prune, collection})
+      result({:prune, collection}, {:ok, 0})
     end
 
     @checkpoint_ids %{movies: 101, series: 202, animes: 303}
