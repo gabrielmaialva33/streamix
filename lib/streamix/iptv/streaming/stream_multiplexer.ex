@@ -424,7 +424,10 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   end
 
   defp process_response({:headers, _ref, _headers}, %{resuming?: true} = state) do
-    Logger.info("[StreamMux] upstream resumed stream_key=#{inspect(state.stream_key)}")
+    Logger.info("[StreamMux] upstream resumed",
+      content_ref: SafeLog.content_ref(state.stream_key)
+    )
+
     :telemetry.execute([:streamix, :live_mux, :resumed], %{count: 1}, %{})
     {:ok, %{state | status: :streaming, resuming?: false}}
   end
@@ -555,9 +558,10 @@ defmodule Streamix.Iptv.StreamMultiplexer do
     resumes = recent_resumes(state)
     delay_ms = Enum.at(@resume_backoff_ms, length(resumes), List.last(@resume_backoff_ms))
 
-    Logger.info(
-      "[StreamMux] upstream dropped (#{SafeLog.redact_inspect(Upstream.safe_reason(reason))}); " <>
-        "resuming in #{delay_ms}ms stream_key=#{inspect(state.stream_key)}"
+    Logger.info("[StreamMux] upstream dropped; resuming",
+      reason: SafeLog.redact_inspect(Upstream.safe_reason(reason)),
+      delay_ms: delay_ms,
+      content_ref: SafeLog.content_ref(state.stream_key)
     )
 
     state = %{

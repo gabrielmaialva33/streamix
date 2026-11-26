@@ -239,6 +239,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Security
 
+- Live upstream recovery logs now use opaque content references instead of provider/content keys.
+
 - Dependency updates fix three more advisories: `phoenix` 1.8.17 (EEF-CVE-2026-129344, EEF-CVE-2026-128361) and
   `db_connection` 2.10.3 (EEF-CVE-2026-133555).
 - Dependency updates fix three advisories: `phoenix_live_view` 1.2.14 (EEF-CVE-2026-126334), `plug` 1.20.4
