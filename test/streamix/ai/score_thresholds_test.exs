@@ -4,9 +4,9 @@ defmodule Streamix.AI.ScoreThresholdsTest do
   alias Streamix.AI.ScoreThresholds
 
   test "defaults are the floors calibrated for the production embedding model" do
-    assert ScoreThresholds.query() == 0.25
-    assert ScoreThresholds.similar() == 0.40
-    assert ScoreThresholds.profile() == 0.35
+    assert ScoreThresholds.query() == 0.40
+    assert ScoreThresholds.similar() == 0.50
+    assert ScoreThresholds.profile() == 0.45
   end
 
   test "each floor can be overridden through config without touching the others" do
@@ -20,6 +20,6 @@ defmodule Streamix.AI.ScoreThresholdsTest do
     end)
 
     assert ScoreThresholds.query() == 0.3
-    assert ScoreThresholds.similar() == 0.40
+    assert ScoreThresholds.similar() == 0.50
   end
 end

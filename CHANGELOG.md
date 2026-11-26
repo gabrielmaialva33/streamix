@@ -277,6 +277,9 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Semantic search no longer answers with titles that left the index. Indexing only ever added and updated Qdrant
   points, so titles removed from the catalog, from an inactive provider or (for anime) reclassified kept matching
   with vectors from a retired model; a whole-catalog run now deletes those points after each collection.
+- Semantic similarity floors are re-measured for `nemotron-3.5-embed-1b`: text queries 0.40 (was 0.25), similar
+  titles 0.50 (was 0.40), profile recommendations 0.45 (was 0.35). Off-topic searches such as "receita de bolo"
+  no longer return titles that only share a word.
 - Xtream providers fail over across all registered domains for sync, health, metadata, EPG and playback, and
   prefer the fastest live domain; a dead domain no longer stalls requests for ~23 s or caps live viewing at one
   stream.
