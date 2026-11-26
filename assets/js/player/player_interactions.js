@@ -1,3 +1,4 @@
+import { createFocusTrap } from "../core/focus_trap.js";
 import { LifecycleScope } from "./lifecycle_scope.js";
 import { PLAYBACK_BRIDGE_EVENT } from "./playback_bridge.js";
 import { canShowIdlePause } from "./player_gestures.js";
@@ -41,6 +42,35 @@ export function createPlayerInteractions({
   const viewer = () => root.dataset.partyRole === "viewer";
   const transportAllowed = () => !locked() && !viewer();
 
+  const episodesPanel = root.querySelector("#player-episodes-panel");
+  const episodesLayer = root.querySelector("#player-episodes-layer");
+  let backgroundInert = [];
+  const closeEpisodes = () => {
+    delete root.dataset.playerPanel;
+    for (const [element, inert] of backgroundInert) element.inert = inert;
+    backgroundInert = [];
+    episodesFocus?.deactivate();
+  };
+  const episodesFocus = episodesPanel
+    ? createFocusTrap(episodesPanel, {
+        documentRef,
+        scheduler,
+        returnFocusTo: root.querySelector("#player-episodes-btn"),
+        closeOnClickOutside: false,
+        onEscape: closeEpisodes,
+      })
+    : null;
+  const openEpisodes = () => {
+    root.dataset.playerPanel = "episodes";
+    if (!episodesFocus || episodesFocus.isActive()) return;
+    backgroundInert = Array.from(root.children)
+      .filter((element) => element !== episodesLayer)
+      .map((element) => [element, element.inert]);
+    for (const [element] of backgroundInert) element.inert = true;
+    episodesFocus.activate();
+  };
+  lifecycle.add(closeEpisodes);
+
   const clearIdle = () => {
     scheduler.clearTimeout(idleTimer);
     idleTimer = null;
@@ -68,6 +98,12 @@ export function createPlayerInteractions({
     }, 6000);
   };
   const syncState = () => {
+    if (
+      episodesFocus?.isActive() &&
+      (root.dataset.playerPanel !== "episodes" || locked() || viewer())
+    ) {
+      closeEpisodes();
+    }
     const allowed = eligible();
     if (!allowed) clearIdle();
     else if (!wasEligible) activity();
@@ -126,15 +162,13 @@ export function createPlayerInteractions({
       "next-episode": () => transportAllowed() && nextEpisode?.(),
       episodes: () => {
         if (!transportAllowed()) return;
-        if (root.dataset.playerPanel === "episodes") delete root.dataset.playerPanel;
-        else root.dataset.playerPanel = "episodes";
+        if (root.dataset.playerPanel === "episodes") closeEpisodes();
+        else openEpisodes();
       },
-      "close-panel": () => {
-        delete root.dataset.playerPanel;
-      },
+      "close-panel": closeEpisodes,
       lock: () => {
         root.dataset.playerLocked = "true";
-        delete root.dataset.playerPanel;
+        closeEpisodes();
       },
       unlock: () => {
         delete root.dataset.playerLocked;

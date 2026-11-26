@@ -270,6 +270,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- The episode dialog now moves and contains keyboard focus, makes background controls inert, and restores focus on close or player teardown.
+
 - Catalog API posters now share the web image normalization and private-target filtering while retaining their own cache version.
 
 - Personalized movie and series shelves apply the selected genre before limiting candidates, so eligible titles beyond the initial window remain discoverable.

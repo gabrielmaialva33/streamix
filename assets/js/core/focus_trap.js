@@ -24,10 +24,17 @@ const FOCUSABLE_SELECTORS = [
  * @returns {Object} Focus trap controller with activate/deactivate methods
  */
 export function createFocusTrap(container, options = {}) {
-  const { closeOnClickOutside = true, onEscape, returnFocusTo } = options;
+  const {
+    closeOnClickOutside = true,
+    onEscape,
+    returnFocusTo,
+    documentRef = globalThis.document,
+    scheduler = globalThis,
+  } = options;
 
   let active = false;
   let previouslyFocused = null;
+  let focusFrame = null;
 
   /**
    * Get all focusable elements within the container
@@ -47,8 +54,9 @@ export function createFocusTrap(container, options = {}) {
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      deactivate();
+      // Let the owner restore an inert background before returning focus.
       onEscape?.();
+      deactivate();
       return;
     }
 
@@ -62,13 +70,19 @@ export function createFocusTrap(container, options = {}) {
 
     // Shift + Tab: going backwards
     if (e.shiftKey) {
-      if (document.activeElement === firstElement || !container.contains(document.activeElement)) {
+      if (
+        documentRef.activeElement === firstElement ||
+        !container.contains(documentRef.activeElement)
+      ) {
         e.preventDefault();
         lastElement.focus();
       }
     } else {
       // Tab: going forwards
-      if (document.activeElement === lastElement || !container.contains(document.activeElement)) {
+      if (
+        documentRef.activeElement === lastElement ||
+        !container.contains(documentRef.activeElement)
+      ) {
         e.preventDefault();
         firstElement.focus();
       }
@@ -82,8 +96,9 @@ export function createFocusTrap(container, options = {}) {
     if (!active || !closeOnClickOutside) return;
 
     if (!container.contains(e.target)) {
-      deactivate();
+      // Let the owner restore an inert background before returning focus.
       onEscape?.();
+      deactivate();
     }
   }
 
@@ -94,18 +109,19 @@ export function createFocusTrap(container, options = {}) {
     if (active) return;
 
     active = true;
-    previouslyFocused = returnFocusTo || document.activeElement;
+    previouslyFocused = returnFocusTo || documentRef.activeElement;
 
     // Add event listeners
-    document.addEventListener("keydown", handleKeyDown, true);
-    document.addEventListener("mousedown", handleClickOutside, true);
+    documentRef.addEventListener("keydown", handleKeyDown, true);
+    documentRef.addEventListener("mousedown", handleClickOutside, true);
 
     // Focus the first focusable element
     const focusableElements = getFocusableElements();
     if (focusableElements.length > 0) {
       // Small delay to ensure the container is visible
-      requestAnimationFrame(() => {
-        focusableElements[0].focus();
+      focusFrame = scheduler.requestAnimationFrame(() => {
+        focusFrame = null;
+        if (active) focusableElements[0].focus();
       });
     }
 
@@ -121,10 +137,12 @@ export function createFocusTrap(container, options = {}) {
     if (!active) return;
 
     active = false;
+    if (focusFrame !== null) scheduler.cancelAnimationFrame(focusFrame);
+    focusFrame = null;
 
     // Remove event listeners
-    document.removeEventListener("keydown", handleKeyDown, true);
-    document.removeEventListener("mousedown", handleClickOutside, true);
+    documentRef.removeEventListener("keydown", handleKeyDown, true);
+    documentRef.removeEventListener("mousedown", handleClickOutside, true);
 
     // Remove ARIA attributes
     container.removeAttribute("aria-modal");

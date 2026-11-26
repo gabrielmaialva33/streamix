@@ -10,6 +10,7 @@ function harness(options = {}) {
   const timer = clock();
   const state = { paused: true, live: false };
   const calls = [];
+  options.setup?.(root, documentRef, timer);
   const controller = createPlayerInteractions({
     root,
     video,
@@ -171,4 +172,78 @@ test("seek feedback stays accumulated at the exact 700ms chain boundary", () => 
   const bubble = h.root.querySelector(".player-seek-feedback");
   assert.equal(bubble.querySelector(".player-seek-feedback-label").textContent, "+20 s");
   h.controller.destroy();
+});
+
+function episodesHarness() {
+  let panel;
+  let close;
+  let last;
+  let trigger;
+  const h = harness({
+    setup(root, documentRef, timer) {
+      timer.requestAnimationFrame = (callback) => timer.setTimeout(callback, 0);
+      timer.cancelAnimationFrame = (id) => timer.clearTimeout(id);
+      trigger = root.appendChild(new PlayerElement("BUTTON"));
+      trigger.id = "player-episodes-btn";
+      trigger.dataset.playerAction = "episodes";
+      const layer = root.appendChild(new PlayerElement());
+      layer.id = "player-episodes-layer";
+      panel = layer.appendChild(new PlayerElement());
+      panel.id = "player-episodes-panel";
+      close = panel.appendChild(new PlayerElement("BUTTON"));
+      close.dataset.playerAction = "close-panel";
+      last = panel.appendChild(new PlayerElement("A"));
+      panel.querySelectorAll = () => [close, last];
+      panel.removeAttribute = (name) => panel.attributes.delete(name);
+      for (const element of [trigger, close, last]) {
+        element.offsetParent = panel;
+        element.focus = () => {
+          for (let ancestor = element; ancestor; ancestor = ancestor.parentElement) {
+            if (ancestor.inert) return;
+          }
+          documentRef.activeElement = element;
+        };
+      }
+      trigger.focus();
+    },
+  });
+  return { ...h, panel, close, last, trigger };
+}
+
+test("episodes dialog owns focus, contains Tab and restores background on Escape", () => {
+  const h = episodesHarness();
+  fire(h.root, "click", { target: h.trigger });
+  h.timer.tick(0);
+  assert.equal(h.documentRef.activeElement, h.close);
+  assert.equal(h.video.inert, true);
+  h.last.focus();
+  assert.equal(fire(h.documentRef, "keydown", { key: "Tab" }).defaultPrevented, true);
+  assert.equal(h.documentRef.activeElement, h.close);
+  fire(h.documentRef, "keydown", { key: "Tab", shiftKey: true });
+  assert.equal(h.documentRef.activeElement, h.last);
+  fire(h.documentRef, "keydown", { key: "Escape" });
+  assert.equal(h.root.dataset.playerPanel, undefined);
+  assert.equal(h.documentRef.activeElement === h.trigger, true, "focus returns to trigger");
+  assert.equal(Boolean(h.video.inert), false);
+  fire(h.root, "click", { target: h.trigger });
+  h.timer.tick(0);
+  assert.equal(h.documentRef.activeElement, h.close);
+  h.controller.destroy();
+  assert.equal(Boolean(h.video.inert), false);
+  assert.equal(h.documentRef.activeElement === h.trigger, true, "focus returns to trigger");
+  assert.equal(h.timer.pending, 0);
+});
+
+test("closing or destroying episodes before its animation frame cannot steal focus later", () => {
+  for (const closeAction of ["close", "destroy"]) {
+    const h = episodesHarness();
+    h.video.inert = true;
+    fire(h.root, "click", { target: h.trigger });
+    if (closeAction === "close") fire(h.root, "click", { target: h.close });
+    else h.controller.destroy();
+    h.timer.tick(0);
+    assert.equal(h.documentRef.activeElement === h.trigger, true, "focus returns to trigger");
+    assert.equal(h.video.inert, true);
+    h.controller.destroy();
+  }
 });
