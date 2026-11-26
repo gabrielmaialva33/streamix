@@ -20,6 +20,7 @@ defmodule StreamixWeb.E2E.WatchPartySyncTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
+  alias Fluffy.{Expect, Locator}
   alias Streamix.{Billing, Repo}
   alias Streamix.WatchParty.{Room, RoomServer}
 
@@ -103,16 +104,31 @@ defmodule StreamixWeb.E2E.WatchPartySyncTest do
     wait_for_playback(guest_session, false, 33)
 
     Phoenix.PubSub.subscribe(Streamix.PubSub, Streamix.WatchParty.topic(room.id))
+
+    status =
+      "#watch-party-sync-status [data-sync-status-text]"
+      |> Locator.by_css()
+      |> Locator.filter(visible: true)
+
     host_buffering(host_session, true)
     assert_receive {:sync_command, %{host_buffering: true}}, 5_000
     wait_for_playback(guest_session, true, 33)
-    wait_for_status(guest_session, "Aguardando o buffer")
+
+    Expect.expect(guest_session, Expect.to_have_text(status, "Aguardando o buffer"),
+      timeout: 8_000
+    )
 
     host_buffering(host_session, false)
     wait_for_playback(guest_session, false, 33)
 
-    host_session |> visit(~p"/") |> assert_has("body")
-    wait_for_status(guest_session, "Anfitrião desconectado")
+    visit(host_session, ~p"/")
+
+    Expect.expect(
+      guest_session,
+      Expect.to_have_text(status, "Anfitrião desconectado — aguardando retorno"),
+      timeout: 8_000
+    )
+
     wait_for_playback(guest_session, true, 33)
   end
 
@@ -234,69 +250,76 @@ defmodule StreamixWeb.E2E.WatchPartySyncTest do
   end
 
   defp wait_for_playback_bridge(session) do
-    ready =
+    Fluffy.Playwright.wait_for_function(
+      session,
+      """
+      () => {
+        const container = document.getElementById("video-player-container");
+        const syncHook = document.getElementById("watch-party-sync")?.__watchPartySyncHook;
+        return Boolean(
+          container?.streamixPlayback && syncHook?.playback === container.streamixPlayback
+        );
+      }
+      """,
+      timeout: 8_000,
+      polling: 25
+    )
+  rescue
+    error in Fluffy.OperationError ->
+      if match?(%Playwright.TimeoutError{}, error.cause), do: dump_bridge_state(session)
+      reraise error, __STACKTRACE__
+  end
+
+  defp dump_bridge_state(session) do
+    state =
       Fluffy.Playwright.evaluate(session, """
-      () => new Promise((resolve, reject) => {
-        const deadline = performance.now() + 8000;
-        const check = () => {
-          const container = document.getElementById("video-player-container");
-          const syncHook = document.getElementById("watch-party-sync")?.__watchPartySyncHook;
-          if (container?.streamixPlayback && syncHook?.playback === container.streamixPlayback) {
-            return resolve(true);
-          }
-          if (performance.now() >= deadline) {
-            const sync = document.getElementById("watch-party-sync");
-            const hookElements = Array.from(
-              document.querySelectorAll('[phx-hook="WatchPartySync"]')
-            ).map((element) => ({
-              id: element.id,
-              connected: element.isConnected,
-              hasHook: Boolean(element.__watchPartySyncHook),
-              roomId: element.dataset.roomId || null
-            }));
-            const mainView = window.liveSocket?.main || null;
-            const registeredHook = window.liveSocket?.getHookDefinition?.("WatchPartySync");
-            const internalHook = mainView?.getHook?.(sync) || null;
-            const diagnostics = {
-              lazyError: sync?.dataset?.lazyHookError || null,
-              lazyErrorDetail: sync?.dataset?.lazyHookErrorDetail || null,
-              globalErrors: window.__streamixLazyHookErrors || null,
-              hookRegistered: Boolean(registeredHook),
-              registeredMountedType: typeof registeredHook?.mounted,
-              registeredMountedSource: String(registeredHook?.mounted || "").slice(0, 180),
-              registeredHasBinding: typeof registeredHook?._ensurePlayerBinding === "function",
-              appScriptSrc:
-                document.querySelector('script[src*="/assets/js/app"]')?.getAttribute("src") || null,
-              mainViewExists: Boolean(mainView),
-              mainViewOwnsElement: mainView?.ownsElement?.(sync) ?? null,
-              internalHookExists: Boolean(internalHook),
-              internalMountedType: typeof internalHook?.mounted,
-              internalHasBinding: typeof internalHook?._ensurePlayerBinding === "function",
-              internalElSame: internalHook?.el === sync,
-              internalElConnected: internalHook?.el?.isConnected ?? null,
-              internalConnectedState: internalHook?.connectedToLiveView ?? null,
-              internalDestroyedState: internalHook?.destroyedHook ?? null,
-              internalPlaybackBound: Boolean(internalHook?.playback),
-              viewHookCount: mainView?.viewHooks ? Object.keys(mainView.viewHooks).length : null,
-              closestViewId: sync?.closest?.("[data-phx-session]")?.id || null,
-              phxHookValue: sync?.getAttribute?.("phx-hook") || null,
-              syncCount: document.querySelectorAll("#watch-party-sync").length,
-              hookElements,
-              syncExists: Boolean(sync),
-              syncHook: Boolean(sync?.__watchPartySyncHook),
-              playerBridge: Boolean(container?.streamixPlayback)
-            };
-            return reject(
-              new Error(`watch-party playback bridge unavailable: ${JSON.stringify(diagnostics)}`)
-            );
-          }
-          setTimeout(check, 25);
+      () => {
+        const container = document.getElementById("video-player-container");
+        const sync = document.getElementById("watch-party-sync");
+        const hookElements = Array.from(
+          document.querySelectorAll('[phx-hook="WatchPartySync"]')
+        ).map((element) => ({
+          id: element.id,
+          connected: element.isConnected,
+          hasHook: Boolean(element.__watchPartySyncHook),
+          roomId: element.dataset.roomId || null
+        }));
+        const mainView = window.liveSocket?.main || null;
+        const registeredHook = window.liveSocket?.getHookDefinition?.("WatchPartySync");
+        const internalHook = sync && mainView?.getHook?.(sync);
+        return {
+          lazyError: sync?.dataset?.lazyHookError || null,
+          lazyErrorDetail: sync?.dataset?.lazyHookErrorDetail || null,
+          globalErrors: window.__streamixLazyHookErrors || null,
+          hookRegistered: Boolean(registeredHook),
+          registeredMountedType: typeof registeredHook?.mounted,
+          registeredMountedSource: String(registeredHook?.mounted || "").slice(0, 180),
+          registeredHasBinding: typeof registeredHook?._ensurePlayerBinding === "function",
+          appScriptSrc:
+            document.querySelector('script[src*="/assets/js/app"]')?.getAttribute("src") || null,
+          mainViewExists: Boolean(mainView),
+          mainViewOwnsElement: sync ? mainView?.ownsElement?.(sync) ?? null : null,
+          internalHookExists: Boolean(internalHook),
+          internalMountedType: typeof internalHook?.mounted,
+          internalHasBinding: typeof internalHook?._ensurePlayerBinding === "function",
+          internalElSame: internalHook?.el === sync,
+          internalElConnected: internalHook?.el?.isConnected ?? null,
+          internalConnectedState: internalHook?.connectedToLiveView ?? null,
+          internalDestroyedState: internalHook?.destroyedHook ?? null,
+          internalPlaybackBound: Boolean(internalHook?.playback),
+          viewHookCount: mainView?.viewHooks ? Object.keys(mainView.viewHooks).length : null,
+          closestViewId: sync?.closest?.("[data-phx-session]")?.id || null,
+          phxHookValue: sync?.getAttribute?.("phx-hook") || null,
+          syncCount: document.querySelectorAll("#watch-party-sync").length,
+          hookElements,
+          syncExists: Boolean(sync),
+          syncHook: Boolean(sync?.__watchPartySyncHook),
+          playerBridge: Boolean(container?.streamixPlayback)
         };
-        check();
-      })
+      }
       """)
 
-    assert ready
+    IO.puts("Watch Party playback bridge diagnostics: " <> Jason.encode!(state))
   end
 
   defp assert_viewer_transport_locked(session) do
@@ -401,102 +424,60 @@ defmodule StreamixWeb.E2E.WatchPartySyncTest do
   end
 
   defp wait_for_playback(session, paused, position) do
-    expression = """
-    () => new Promise((resolve, reject) => {
-      const deadline = performance.now() + 8000;
-      const expectedPaused = #{Jason.encode!(paused)};
-      const expectedPosition = #{Jason.encode!(position)};
-
-      const check = () => {
+    Fluffy.Playwright.wait_for_function(
+      session,
+      """
+      ({paused, position}) => {
         const playback = document.getElementById("video-player-container")?.streamixPlayback;
-        if (playback) {
-          const state = {
-            paused: playback.isPaused(),
-            position: playback.getCurrentTime()
-          };
-          if (
-            state.paused === expectedPaused &&
-            Math.abs(state.position - expectedPosition) <= 1.5
-          ) return resolve(state);
-        }
+        return playback?.isPaused() === paused &&
+          Math.abs(playback.getCurrentTime() - position) <= 1.5;
+      }
+      """,
+      %{paused: paused, position: position},
+      timeout: 8_000,
+      polling: 25
+    )
+  rescue
+    error in Fluffy.OperationError ->
+      if match?(%Playwright.TimeoutError{}, error.cause),
+        do: dump_playback_state(session, paused, position)
 
-        if (performance.now() >= deadline) {
-          const player = document.getElementById("video-player-container");
-          const playback = player?.streamixPlayback;
-          const sync = document.getElementById("watch-party-sync");
-          const hook = sync?.__watchPartySyncHook;
-          const status = document.getElementById("watch-party-sync-status");
-          const state = playback
+      reraise error, __STACKTRACE__
+  end
+
+  defp dump_playback_state(session, paused, position) do
+    state =
+      Fluffy.Playwright.evaluate(session, """
+      () => {
+        const playback = document.getElementById("video-player-container")?.streamixPlayback;
+        const sync = document.getElementById("watch-party-sync");
+        const hook = sync?.__watchPartySyncHook;
+        const status = document.querySelector("#watch-party-sync-status [data-sync-status-text]");
+        return {
+          playback: playback
             ? {paused: playback.isPaused(), position: playback.getCurrentTime()}
-            : null;
-          const hookState = hook
+            : null,
+          hook: hook
             ? {
                 connected: hook.connectedToLiveView,
                 destroyed: hook.destroyedHook,
                 hasPlayback: Boolean(hook.playback),
                 lastSequence: hook.lastServerSequence,
                 publishedStatus: hook.lastPublishedStatus,
-                syncHold: hook.syncHold
-              }
-            : null;
-
-          return reject(
-            new Error(
-              `playback did not synchronize; state=${JSON.stringify(state)}; ` +
-                `hook=${JSON.stringify(hookState)}; command=${JSON.stringify(sync?.dataset || {})}; ` +
-                `status=${status?.dataset?.syncState || "none"}:${status?.innerText || "none"}`
-            )
-          );
-        }
-        setTimeout(check, 25);
-      };
-
-      check();
-    })
-    """
-
-    state = Fluffy.Playwright.evaluate(session, expression)
-    assert state["paused"] == paused
-    assert_in_delta state["position"], position, 1.5
-  end
-
-  defp wait_for_status(session, expected_text) do
-    expression = """
-    () => new Promise((resolve, reject) => {
-      const deadline = performance.now() + 8000;
-      const expected = #{Jason.encode!(expected_text)};
-      const check = () => {
-        const text = document.body.innerText || "";
-        if (text.includes(expected)) return resolve(text);
-        if (performance.now() >= deadline) {
-          const status = document.getElementById("watch-party-sync-status");
-          const sync = document.getElementById("watch-party-sync");
-          const hook = sync?.__watchPartySyncHook;
-          const hookState = hook
-            ? {
-                localBuffering: hook.isBuffering,
-                lastSequence: hook.lastServerSequence,
-                publishedStatus: hook.lastPublishedStatus,
                 syncHold: hook.syncHold,
                 syncHoldReason: hook.syncHoldReason
               }
-            : null;
-          return reject(
-            new Error(
-              `status not found: ${expected}; state: ${status?.dataset?.syncState || "none"}; ` +
-                `rendered: ${status?.innerText || "none"}; hook: ${JSON.stringify(hookState)}; ` +
-                `server: ${JSON.stringify(sync?.dataset || {})}; body: ${text}`
-            )
-          );
-        }
-        setTimeout(check, 25);
-      };
-      check();
-    })
-    """
+            : null,
+          command: sync?.dataset || {},
+          status: status?.innerText || null
+        };
+      }
+      """)
 
-    text = Fluffy.Playwright.evaluate(session, expression)
-    assert text =~ expected_text
+    IO.puts(
+      "Watch Party guest playback diagnostics (expected paused=#{paused}, position=#{position}): " <>
+        Jason.encode!(state)
+    )
   end
 
   defp grant_party_access!(users) do
