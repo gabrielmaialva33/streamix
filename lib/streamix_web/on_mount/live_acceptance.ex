@@ -18,7 +18,7 @@ defmodule StreamixWeb.OnMount.LiveAcceptance do
 
     Phoenix.Ecto.SQL.Sandbox.allow(
       socket.assigns.phoenix_ecto_sandbox,
-      Ecto.Adapters.SQL.Sandbox
+      Fluffy.Sandbox
     )
 
     {:cont, socket}

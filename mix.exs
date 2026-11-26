@@ -111,7 +111,8 @@ defmodule Streamix.MixProject do
       {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
       # E2E cross-browser testing (Chromium/Firefox/WebKit)
-      {:fluffy, "~> 0.9.0-rc.5", only: :test}
+      {:fluffy, "~> 0.9.0-rc.7", only: :test},
+      {:playwright, "~> 1.65.0-rc.6", hex: :playwright_ex, only: :test}
     ]
   end
 

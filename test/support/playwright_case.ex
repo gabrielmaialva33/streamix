@@ -25,7 +25,7 @@ defmodule StreamixWeb.PlaywrightCase do
   signs the session `ConnCase.log_in_user/2` builds, and the browser gets the
   cookie it writes. Add it before `visit/2`.
   """
-  def log_in(%Fluffy.PhoenixTest.Session{session: native} = session, user) do
+  def log_in(session, user) do
     conn =
       Phoenix.ConnTest.build_conn()
       |> StreamixWeb.ConnCase.log_in_user(user)
@@ -33,8 +33,8 @@ defmodule StreamixWeb.PlaywrightCase do
 
     cookies =
       for {name, %{value: value}} <- conn.resp_cookies,
-          do: %{name: name, value: value, url: Fluffy.base_url(native)}
+          do: %{name: name, value: value, url: Fluffy.base_url(session)}
 
-    %{session | session: Fluffy.add_cookies(native, cookies)}
+    Fluffy.add_cookies(session, cookies)
   end
 end

@@ -6,8 +6,6 @@ defmodule StreamixWeb.E2E.GuideMarkerTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
-  alias Playwright.Page
-
   setup %{conn: session} do
     user = user_fixture()
     provider = provider_fixture(user)
@@ -26,60 +24,68 @@ defmodule StreamixWeb.E2E.GuideMarkerTest do
 
   @tag Playwright.Test.use(viewport: %{width: 1440, height: 1000})
   test "desktop now line runs behind the programmes, never over their text", %{conn: session} do
-    session
-    |> visit("/guide")
-    |> assert_has("[data-current-program=true]")
-    |> unwrap(&Page.screenshot!(&1, path: "screenshots/guide-marker-1440.png", full_page: true))
-    |> unwrap(fn page ->
-      result =
-        Page.evaluate!(page, """
-        () => {
-          const marker = document.querySelector('.guide-now-line');
-          const rect = marker.getBoundingClientRect();
-          const program = document.querySelector('[data-current-program=true]').getBoundingClientRect();
-          // Hit-test with the marker made hittable: whatever paints on top wins.
-          marker.parentElement.style.pointerEvents = 'auto';
-          marker.style.pointerEvents = 'auto';
-          const onProgram = document.elementFromPoint(rect.left + rect.width / 2, program.top + program.height / 2);
-          marker.parentElement.style.pointerEvents = '';
-          marker.style.pointerEvents = '';
-          return {
-            display: getComputedStyle(marker).display,
-            background: getComputedStyle(marker).backgroundColor,
-            crosses: rect.left > program.left && rect.right < program.right,
-            // The programme (and its title) paints over the line.
-            coveredByProgram: !!(onProgram && onProgram.closest('[data-guide-program]')),
-            overflow: document.documentElement.scrollWidth - innerWidth
-          };
-        }
-        """)
+    session =
+      session
+      |> visit("/guide")
+      |> assert_has("[data-current-program=true]")
 
-      # The old full-height red marker was drawn over titles.
-      assert result["display"] == "block"
-      assert result["crosses"]
-      assert result["background"] != "rgba(0, 0, 0, 0)"
-      assert result["coveredByProgram"]
-      assert result["overflow"] <= 1
-    end)
+    Fluffy.Playwright.screenshot(session,
+      path: "screenshots/guide-marker-1440.png",
+      full_page: true
+    )
+
+    result =
+      Fluffy.Playwright.evaluate(session, """
+      () => {
+        const marker = document.querySelector('.guide-now-line');
+        const rect = marker.getBoundingClientRect();
+        const program = document.querySelector('[data-current-program=true]').getBoundingClientRect();
+        // Hit-test with the marker made hittable: whatever paints on top wins.
+        marker.parentElement.style.pointerEvents = 'auto';
+        marker.style.pointerEvents = 'auto';
+        const onProgram = document.elementFromPoint(rect.left + rect.width / 2, program.top + program.height / 2);
+        marker.parentElement.style.pointerEvents = '';
+        marker.style.pointerEvents = '';
+        return {
+          display: getComputedStyle(marker).display,
+          background: getComputedStyle(marker).backgroundColor,
+          crosses: rect.left > program.left && rect.right < program.right,
+          // The programme (and its title) paints over the line.
+          coveredByProgram: !!(onProgram && onProgram.closest('[data-guide-program]')),
+          overflow: document.documentElement.scrollWidth - innerWidth
+        };
+      }
+      """)
+
+    # The old full-height red marker was drawn over titles.
+    assert result["display"] == "block"
+    assert result["crosses"]
+    assert result["background"] != "rgba(0, 0, 0, 0)"
+    assert result["coveredByProgram"]
+    assert result["overflow"] <= 1
   end
 
   @tag Playwright.Test.use(viewport: %{width: 390, height: 844})
   test "phone keeps compact scrolling programme cards without the desktop marker", %{
     conn: session
   } do
-    session
-    |> visit("/guide")
-    |> assert_has("[data-current-program=true]")
-    |> unwrap(&Page.screenshot!(&1, path: "screenshots/guide-marker-390.png", full_page: true))
-    |> unwrap(fn page ->
-      result =
-        Page.evaluate!(page, """
-        () => ({display: getComputedStyle(document.querySelector('.guide-now-line')).display,
-          overflow: document.documentElement.scrollWidth - innerWidth})
-        """)
+    session =
+      session
+      |> visit("/guide")
+      |> assert_has("[data-current-program=true]")
 
-      assert result["display"] == "none"
-      assert result["overflow"] <= 1
-    end)
+    Fluffy.Playwright.screenshot(session,
+      path: "screenshots/guide-marker-390.png",
+      full_page: true
+    )
+
+    result =
+      Fluffy.Playwright.evaluate(session, """
+      () => ({display: getComputedStyle(document.querySelector('.guide-now-line')).display,
+        overflow: document.documentElement.scrollWidth - innerWidth})
+      """)
+
+    assert result["display"] == "none"
+    assert result["overflow"] <= 1
   end
 end

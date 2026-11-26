@@ -53,8 +53,6 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
-  alias Playwright.Page
-
   setup do
     provider =
       provider_fixture(admin_user_fixture(), %{
@@ -129,98 +127,95 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
   end
 
   defp assert_compact_poster_grid(session, viewport_width) do
-    unwrap(session, fn page ->
-      state =
-        Page.evaluate!(page, """
-        () => {
-          const items = Array.from(document.querySelectorAll("#movies > .catalog-stream-item")).slice(0, 6);
-          const rects = items.map((item) => {
-            const rect = item.getBoundingClientRect();
-            return {left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height};
-          });
-          const favorite = items[0]?.querySelector("[data-media-secondary] button")?.getBoundingClientRect();
-          const toolbar = document.querySelector(".browse-toolbar")?.getBoundingClientRect();
+    state =
+      Fluffy.Playwright.evaluate(session, """
+      () => {
+        const items = Array.from(document.querySelectorAll("#movies > .catalog-stream-item")).slice(0, 6);
+        const rects = items.map((item) => {
+          const rect = item.getBoundingClientRect();
+          return {left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height};
+        });
+        const favorite = items[0]?.querySelector("[data-media-secondary] button")?.getBoundingClientRect();
+        const toolbar = document.querySelector(".browse-toolbar")?.getBoundingClientRect();
 
-          return {
-            viewportWidth: innerWidth,
-            rects,
-            favorite: favorite ? {width: favorite.width, height: favorite.height, right: favorite.right} : null,
-            toolbarHeight: toolbar?.height || 0,
-            horizontalOverflow: document.documentElement.scrollWidth - innerWidth
-          };
-        }
-        """)
+        return {
+          viewportWidth: innerWidth,
+          rects,
+          favorite: favorite ? {width: favorite.width, height: favorite.height, right: favorite.right} : null,
+          toolbarHeight: toolbar?.height || 0,
+          horizontalOverflow: document.documentElement.scrollWidth - innerWidth
+        };
+      }
+      """)
 
-      assert state["viewportWidth"] == viewport_width
-      assert length(state["rects"]) == 6
+    assert state["viewportWidth"] == viewport_width
+    assert length(state["rects"]) == 6
 
-      # Two readable columns on phones (a third from 540 px): a 4vw page
-      # gutter on each side and a 10 px gap.
-      [first, second, third | _rest] = state["rects"]
-      assert_in_delta first["top"], second["top"], 2
-      assert third["top"] > first["bottom"]
+    # Two readable columns on phones (a third from 540 px): a 4vw page
+    # gutter on each side and a 10 px gap.
+    [first, second, third | _rest] = state["rects"]
+    assert_in_delta first["top"], second["top"], 2
+    assert third["top"] > first["bottom"]
 
-      expected_width = (viewport_width * 0.92 - 10) / 2
+    expected_width = (viewport_width * 0.92 - 10) / 2
 
-      for rect <- Enum.take(state["rects"], 2) do
-        assert_in_delta rect["width"], expected_width, 6
-        assert rect["height"] > rect["width"] * 1.6
-        assert rect["right"] <= viewport_width
-      end
+    for rect <- Enum.take(state["rects"], 2) do
+      assert_in_delta rect["width"], expected_width, 6
+      assert rect["height"] > rect["width"] * 1.6
+      assert rect["right"] <= viewport_width
+    end
 
-      # The favorite keeps a 44 px target inside its own card.
-      assert state["favorite"]["width"] >= 44
-      assert state["favorite"]["height"] >= 44
-      assert state["favorite"]["right"] <= first["right"]
-      assert state["toolbarHeight"] <= 130
-      assert state["horizontalOverflow"] <= 1
-    end)
+    # The favorite keeps a 44 px target inside its own card.
+    assert state["favorite"]["width"] >= 44
+    assert state["favorite"]["height"] >= 44
+    assert state["favorite"]["right"] <= first["right"]
+    assert state["toolbarHeight"] <= 130
+    assert state["horizontalOverflow"] <= 1
+    session
   end
 
   defp assert_compact_live_grid(session, viewport_width) do
-    unwrap(session, fn page ->
-      state =
-        Page.evaluate!(page, """
-        () => {
-          const items = Array.from(document.querySelectorAll("#channels > .catalog-stream-item")).slice(0, 4);
-          const rects = items.map((item) => {
-            const rect = item.getBoundingClientRect();
-            return {left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height};
-          });
-          const favorite = items[0]?.querySelector("button[aria-label*='favoritos']")?.getBoundingClientRect();
-          const toolbar = document.querySelector(".browse-toolbar")?.getBoundingClientRect();
+    state =
+      Fluffy.Playwright.evaluate(session, """
+      () => {
+        const items = Array.from(document.querySelectorAll("#channels > .catalog-stream-item")).slice(0, 4);
+        const rects = items.map((item) => {
+          const rect = item.getBoundingClientRect();
+          return {left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height};
+        });
+        const favorite = items[0]?.querySelector("button[aria-label*='favoritos']")?.getBoundingClientRect();
+        const toolbar = document.querySelector(".browse-toolbar")?.getBoundingClientRect();
 
-          return {
-            rects,
-            favorite: favorite ? {width: favorite.width, height: favorite.height, right: favorite.right} : null,
-            toolbarHeight: toolbar?.height || 0,
-            horizontalOverflow: document.documentElement.scrollWidth - innerWidth
-          };
-        }
-        """)
+        return {
+          rects,
+          favorite: favorite ? {width: favorite.width, height: favorite.height, right: favorite.right} : null,
+          toolbarHeight: toolbar?.height || 0,
+          horizontalOverflow: document.documentElement.scrollWidth - innerWidth
+        };
+      }
+      """)
 
-      assert length(state["rects"]) == 4
+    assert length(state["rects"]) == 4
 
-      [first, second, third | _rest] = state["rects"]
-      assert_in_delta first["top"], second["top"], 2
-      assert third["top"] > first["bottom"]
+    [first, second, third | _rest] = state["rects"]
+    assert_in_delta first["top"], second["top"], 2
+    assert third["top"] > first["bottom"]
 
-      expected_width = (viewport_width - 42) / 2
+    expected_width = (viewport_width - 42) / 2
 
-      # Two stable 14 px title lines make a channel card ~190 px tall in
-      # Chromium; WebKit sets the same lines taller (up to ~212 px).
-      for rect <- Enum.take(state["rects"], 2) do
-        assert_in_delta rect["width"], expected_width, 7
-        assert rect["height"] <= 220
-        assert rect["right"] <= viewport_width
-      end
+    # Two stable 14 px title lines make a channel card ~190 px tall in
+    # Chromium; WebKit sets the same lines taller (up to ~212 px).
+    for rect <- Enum.take(state["rects"], 2) do
+      assert_in_delta rect["width"], expected_width, 7
+      assert rect["height"] <= 220
+      assert rect["right"] <= viewport_width
+    end
 
-      assert state["favorite"]["width"] >= 44
-      assert state["favorite"]["height"] >= 44
-      assert state["favorite"]["right"] <= first["right"]
-      # Type tabs have a line of their own above the catalog and search rows.
-      assert state["toolbarHeight"] <= 160
-      assert state["horizontalOverflow"] <= 1
-    end)
+    assert state["favorite"]["width"] >= 44
+    assert state["favorite"]["height"] >= 44
+    assert state["favorite"]["right"] <= first["right"]
+    # Type tabs have a line of their own above the catalog and search rows.
+    assert state["toolbarHeight"] <= 160
+    assert state["horizontalOverflow"] <= 1
   end
 end

@@ -28,8 +28,6 @@ defmodule StreamixWeb.E2E.WebKitReconnectTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
-  alias Playwright.Page
-
   setup do
     provider =
       provider_fixture(admin_user_fixture(), %{
@@ -92,7 +90,7 @@ defmodule StreamixWeb.E2E.WebKitReconnectTest do
 
   defp run_js(session, script) do
     try do
-      unwrap(session, &Page.evaluate!(&1, script))
+      Fluffy.Playwright.evaluate(session, script)
     rescue
       error in Playwright.PlaywrightError ->
         if String.contains?(error.message, "Execution context was destroyed") do

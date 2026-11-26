@@ -21,8 +21,6 @@ defmodule StreamixWeb.E2E.LoginPersistenceTest do
 
   @moduletag :playwright
 
-  alias Playwright.Page
-
   @mobile_context_opts [
                          viewport: %{width: 390, height: 844},
                          device_scale_factor: 3.0
@@ -43,58 +41,56 @@ defmodule StreamixWeb.E2E.LoginPersistenceTest do
   end
 
   defp assert_autofill_safe_login(session) do
-    unwrap(session, fn page ->
-      state =
-        Page.evaluate!(page, """
-        async () => {
-          const setValue = (element, value) => {
-            const setter = Object.getOwnPropertyDescriptor(
-              HTMLInputElement.prototype,
-              "value"
-            ).set;
+    state =
+      Fluffy.Playwright.evaluate(session, """
+      async () => {
+        const setValue = (element, value) => {
+          const setter = Object.getOwnPropertyDescriptor(
+            HTMLInputElement.prototype,
+            "value"
+          ).set;
 
-            setter.call(element, value);
-            element.dispatchEvent(new InputEvent("input", {
-              bubbles: true,
-              data: value,
-              inputType: "insertReplacementText"
-            }));
-            element.dispatchEvent(new Event("change", {bubbles: true}));
-          };
+          setter.call(element, value);
+          element.dispatchEvent(new InputEvent("input", {
+            bubbles: true,
+            data: value,
+            inputType: "insertReplacementText"
+          }));
+          element.dispatchEvent(new Event("change", {bubbles: true}));
+        };
 
-          const email = document.querySelector("#user_email");
-          const password = document.querySelector("#user_password");
-          setValue(email, "saved@example.com");
-          setValue(password, "saved-password");
+        const email = document.querySelector("#user_email");
+        const password = document.querySelector("#user_password");
+        setValue(email, "saved@example.com");
+        setValue(password, "saved-password");
 
-          await new Promise((resolve) => setTimeout(resolve, 250));
+        await new Promise((resolve) => setTimeout(resolve, 250));
 
-          const checkbox = document.querySelector("#user_remember_me");
-          const label = checkbox.closest("label");
-          const checkboxRect = checkbox.getBoundingClientRect();
-          const labelRect = label.getBoundingClientRect();
+        const checkbox = document.querySelector("#user_remember_me");
+        const label = checkbox.closest("label");
+        const checkboxRect = checkbox.getBoundingClientRect();
+        const labelRect = label.getBoundingClientRect();
 
-          return {
-            checked: checkbox.checked,
-            formHasLiveChange: checkbox.form.hasAttribute("phx-change"),
-            emailAutocomplete: email.getAttribute("autocomplete"),
-            passwordAutocomplete: password.getAttribute("autocomplete"),
-            checkboxSize: {
-              width: checkboxRect.width,
-              height: checkboxRect.height
-            },
-            touchTargetHeight: labelRect.height
-          };
-        }
-        """)
+        return {
+          checked: checkbox.checked,
+          formHasLiveChange: checkbox.form.hasAttribute("phx-change"),
+          emailAutocomplete: email.getAttribute("autocomplete"),
+          passwordAutocomplete: password.getAttribute("autocomplete"),
+          checkboxSize: {
+            width: checkboxRect.width,
+            height: checkboxRect.height
+          },
+          touchTargetHeight: labelRect.height
+        };
+      }
+      """)
 
-      assert state["checked"], inspect(state)
-      refute state["formHasLiveChange"], inspect(state)
-      assert state["emailAutocomplete"] == "username", inspect(state)
-      assert state["passwordAutocomplete"] == "current-password", inspect(state)
-      assert state["checkboxSize"]["width"] >= 20, inspect(state)
-      assert state["checkboxSize"]["height"] >= 20, inspect(state)
-      assert state["touchTargetHeight"] >= 44, inspect(state)
-    end)
+    assert state["checked"], inspect(state)
+    refute state["formHasLiveChange"], inspect(state)
+    assert state["emailAutocomplete"] == "username", inspect(state)
+    assert state["passwordAutocomplete"] == "current-password", inspect(state)
+    assert state["checkboxSize"]["width"] >= 20, inspect(state)
+    assert state["checkboxSize"]["height"] >= 20, inspect(state)
+    assert state["touchTargetHeight"] >= 44, inspect(state)
   end
 end
