@@ -90,6 +90,27 @@ defmodule Streamix.Torrent.StreamSessionTest do
     assert Process.alive?(pid)
   end
 
+  test "idle expiry removes the session without restarting it", %{rqbit_state: agent} do
+    {:ok, _} = StreamSession.start_or_join(@info_hash, @magnet, self())
+    pid = StreamSession.whereis(@info_hash)
+    ref = Process.monitor(pid)
+    supervisor = Streamix.Torrent.StreamSessionSupervisor
+
+    StreamSession.leave(@info_hash, self())
+    :sys.suspend(supervisor)
+
+    try do
+      send(pid, :check_idle)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 1_000
+    after
+      :sys.resume(supervisor)
+    end
+
+    assert DynamicSupervisor.which_children(supervisor) == []
+    assert StreamSession.whereis(@info_hash) == nil
+    assert Agent.get(agent, & &1.add_attempts) == 1
+  end
+
   test "viewer crash is auto-cleaned via DOWN monitor" do
     pid_after_join_ref = make_ref()
     parent = self()

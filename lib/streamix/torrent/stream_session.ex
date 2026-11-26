@@ -25,7 +25,8 @@ defmodule Streamix.Torrent.StreamSession do
   * `whereis/1` — registry lookup (test helper).
   """
 
-  use GenServer
+  # A session belongs to its viewers; a fresh join may create another one.
+  use GenServer, restart: :temporary
 
   require Logger
 
