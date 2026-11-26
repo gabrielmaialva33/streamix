@@ -272,6 +272,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Cold image bursts wait in a bounded queue while only two resizes execute; producer lifetime is tied to the cache manager so restarts cannot accumulate workers.
+
 - Offline consent stays visible across open tabs. A tab with an expired storage session offers an explicit reload instead of silently ignoring a new opt-in.
 
 - Explicit station offset zero overrides saved playback just like positive offsets; ordinary playback retains local resume when no offset is supplied.

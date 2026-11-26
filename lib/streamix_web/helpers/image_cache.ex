@@ -15,7 +15,17 @@ defmodule StreamixWeb.Helpers.ImageCache do
   end
 
   @impl true
-  def init(opts), do: {:ok, %{jobs: %{}, max_running: Keyword.get(opts, :max_running, 2)}}
+  def init(opts) do
+    Process.flag(:trap_exit, true)
+
+    {:ok,
+     %{
+       jobs: %{},
+       queue: [],
+       max_running: Keyword.get(opts, :max_running, 2),
+       max_queued: Keyword.get(opts, :max_queued, 32)
+     }}
+  end
 
   @impl true
   def handle_call({:fetch, key, producer, opts}, from, state) do
@@ -32,28 +42,75 @@ defmodule StreamixWeb.Helpers.ImageCache do
 
     cond do
       existing ->
-        {ref, job} = existing
+        join_existing(existing, from, state)
 
-        if length(job.waiters) < @max_waiters do
-          {:noreply, put_in(state.jobs[ref].waiters, [from | job.waiters])}
-        else
-          {:reply, {:error, :cache_busy}, state}
-        end
+      running(state) < state.max_running ->
+        {:noreply, start_job(new_job(path, producer, opts, from), state)}
 
-      map_size(state.jobs) >= state.max_running ->
-        {:reply, {:error, :cache_busy}, state}
+      length(state.queue) < state.max_queued ->
+        ref = make_ref()
+        job = new_job(path, producer, opts, from)
+        timer = Process.send_after(self(), {:expire, ref}, @timeout)
+
+        state = %{
+          state
+          | jobs: Map.put(state.jobs, ref, %{job | timer: timer}),
+            queue: state.queue ++ [ref]
+        }
+
+        :telemetry.execute([:streamix, :image_cache, :queued], %{count: length(state.queue)}, %{})
+        {:noreply, state}
 
       true ->
-        task =
-          Task.Supervisor.async_nolink(Streamix.TaskSupervisor, fn ->
-            # Preserve request ancestry for tracing and process-owned HTTP adapters.
-            Process.put(:"$callers", [elem(from, 0)])
-            producer.()
-          end)
+        {:reply, {:error, :cache_busy}, state}
+    end
+  end
 
-        timer = Process.send_after(self(), {:expire, task.ref}, @timeout)
-        job = %{path: path, opts: opts, waiters: [from], task: task, timer: timer}
-        {:noreply, put_in(state.jobs[task.ref], job)}
+  defp join_existing({ref, job}, from, state) do
+    if length(job.waiters) < @max_waiters,
+      do: {:noreply, put_in(state.jobs[ref].waiters, [from | job.waiters])},
+      else: {:reply, {:error, :cache_busy}, state}
+  end
+
+  defp new_job(path, producer, opts, from),
+    do: %{
+      path: path,
+      producer: producer,
+      opts: opts,
+      waiters: [from],
+      caller: elem(from, 0),
+      task: nil,
+      timer: nil,
+      deadline: System.monotonic_time(:millisecond) + @timeout
+    }
+
+  defp running(state), do: Enum.count(state.jobs, fn {_ref, job} -> not is_nil(job.task) end)
+
+  defp start_job(job, state) do
+    manager = self()
+
+    task =
+      Task.Supervisor.async_nolink(Streamix.TaskSupervisor, fn ->
+        # A killed manager must not leave workers alive alongside its replacement.
+        Process.link(manager)
+        Process.put(:"$callers", [job.caller])
+        job.producer.()
+      end)
+
+    remaining = max(job.deadline - System.monotonic_time(:millisecond), 0)
+    timer = Process.send_after(self(), {:expire, task.ref}, remaining)
+    put_in(state.jobs[task.ref], %{job | task: task, timer: timer})
+  end
+
+  defp start_next(%{queue: []} = state), do: state
+
+  defp start_next(%{queue: [ref | rest]} = state) do
+    if running(state) < state.max_running do
+      {job, jobs} = Map.pop(state.jobs, ref)
+      Process.cancel_timer(job.timer)
+      start_job(job, %{state | jobs: jobs, queue: rest}) |> start_next()
+    else
+      state
     end
   end
 
@@ -68,16 +125,28 @@ defmodule StreamixWeb.Helpers.ImageCache do
         Process.cancel_timer(job.timer)
         reply = publish_result(job, result)
         Enum.each(job.waiters, &GenServer.reply(&1, reply))
-        {:noreply, %{state | jobs: jobs}}
+        {:noreply, start_next(%{state | jobs: jobs})}
     end
   end
 
-  def handle_info({:DOWN, ref, :process, _pid, _reason}, state),
-    do: fail_job(ref, state)
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, state), do: fail_job(ref, state)
+  def handle_info({:EXIT, _pid, _reason}, state), do: {:noreply, state}
 
   def handle_info({:expire, ref}, state) do
-    if job = state.jobs[ref], do: Task.shutdown(job.task, :brutal_kill)
+    case state.jobs[ref] do
+      %{task: %Task{} = task} -> Task.shutdown(task, :brutal_kill)
+      _ -> :ok
+    end
+
     fail_job(ref, state)
+  end
+
+  @impl true
+  def terminate(_reason, state) do
+    Enum.each(state.jobs, fn
+      {_ref, %{task: %Task{} = task}} -> Task.shutdown(task, :brutal_kill)
+      _ -> :ok
+    end)
   end
 
   defp fail_job(ref, state) do
@@ -88,7 +157,7 @@ defmodule StreamixWeb.Helpers.ImageCache do
       {job, jobs} ->
         Process.cancel_timer(job.timer)
         Enum.each(job.waiters, &GenServer.reply(&1, {:error, :resize_failed}))
-        {:noreply, %{state | jobs: jobs}}
+        {:noreply, start_next(%{state | jobs: jobs, queue: List.delete(state.queue, ref)})}
     end
   end
 

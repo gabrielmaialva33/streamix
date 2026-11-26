@@ -5,7 +5,7 @@ defmodule StreamixWeb.Helpers.ImageCacheTest do
   setup do
     dir = Path.join(System.tmp_dir!(), "bounded-images-#{System.unique_integer([:positive])}")
     on_exit(fn -> File.rm_rf!(dir) end)
-    server = start_supervised!({ImageCache, name: nil, max_running: 1})
+    server = start_supervised!({ImageCache, name: nil, max_running: 1, max_queued: 0})
     %{server: server, opts: [cache_dir: dir, max_bytes: 6, max_entries: 2, ttl_seconds: 30]}
   end
 
@@ -88,5 +88,69 @@ defmodule StreamixWeb.Helpers.ImageCacheTest do
     assert_receive {:DOWN, ^monitor, :process, ^pid, :killed}
     assert {:error, :resize_failed} = Task.await(call)
     assert {:ok, "ok", :origin} = ImageCache.fetch("next", fn -> {:ok, "ok"} end, opts, server)
+  end
+
+  test "queues distinct cold posters without exceeding producer concurrency", %{opts: opts} do
+    server =
+      start_supervised!({ImageCache, name: nil, max_running: 1, max_queued: 1},
+        id: :queued_images
+      )
+
+    parent = self()
+    handler = "image-queue-#{System.unique_integer([:positive])}"
+
+    :telemetry.attach(
+      handler,
+      [:streamix, :image_cache, :queued],
+      fn _, _, _, pid -> send(pid, :queued) end,
+      parent
+    )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    producer = fn ->
+      send(parent, {:producer, self()})
+      receive do: (:release -> {:ok, "x"})
+    end
+
+    first = Task.async(fn -> ImageCache.fetch("first", producer, opts, server) end)
+    assert_receive {:producer, first_pid}
+    second = Task.async(fn -> ImageCache.fetch("second", producer, opts, server) end)
+    assert_receive :queued
+    assert {:error, :cache_busy} = ImageCache.fetch("overflow", producer, opts, server)
+    refute_receive {:producer, _}
+    send(first_pid, :release)
+    assert {:ok, "x", :origin} = Task.await(first)
+    assert_receive {:producer, second_pid}
+    send(second_pid, :release)
+    assert {:ok, "x", :origin} = Task.await(second)
+  end
+
+  test "a killed cache manager cannot leave its producers running", %{server: server, opts: opts} do
+    parent = self()
+
+    call =
+      Task.async(fn ->
+        try do
+          ImageCache.fetch(
+            "blocked",
+            fn ->
+              send(parent, {:producer, self()})
+              receive do: (:never -> {:ok, "x"})
+            end,
+            opts,
+            server
+          )
+        catch
+          :exit, _ -> :manager_stopped
+        end
+      end)
+
+    assert_receive {:producer, pid}
+    on_exit(fn -> if Process.alive?(pid), do: Process.exit(pid, :kill) end)
+    monitor = Process.monitor(pid)
+    Process.exit(server, :kill)
+    assert :manager_stopped = Task.await(call)
+    assert_receive {:DOWN, ^monitor, :process, ^pid, _}, 1_000
   end
 end
