@@ -36,3 +36,5 @@ test-only database/Redis endpoints. Inspect the Docker context before running co
 daemon, bind mounts and host networking refer to that host, not the developer's checkout or loopback interface.
 Deployment credentials and production access are unnecessary for ordinary code validation. A passing local test suite
 does not establish that production infrastructure has been upgraded or a release deployed.
+
+The image resize cache admits two producers and 32 waiters per key, with a 60-second work deadline. Disk retention is lazy (on publication): 30 days, 512 MiB, 10,000 JPEGs by default. `StreamixWeb.Api.V1.ImageResizeController` config accepts `max_bytes`, `max_entries` and `ttl_seconds` alongside `cache_dir`. Publication and eviction are serialized; a cache miss scans the bounded directory. Monitor miss latency before increasing its entry budget.

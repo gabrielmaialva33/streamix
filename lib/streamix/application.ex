@@ -34,6 +34,7 @@ defmodule Streamix.Application do
       [
         {Streamix.RateLimit, clean_period: :timer.minutes(10)},
         {Task.Supervisor, name: Streamix.TaskSupervisor},
+        StreamixWeb.Helpers.ImageCache,
         Streamix.AI.SearchHealth,
         Streamix.Embedplay.Sessions,
         Streamix.Embedplay.Health,

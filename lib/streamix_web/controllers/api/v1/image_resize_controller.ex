@@ -39,11 +39,12 @@ defmodule StreamixWeb.Api.V1.ImageResizeController do
                 h: [in: :query, type: :integer],
                 q: [in: :query, type: :integer]
               ],
-              errors: [:bad_gateway, :internal_server_error]
+              errors: [:bad_gateway, :internal_server_error, :service_unavailable]
             )
 
   alias Streamix.Security.UrlValidator
   alias StreamixWeb.Api.V1.Response
+  alias StreamixWeb.Helpers.ImageCache
 
   require Logger
 
@@ -106,6 +107,9 @@ defmodule StreamixWeb.Api.V1.ImageResizeController do
       {:error, :upstream_unreachable} ->
         Response.error(conn, :bad_gateway, "upstream_unreachable", "upstream unreachable")
 
+      {:error, :cache_busy} ->
+        Response.error(conn, :service_unavailable, "image_busy", "image processing is busy")
+
       {:error, :resize_failed} ->
         Response.error(conn, :internal_server_error, "resize_failed", "resize failed")
     end
@@ -118,19 +122,19 @@ defmodule StreamixWeb.Api.V1.ImageResizeController do
   # --- Private ---
 
   defp fetch_or_cache(url, width, height, quality) do
-    path = cache_path(url, width, height, quality)
+    opts =
+      Application.get_env(:streamix, __MODULE__, [])
+      |> Keyword.put_new(:cache_dir, @default_cache_dir)
 
-    case File.read(path) do
-      {:ok, bytes} ->
-        {:ok, bytes, :cache}
-
-      {:error, _} ->
-        with {:ok, origin_bytes} <- fetch_origin(url),
-             {:ok, resized} <- resize_bytes(origin_bytes, width, height, quality),
-             :ok <- write_cache(path, resized) do
-          {:ok, resized, :origin}
+    ImageCache.fetch(
+      "#{url}|#{width}|#{height}|#{quality}",
+      fn ->
+        with {:ok, origin_bytes} <- fetch_origin(url) do
+          resize_bytes(origin_bytes, width, height, quality)
         end
-    end
+      end,
+      opts
+    )
   end
 
   defp fetch_origin(url), do: fetch_origin(url, 0)
@@ -267,7 +271,10 @@ defmodule StreamixWeb.Api.V1.ImageResizeController do
       {:ok, encoded}
     else
       error ->
-        Logger.warning("[ImageResize] resize failed: #{inspect(error)}")
+        Logger.warning("[ImageResize] resize failed",
+          reason: Streamix.SafeLog.redact_inspect(error)
+        )
+
         {:error, :resize_failed}
     end
   end
@@ -280,38 +287,6 @@ defmodule StreamixWeb.Api.V1.ImageResizeController do
 
   defp thumbnail(image, width, height),
     do: Image.thumbnail(image, "#{width}x#{height}")
-
-  # `path` is always cache_path/4 output: a configured root plus a SHA-256
-  # digest. No request path or filename is ever joined into it.
-  # sobelow_skip ["Traversal.FileModule"]
-  defp write_cache(path, bytes) do
-    with :ok <- File.mkdir_p(Path.dirname(path)),
-         :ok <- File.write(path, bytes) do
-      :ok
-    else
-      {:error, reason} ->
-        # Disk cache is best-effort: an ENOSPC or permission issue shouldn't
-        # block the response, we just log and serve the freshly-resized
-        # bytes anyway.
-        Logger.warning("[ImageResize] cache write failed at #{path}: #{inspect(reason)}")
-        :ok
-    end
-  end
-
-  defp cache_path(url, width, height, quality) do
-    hash =
-      :crypto.hash(:sha256, "#{url}|#{width}|#{height}|#{quality}") |> Base.encode16(case: :lower)
-
-    # Fan out into two-character prefix folders so the directory listing
-    # stays manageable once the cache grows past a few thousand files.
-    <<a::binary-2, b::binary-2, _rest::binary>> = hash
-    Path.join([cache_dir(), a, b, hash <> ".jpg"])
-  end
-
-  defp cache_dir do
-    Application.get_env(:streamix, __MODULE__, [])
-    |> Keyword.get(:cache_dir, @default_cache_dir)
-  end
 
   defp parse_width(nil), do: @default_width
   defp parse_width(""), do: @default_width
