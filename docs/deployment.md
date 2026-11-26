@@ -1,0 +1,38 @@
+# Deployment contract
+
+Streamix deploys one application container on a VPS. The authoritative implementation is
+[scripts/deploy-production.sh](../scripts/deploy-production.sh), invoked by the shared
+[deploy action](../.github/actions/deploy-production/action.yml). The service definitions live in
+[deploy/docker-compose.production.yml](../deploy/docker-compose.production.yml).
+
+## Build, approve and deploy
+
+The [main workflow](../.github/workflows/docker.yml) builds an immutable image, runs the backend, Dialyzer, frontend,
+E2E and image-security gates, and promotes only an approved digest. Deployment consumes that digest, not a mutable tag.
+The production environment and deployment concurrency serialize releases. The
+[manual workflow](../.github/workflows/deploy-production.yml) uses the same deployment action.
+
+The deployment script validates the digest and the supplied compose checksum before applying the versioned contract.
+It retains the prior application image/compose state for rollback, recreates only `streamix` with `--no-deps`, and runs
+readiness and application canaries. Read the script's current checks before changing deployment behavior;
+`Streamix.DeployContractTest` protects the shared-infrastructure boundary. Never put credentials into the repository,
+command output or incident reports.
+
+## Shared infrastructure and recovery
+
+An application deployment does not upgrade PostgreSQL, TimescaleDB, Redis, RabbitMQ or Qdrant. Changing an image in
+compose is not permission to recreate shared infrastructure. Schedule those operations separately, back up first,
+rehearse restore and rollback, and account for the other applications sharing the service. The exact operator procedure
+for TimescaleDB extension upgrades and application restart is maintained in [AGENTS.md](../AGENTS.md).
+
+[database-restore.md](database-restore.md) describes database recovery. Image rollback does not reverse a database
+migration; schema changes need compatibility with the preceding application image or an explicit recovery procedure.
+Persistent image/VOD caches live on the application data volume and have different recovery requirements from user data.
+
+## Local validation is not a deployment
+
+Run compilation, formatting, Credo, tests, Dialyzer and frontend checks before proposing a release. Use synthetic data and
+test-only database/Redis endpoints. Inspect the Docker context before running container-based tools: with a remote
+daemon, bind mounts and host networking refer to that host, not the developer's checkout or loopback interface.
+Deployment credentials and production access are unnecessary for ordinary code validation. A passing local test suite
+does not establish that production infrastructure has been upgraded or a release deployed.

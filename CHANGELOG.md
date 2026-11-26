@@ -270,6 +270,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Restored the Phoenix and deployment guides linked from onboarding, with an offline link check in the test suite.
+
 - Idle torrent sessions now stay stopped after the last viewer leaves instead of restarting downloads.
 
 - Semantic search and "similar titles" work again: NVIDIA retired `nvidia/nemotron-3-embed-1b` on 2026-11-23 (410
