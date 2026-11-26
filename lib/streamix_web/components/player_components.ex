@@ -37,7 +37,7 @@ defmodule StreamixWeb.PlayerComponents do
   attr :season_episodes, :list, default: []
   attr :synopsis, :string, default: nil
   attr :expected_duration, :integer, default: 0
-  attr :start_at, :integer, default: 0, doc: "seconds to start from, over any saved position"
+  attr :start_at, :integer, default: nil, doc: "seconds to start from, over any saved position"
   attr :subtitles_enabled, :boolean, default: true
   attr :subtitle_language, :string, default: "pt-BR"
   attr :subtitle_offset_ms, :integer, default: 0

@@ -26,6 +26,18 @@ defmodule StreamixWeb.PlayerComponentsTest do
     assert Floki.attribute(episode, "#video-player-container", "data-entity-type") == ["episode"]
   end
 
+  test "distinguishes a missing start offset from explicit station zero" do
+    attrs = [content: %{id: 42, name: "Test"}, content_type: :movie, stream_url: "/stream/test"]
+    absent = render_component(&PlayerComponents.video_player/1, attrs) |> Floki.parse_fragment!()
+
+    zero =
+      render_component(&PlayerComponents.video_player/1, Keyword.put(attrs, :start_at, 0))
+      |> Floki.parse_fragment!()
+
+    assert Floki.attribute(absent, "#video-player-container", "data-start-at") == []
+    assert Floki.attribute(zero, "#video-player-container", "data-start-at") == ["0"]
+  end
+
   test "keeps VOD controls in the bottom bar with centered loading indicator and Netflix skips" do
     html =
       render_component(&PlayerComponents.video_player/1,

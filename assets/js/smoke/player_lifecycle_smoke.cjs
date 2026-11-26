@@ -118,16 +118,8 @@ async function main() {
   const target = await resolveTarget(context);
 
   await context.addInitScript(
-    ({ contentId, initialVolume, resumeTime }) => {
+    () => {
       window.__streamixSmoke = { events: [] };
-
-      const positions = {};
-      positions[contentId] = { time: resumeTime, duration: 7200, timestamp: Date.now() };
-      localStorage.setItem("streamix_playback_positions", JSON.stringify(positions));
-      localStorage.setItem(
-        "streamix_player_prefs",
-        JSON.stringify({ global: { muted: true, volume: initialVolume } }),
-      );
 
       const currentTime = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "currentTime");
       if (currentTime?.set && currentTime?.get) {
@@ -149,7 +141,6 @@ async function main() {
         return play.apply(this, args);
       };
     },
-    { contentId: target.contentId, initialVolume, resumeTime },
   );
 
   const page = await context.newPage();
@@ -189,13 +180,19 @@ async function main() {
 
   await page.goto(target.url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
   await page.waitForSelector("#video-player-container", { timeout: timeoutMs });
+  const dataset = await page.locator("#video-player-container").evaluate(el => ({ ...el.dataset }));
+  const { playerStorageFixture } = await import("./player_storage_fixture.js");
+  const fixture = playerStorageFixture(dataset, { resumeTime, volume: initialVolume });
+  await page.evaluate(entries => { for (const [key, value] of entries) localStorage.setItem(key, value); }, fixture);
+  await page.reload({ waitUntil: "domcontentloaded", timeout: timeoutMs });
+  await page.waitForSelector("#video-player-container", { timeout: timeoutMs });
   await page.waitForTimeout(3_000);
 
   const snapshot = await page.evaluate(() => {
     const video = document.querySelector("#video-element");
     const container = document.querySelector("#video-player-container");
     const avMount = document.querySelector("#avplayer-mount");
-    const prefs = JSON.parse(localStorage.getItem("streamix_player_prefs") || "{}");
+    const prefs = JSON.parse(localStorage.getItem("streamix_player_prefs_v2") || "{}");
     const buffered = [];
 
     if (video) {
@@ -238,7 +235,7 @@ async function main() {
 
   const adjustedAudio = await page.evaluate(() => {
     const video = document.querySelector("#video-element");
-    const prefs = JSON.parse(localStorage.getItem("streamix_player_prefs") || "{}");
+    const prefs = JSON.parse(localStorage.getItem("streamix_player_prefs_v2") || "{}");
 
     return {
       videoMuted: video?.muted,

@@ -414,7 +414,7 @@ test("player composition uses the scoped position and lets the server offset win
     contentType: "vod",
     contentId: "42",
     contentStorageKey: playerStorageKey("a".repeat(43), "episode", "42"),
-    startAt: 0,
+    startAt: null,
     setCanonicalAudioState() {},
     applyAudioState() {},
   });
@@ -427,4 +427,7 @@ test("player composition uses the scoped position and lets the server offset win
   hook.startAt = 500;
   hook.loadPreferences();
   assert.equal(hook._savedPosition.time, 500);
+  hook.startAt = 0;
+  hook.loadPreferences();
+  assert.equal(hook._savedPosition.time, 0);
 });

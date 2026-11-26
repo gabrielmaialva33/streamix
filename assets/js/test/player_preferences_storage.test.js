@@ -6,6 +6,7 @@ import {
   saveAudioTrack,
   savePlaybackPosition,
 } from "../player/player_preferences.js";
+import { playerStorageFixture } from "../smoke/player_storage_fixture.js";
 
 function storage(t, initial = {}) {
   const values = new Map(Object.entries(initial));
@@ -48,4 +49,14 @@ test("positions and tracks remain distinct for two entities and two accounts", (
   assert.equal(getPreferences(movie).audioTrack, 2);
   assert.equal(getPreferences(episode).audioTrack, 3);
   assert.equal(getPreferences(otherAccount).audioTrack, null);
+});
+
+test("the browser smoke seeds the same scoped keys read by the real player", (t) => {
+  const dataset = { storageScope: "a".repeat(43), entityType: "movie", contentId: "42" };
+  const entries = playerStorageFixture(dataset, { resumeTime: 123, volume: 0.72 });
+  storage(t, Object.fromEntries(entries));
+  assert.equal(getPreferences().volume, 0.72);
+  assert.equal(getPreferences().muted, true);
+  assert.equal(getPlaybackPosition(`v2:${dataset.storageScope}:movie:42`).time, 123);
+  assert.equal(getPlaybackPosition(`v2:${dataset.storageScope}:episode:42`), null);
 });

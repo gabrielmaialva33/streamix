@@ -272,6 +272,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Explicit station offset zero overrides saved playback just like positive offsets; ordinary playback retains local resume when no offset is supplied.
+
 - Torrent sessions also expire when their initial caller disappears before the first viewer joins.
 
 - Stripe webhooks persist transactional receipts and refresh current subscription state before applying financial events, so delayed deliveries cannot resurrect canceled plans. Reconciliation reports partial failures and retries through Oban with aggregate-only logs. Manual grants remain independent.

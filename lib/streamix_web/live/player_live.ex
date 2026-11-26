@@ -560,11 +560,12 @@ defmodule StreamixWeb.PlayerLive do
         )
 
       {:error, _reason} ->
-        assign(socket, start_at: 0, station: nil)
+        assign(socket, start_at: nil, station: nil)
     end
   end
 
-  defp assign_station_mode(socket, _type, _params), do: assign(socket, start_at: 0, station: nil)
+  defp assign_station_mode(socket, _type, _params),
+    do: assign(socket, start_at: nil, station: nil)
 
   # The link carried the offset when it was made; recompute it if the film in
   # the link is still the one on air, so a slow load does not start behind.
