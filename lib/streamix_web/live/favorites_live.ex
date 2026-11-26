@@ -140,6 +140,10 @@ defmodule StreamixWeb.FavoritesLive do
           Guardar minha lista e histórico neste navegador
         </label>
         <p id="favorites-offline-help">Opcional. Os dados offline são apagados ao sair da conta.</p>
+        <p data-offline-expired hidden>
+          A sessão de armazenamento mudou. Recarregue para alterar esta preferência.
+          <button type="button" data-offline-reload class="underline">Recarregar</button>
+        </p>
       </div>
 
       <div class="space-y-3">

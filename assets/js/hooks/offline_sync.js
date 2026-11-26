@@ -33,9 +33,19 @@ const OfflineSync = {
     } catch {
       this.account = null;
     }
+    this.expiredNotice = this.el.querySelector?.("[data-offline-expired]");
+    this.reloadButton = this.el.querySelector?.("[data-offline-reload]");
+    this.onReload = () => window.location.reload();
+    this.reloadButton?.addEventListener("click", this.onReload);
     const renderChoice = () => {
-      if (this.optIn) this.optIn.checked = this.account?.enabled() || false;
+      const current = this.account?.current() || false;
+      if (this.optIn) {
+        this.optIn.checked = this.account?.enabled() || false;
+        this.optIn.disabled = !current;
+      }
+      if (this.expiredNotice) this.expiredNotice.hidden = current;
     };
+    this.renderOfflineChoice = renderChoice;
     renderChoice();
     this.unsubscribeAccount = this.account?.subscribe(renderChoice);
     this.onOptIn = () => {
@@ -70,12 +80,14 @@ const OfflineSync = {
   },
 
   updated() {
+    this.renderOfflineChoice?.();
     // Re-sync when data attribute changes
     this.syncFromServer();
   },
 
   destroyed() {
     this.optIn?.removeEventListener("change", this.onOptIn);
+    this.reloadButton?.removeEventListener("click", this.onReload);
     this.unsubscribeAccount?.();
     window.removeEventListener("online", this.handleOnline);
     window.removeEventListener("offline", this.handleOffline);

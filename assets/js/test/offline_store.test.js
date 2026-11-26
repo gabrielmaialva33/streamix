@@ -164,3 +164,57 @@ test("logout during an IDB open closes the late handle without writing or recrea
   assert.equal(closes, 1);
   assert.ok(deleted.includes(opened[0].name));
 });
+
+test("logout aborts an already-created write transaction and rejects its sync", async (t) => {
+  const values = new Map();
+  let started;
+  const writing = new Promise((resolve) => {
+    started = resolve;
+  });
+  let aborted = 0;
+  let closed = 0;
+  const tx = new EventTarget();
+  tx.objectStore = () => ({
+    clear() {},
+    put() {
+      started();
+    },
+  });
+  tx.abort = () => {
+    aborted++;
+    queueMicrotask(() => tx.onabort?.());
+  };
+  const database = { transaction: () => tx, close: () => closed++ };
+  const idb = {
+    deleteDatabase() {},
+    open() {
+      const request = { result: database };
+      queueMicrotask(() => request.onsuccess());
+      return request;
+    },
+  };
+  globalThis.indexedDB = idb;
+  t.after(() => {
+    delete globalThis.indexedDB;
+  });
+  const session = installOfflineAccountSession({
+    storage: {
+      getItem: (key) => values.get(key),
+      setItem: (key, value) => values.set(key, value),
+      removeItem: (key) => values.delete(key),
+    },
+    documentRef: { querySelector: () => ({ content: "c".repeat(43) }), addEventListener() {} },
+    windowRef: new EventTarget(),
+    indexedDB: idb,
+  });
+  session.setEnabled(true);
+  const pending = assert.rejects(
+    syncFavorites([{ content_type: "movie", content_id: 1 }]),
+    /expired/,
+  );
+  await writing;
+  session.logout();
+  await pending;
+  assert.equal(aborted, 1);
+  assert.equal(closed, 1);
+});

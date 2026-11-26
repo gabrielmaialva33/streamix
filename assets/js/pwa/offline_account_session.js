@@ -12,6 +12,10 @@ export function createOfflineAccountSession({
   let lease = null;
   let scope = null;
   const listeners = new Set();
+  const invalidators = new Set();
+  const invalidate = () => {
+    for (const listener of invalidators) listener();
+  };
   const removeDB = (name) => {
     try {
       indexedDB?.deleteDatabase(name);
@@ -22,6 +26,7 @@ export function createOfflineAccountSession({
   };
   const current = () => storage.getItem(ACTIVE);
   const purge = (value) => {
+    invalidate();
     notify();
     removeDB("streamix-offline");
     const oldScope = value?.split(":")[0];
@@ -52,6 +57,13 @@ export function createOfflineAccountSession({
     },
     assert,
     databaseName: () => `streamix-offline:${lease}`,
+    current() {
+      try {
+        return Boolean(lease && current() === lease);
+      } catch {
+        return false;
+      }
+    },
     enabled() {
       try {
         assert(lease);
@@ -62,8 +74,10 @@ export function createOfflineAccountSession({
     },
     setEnabled(enabled) {
       if (!lease || current() !== lease) throw new Error("Offline session expired");
-      if (enabled) storage.setItem(ENABLED, lease);
-      else {
+      if (enabled) {
+        storage.setItem(ENABLED, lease);
+        notify();
+      } else {
         const previous = lease;
         lease = `${scope}:${nonce()}`;
         storage.setItem(ACTIVE, lease);
@@ -81,7 +95,12 @@ export function createOfflineAccountSession({
       lease = null;
     },
     changed() {
-      if (!this.enabled()) notify();
+      if (!this.enabled()) invalidate();
+      notify();
+    },
+    onInvalidate(listener) {
+      invalidators.add(listener);
+      return () => invalidators.delete(listener);
     },
     subscribe(listener) {
       listeners.add(listener);

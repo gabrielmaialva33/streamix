@@ -78,3 +78,21 @@ test("the browser logout control revokes pending leases before navigation", asyn
   documentRef.dispatchEvent(new Event("click"));
   assert.throws(() => session.assert(lease), /expired/);
 });
+
+test("consent updates notify the other tab without invalidating its active transaction lease", () => {
+  const { session } = fixture();
+  const a = session();
+  a.start(alice);
+  const b = session();
+  b.start(alice);
+  const choices = [];
+  b.subscribe(() => choices.push(b.enabled()));
+  a.setEnabled(true);
+  b.changed();
+  assert.deepEqual(choices, [true]);
+  a.setEnabled(false);
+  b.changed();
+  assert.deepEqual(choices, [true, false]);
+  assert.equal(b.current(), false);
+  assert.equal(a.current(), true);
+});

@@ -272,6 +272,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Offline consent stays visible across open tabs. A tab with an expired storage session offers an explicit reload instead of silently ignoring a new opt-in.
+
 - Explicit station offset zero overrides saved playback just like positive offsets; ordinary playback retains local resume when no offset is supplied.
 
 - Torrent sessions also expire when their initial caller disappears before the first viewer joins.

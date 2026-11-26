@@ -100,7 +100,7 @@ export async function initDB() {
   if (db && dbLease === lease) return db;
   closeDB();
   unsubscribe?.();
-  unsubscribe = account.subscribe(closeDB);
+  unsubscribe = account.onInvalidate(closeDB);
   if (typeof indexedDB === "undefined") {
     throw new Error("[OfflineStore] IndexedDB is unavailable");
   }
