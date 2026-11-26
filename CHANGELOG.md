@@ -272,6 +272,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Docker browser runners now reject remote endpoints before any asset installation/build or port allocation, with explicit guidance for local contexts.
+
 - Image resizing coalesces simultaneous requests, admits at most two producers, publishes complete files atomically, and evicts expired images within a 512 MiB / 10,000-entry disk budget. Saturated requests receive a retryable 503.
 
 - Offline favorites/history now require explicit browser opt-in, use an opaque account namespace, and are removed on logout or account switch; late writes and stale tabs cannot repopulate them.

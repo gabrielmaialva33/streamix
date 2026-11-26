@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/require-local-docker.sh"
+require_local_docker
+
 browser="${1:-${PLAYWRIGHT_BROWSER:-chromium}}"
 case "$browser" in
   chromium | firefox | webkit) ;;

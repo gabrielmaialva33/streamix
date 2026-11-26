@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/require-local-docker.sh"
+require_local_docker
+
 project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 runtime_dir=$(mktemp -d)
 server_pid=""
