@@ -270,6 +270,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Player resume positions and track choices now use account and media-type namespaces; ambiguous legacy positions are discarded while device volume is preserved.
+
 - The episode dialog now moves and contains keyboard focus, makes background controls inert, and restores focus on close or player teardown.
 
 - Catalog API posters now share the web image normalization and private-target filtering while retaining their own cache version.

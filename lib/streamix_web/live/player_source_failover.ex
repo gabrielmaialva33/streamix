@@ -71,6 +71,7 @@ defmodule StreamixWeb.PlayerSourceFailover do
 
     %{
       content_id: source.content.id,
+      entity_type: to_string(content_type),
       provider_id: source.provider.id,
       provider_name: source.provider.name,
       source_type: to_string(provider_type),

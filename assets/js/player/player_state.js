@@ -4,6 +4,8 @@ import { isIosPwaMode, readEngineFlag } from "./playback_environment.js";
 import { clientRevision } from "./playback_reasons.js";
 import { PlaybackSession } from "./playback_session.js";
 
+import { playerStorageKey } from "./player_storage_key.js";
+
 const FALLBACK_COOLDOWNS = [2_000, 5_000, 10_000, 20_000, 30_000];
 
 const defaultDependencies = {
@@ -37,6 +39,13 @@ export function createInitialPlayerState(
     contentType,
     sourceType: dataset.sourceType || null,
     contentId: dataset.contentId,
+    storageScope: dataset.storageScope || null,
+    entityType: dataset.entityType || null,
+    contentStorageKey: playerStorageKey(
+      dataset.storageScope,
+      dataset.entityType,
+      dataset.contentId,
+    ),
     clientRevision: clientRevision(
       documentRef?.querySelector?.('meta[name="streamix-client-revision"]')?.content,
     ),

@@ -112,3 +112,5 @@ contract require the HEEx-to-parser test in `player_components_test.exs`.
 13. Testes comportamentais importam código real e injetam relógio/ambiente; regex de fonte verifica arquitetura, não integração renderizada.
 14. Manter gates explícitos para JS, smoke, SW e CSS; executar Node com concorrência limitada. Build/browser são validações distintas do lint/unitário.
 15. Remover export/selector somente após conferir consumidores, dinâmicos e contratos; documentar exceções deliberadas em vez de manter código especulativo.
+
+Player storage uses `data-storage-scope` (an opaque account namespace), `data-entity-type` and the content ID. Transport `live`/`vod` is not a catalog identity. Legacy unscoped positions/tracks are intentionally discarded.

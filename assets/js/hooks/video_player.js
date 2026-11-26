@@ -42,6 +42,7 @@ import {
   savePreferAVPlayer,
 } from "../player/player_preferences.js";
 import { playerSessionLifecycle } from "../player/player_session_lifecycle.js";
+import { playerStorageKey } from "../player/player_storage_key.js";
 import { ProviderEngineMemory } from "../player/provider_engine_memory.js";
 import { sendQoeBeacon } from "../telemetry/qoe_beacon.js";
 
@@ -548,6 +549,9 @@ const VideoPlayer = {
     this.providerId = payload.provider_id ? String(payload.provider_id) : null;
     this._pendingEngineReason = "failover";
     this.contentId = String(payload.content_id);
+    this.entityType = payload.entity_type || this.entityType;
+    this.contentStorageKey = playerStorageKey(this.storageScope, this.entityType, this.contentId);
+    this.el.dataset.entityType = this.entityType;
     this.useProxy = true;
     this.currentUrl = null;
     this.currentStreamType = payload.stream_type || null;
@@ -781,8 +785,8 @@ const VideoPlayer = {
       this.lastProgressReport = currentTime;
 
       // Save position to localStorage for resume later
-      if (this.contentId && this.contentType === "vod") {
-        savePlaybackPosition(this.contentId, currentTime, duration);
+      if (this.contentStorageKey && this.contentType === "vod") {
+        savePlaybackPosition(this.contentStorageKey, currentTime, duration);
         this.iosPwaPlaybackController.persist({ reason: "progress" });
       }
 

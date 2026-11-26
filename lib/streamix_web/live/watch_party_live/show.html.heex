@@ -14,6 +14,7 @@
   <main class={["relative min-w-0 flex-1", @chat_open && "sm:mr-80"]}>
     <.video_player
       :if={is_binary(@stream_url)}
+      current_scope={@current_scope}
       content={@content}
       content_type={@content_type}
       stream_url={@stream_url}

@@ -5,6 +5,27 @@ defmodule StreamixWeb.PlayerComponentsTest do
 
   alias StreamixWeb.PlayerComponents
 
+  test "storage datasets include the entity type and an opaque account scope" do
+    render = fn user_id, type ->
+      render_component(&PlayerComponents.video_player/1,
+        content: %{id: 42, name: "Test"},
+        content_type: type,
+        stream_url: "/stream/test",
+        current_scope: %{user: %{id: user_id}}
+      )
+      |> Floki.parse_fragment!()
+    end
+
+    alice = render.(1, :movie)
+    bob = render.(2, :movie)
+    episode = render.(1, :episode)
+    [scope] = Floki.attribute(alice, "#video-player-container", "data-storage-scope")
+    assert Regex.match?(~r/^[A-Za-z0-9_-]{43}$/, scope)
+    refute Floki.attribute(bob, "#video-player-container", "data-storage-scope") == [scope]
+    assert Floki.attribute(episode, "#video-player-container", "data-storage-scope") == [scope]
+    assert Floki.attribute(episode, "#video-player-container", "data-entity-type") == ["episode"]
+  end
+
   test "keeps VOD controls in the bottom bar with centered loading indicator and Netflix skips" do
     html =
       render_component(&PlayerComponents.video_player/1,

@@ -151,7 +151,7 @@ export const playerComposition = {
     this.iosPwaPlaybackController = createIosPwaPlaybackController({
       isEnabled: () => this.iosPwaMode,
       getContentType: () => this.contentType,
-      getContentId: () => this.contentId,
+      getContentId: () => this.contentStorageKey,
       getVideo: () => this.video,
       getCurrentTime: () => this.getCurrentTime(),
       getDuration: () => this.getDuration(),
@@ -182,7 +182,7 @@ export const playerComposition = {
     });
   },
   loadPreferences() {
-    const prefs = getPreferences(this.contentId);
+    const prefs = getPreferences(this.contentStorageKey);
 
     // Apply volume (prefs.volume is UI value, convert to perceived for backends)
     this.setCanonicalAudioState(prefs);
@@ -207,7 +207,7 @@ export const playerComposition = {
     // Load saved playback position for VOD content
     if (this.contentType === "vod" && this.contentId) {
       this._savedPosition =
-        this.startAt > 0 ? { time: this.startAt } : getPlaybackPosition(this.contentId);
+        this.startAt > 0 ? { time: this.startAt } : getPlaybackPosition(this.contentStorageKey);
       if (this._savedPosition) {
         log.debug("Found saved position:", this._savedPosition.time, "seconds");
       }
@@ -258,7 +258,7 @@ export const playerComposition = {
     });
     this.playerTrackPresentationController = createPlayerTrackPresentationController({
       emit: (event, payload) => this.pushEventSafe(event, payload),
-      getContentId: () => this.contentId,
+      getContentId: () => this.contentStorageKey,
       initialState: {
         audioTracks: this.audioTracks,
         selectedAudioTrack: this.selectedAudioTrack,

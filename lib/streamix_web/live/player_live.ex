@@ -489,6 +489,7 @@ defmodule StreamixWeb.PlayerLive do
       />
       <.video_player
         :if={@player_state not in [:torrent_buffering, :resolving_source]}
+        current_scope={@current_scope}
         content={@content}
         content_type={@content_type}
         stream_url={@stream_url}

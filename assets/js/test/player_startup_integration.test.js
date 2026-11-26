@@ -5,7 +5,13 @@ import { ENGINE_ID, PLAYBACK_STATE } from "../player/engine_contract.js";
 import { createPlaybackEngineTransitionController } from "../player/playback_engine_transition_controller.js";
 import { PlaybackRecoveryGuard } from "../player/playback_recovery_guard.js";
 import { PlaybackSession } from "../player/playback_session.js";
-import { playerRecommendationKey } from "../player/player_preferences.js";
+import {
+  getPlaybackPosition,
+  getPreferences,
+  playerRecommendationKey,
+  savePlaybackPosition,
+} from "../player/player_preferences.js";
+import { playerStorageKey } from "../player/player_storage_key.js";
 import { ProviderEngineMemory } from "../player/provider_engine_memory.js";
 import { clock } from "./support/playback_clock.js";
 import { readSourceSync as readFileSync } from "./support/player_hook_source.js";
@@ -42,6 +48,9 @@ function harness({ intent = null, streamType = "hls" } = {}) {
       return null;
     },
     playerRecommendationKey,
+    playerStorageKey,
+    getPreferences,
+    getPlaybackPosition,
     recordPlayerSuccess: (...args) => calls.push(["memory_success", ...args]),
     ProviderEngineMemory: class extends ProviderEngineMemory {
       constructor(options) {
@@ -387,4 +396,35 @@ test("overlapping managed seeks require a new presented frame and stale seek com
   current();
   hook.providerEngineMemory.clear();
   hook.recoveryGuard.destroy();
+});
+
+test("player composition uses the scoped position and lets the server offset win", (t) => {
+  const previous = globalThis.localStorage;
+  const values = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => values.get(key),
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key),
+  };
+  t.after(() => {
+    globalThis.localStorage = previous;
+  });
+  const { hook } = harness();
+  Object.assign(hook, {
+    contentType: "vod",
+    contentId: "42",
+    contentStorageKey: playerStorageKey("a".repeat(43), "episode", "42"),
+    startAt: 0,
+    setCanonicalAudioState() {},
+    applyAudioState() {},
+  });
+  savePlaybackPosition(playerStorageKey("a".repeat(43), "movie", "42"), 120, 1000);
+  hook.loadPreferences();
+  assert.equal(hook._savedPosition, null);
+  savePlaybackPosition(hook.contentStorageKey, 250, 1000);
+  hook.loadPreferences();
+  assert.equal(hook._savedPosition.time, 250);
+  hook.startAt = 500;
+  hook.loadPreferences();
+  assert.equal(hook._savedPosition.time, 500);
 });

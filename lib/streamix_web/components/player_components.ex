@@ -17,6 +17,7 @@ defmodule StreamixWeb.PlayerComponents do
   @doc """
   Renders the main video player with all controls.
   """
+  attr :current_scope, :map, default: nil
   attr :content, :map, required: true
 
   attr :content_type, :atom,
@@ -105,6 +106,8 @@ defmodule StreamixWeb.PlayerComponents do
       data-content-type={@content_type_str}
       data-source-type={@source_type}
       data-content-id={@content.id}
+      data-entity-type={@content_type}
+      data-storage-scope={StreamixWeb.Helpers.ClientStorage.scope(@current_scope)}
       data-streaming-mode={@streaming_mode}
       data-next-episode={@next_episode_json}
       data-expected-duration={@expected_duration}

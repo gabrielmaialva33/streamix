@@ -6,9 +6,10 @@
  */
 
 import { prefsLogger as log } from "../core/logger.js";
+import { validPlayerStorageKey } from "./player_storage_key.js";
 
-const STORAGE_KEY = "streamix_player_prefs";
-const POSITION_KEY = "streamix_playback_positions";
+const STORAGE_KEY = "streamix_player_prefs_v2";
+const POSITION_KEY = "streamix_playback_positions_v2";
 const DEVICE_COMPAT_KEY = "streamix_device_compat";
 const GLOBAL_KEY = "global";
 const MAX_POSITIONS = 100; // Max number of positions to store
@@ -193,6 +194,19 @@ export function getDeviceCompatibilityReport() {
  */
 function getAllPrefs() {
   try {
+    const legacy = localStorage.getItem("streamix_player_prefs");
+    if (legacy) {
+      localStorage.removeItem("streamix_player_prefs");
+      if (!localStorage.getItem(STORAGE_KEY)) {
+        const old = JSON.parse(legacy).global || {};
+        const global = Object.fromEntries(
+          ["volume", "muted", "playbackRate", "preferAVPlayer"]
+            .filter((key) => key in old)
+            .map((key) => [key, old[key]]),
+        );
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ global }));
+      }
+    }
     const stored = localStorage.getItem(STORAGE_KEY);
     return stored ? JSON.parse(stored) : {};
   } catch (e) {
@@ -217,17 +231,16 @@ function saveAllPrefs(prefs) {
  */
 export function getPreferences(contentId = null) {
   const prefs = getAllPrefs();
-  const _key = contentId || GLOBAL_KEY;
 
   // Merge global with content-specific (content-specific takes precedence)
   const globalPrefs = prefs[GLOBAL_KEY] || {};
-  const contentPrefs = contentId ? prefs[contentId] || {} : {};
+  const contentPrefs = validPlayerStorageKey(contentId) ? prefs[contentId] || {} : {};
 
   return {
     volume: contentPrefs.volume ?? globalPrefs.volume ?? 1,
     muted: contentPrefs.muted ?? globalPrefs.muted ?? false,
     audioTrack: contentPrefs.audioTrack ?? null,
-    subtitleTrack: contentPrefs.subtitleTrack ?? globalPrefs.subtitleTrack ?? null,
+    subtitleTrack: contentPrefs.subtitleTrack ?? null,
     playbackRate: globalPrefs.playbackRate ?? 1,
     preferAVPlayer: globalPrefs.preferAVPlayer ?? false, // Manual audio compatibility mode
   };
@@ -237,6 +250,8 @@ export function getPreferences(contentId = null) {
  * Save a specific preference
  */
 export function savePreference(key, value, contentId = null) {
+  if (contentId !== null && !validPlayerStorageKey(contentId)) return;
+  if (["audioTrack", "subtitleTrack"].includes(key) && !validPlayerStorageKey(contentId)) return;
   const prefs = getAllPrefs();
   const prefKey = contentId || GLOBAL_KEY;
 
@@ -321,6 +336,7 @@ export function clearAllPreferences() {
  */
 function getAllPositions() {
   try {
+    localStorage.removeItem("streamix_playback_positions");
     const stored = localStorage.getItem(POSITION_KEY);
     return stored ? JSON.parse(stored) : {};
   } catch (e) {
@@ -347,7 +363,7 @@ function saveAllPositions(positions) {
  * @param {number} duration - Total duration in seconds
  */
 export function savePlaybackPosition(contentId, currentTime, duration) {
-  if (!contentId || !currentTime || !duration) return;
+  if (!validPlayerStorageKey(contentId) || !currentTime || !duration) return;
 
   // Don't save if at the beginning or near the end (within 30s or 95%)
   if (currentTime < 10 || currentTime > duration - 30 || currentTime / duration > 0.95) {
@@ -386,9 +402,8 @@ export function savePlaybackPosition(contentId, currentTime, duration) {
  * @returns {{time: number, duration: number} | null} - Saved position or null
  */
 export function getPlaybackPosition(contentId) {
-  if (!contentId) return null;
-
   const positions = getAllPositions();
+  if (!validPlayerStorageKey(contentId)) return null;
   const position = positions[contentId];
 
   if (!position) return null;

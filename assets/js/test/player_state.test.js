@@ -157,3 +157,26 @@ test("a missing or invalid start offset means the start of the title", () => {
     assert.equal(state.startAt, 0, String(startAt));
   }
 });
+
+test("storage identity separates equal media ids by entity and account", () => {
+  const state = (scope, entityType) =>
+    createInitialPlayerState(
+      createElement({ contentId: "42", contentType: "vod", storageScope: scope, entityType }),
+      {
+        documentRef: { title: "Test" },
+        dependencies: {
+          createPlaybackMetrics: () => ({}),
+          isIosPwaMode: () => false,
+          parseNextEpisode: () => null,
+          readEngineFlag: () => false,
+          selectStreamingMode: () => "balanced",
+        },
+      },
+    );
+  const alice = "a".repeat(43);
+  const bob = "b".repeat(43);
+  assert.equal(state(alice, "movie").contentStorageKey, `v2:${alice}:movie:42`);
+  assert.equal(state(alice, "episode").contentStorageKey, `v2:${alice}:episode:42`);
+  assert.equal(state(bob, "movie").contentStorageKey, `v2:${bob}:movie:42`);
+  assert.equal(state(null, "movie").contentStorageKey, null);
+});
