@@ -30,6 +30,7 @@ defmodule Streamix.Billing.Stripe.Client do
              headers: authorization_headers(secret_key),
              finch: [name: Streamix.Finch],
              receive_timeout: 5_000,
+             params: [{"expand[]", "latest_invoice"}],
              retry: false
            ) do
         {:ok, %Req.Response{status: 200, body: body}} when is_map(body) -> {:ok, body}

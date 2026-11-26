@@ -5,7 +5,7 @@ defmodule Streamix.Billing.Stripe.Events do
 
   alias Streamix.Accounts
   alias Streamix.Billing
-  alias Streamix.Billing.{BillingCustomer, Plan, Subscription}
+  alias Streamix.Billing.{BillingCustomer, Plan, Subscription, Subscriptions}
   alias Streamix.Repo
 
   @payment_events ~w(checkout.session.completed checkout.session.async_payment_succeeded checkout.session.async_payment_failed invoice.paid invoice.payment_failed)
@@ -43,7 +43,7 @@ defmodule Streamix.Billing.Stripe.Events do
         Billing.sync_provider_subscription!(user, plan, %{
           provider: "stripe",
           external_reference: subscription_reference(object),
-          status: subscription_status(object["status"]),
+          status: subscription_status(object),
           starts_at: starts_at,
           expires_at: expires_at,
           canceled_at: unix_to_datetime(object["canceled_at"])
@@ -73,6 +73,7 @@ defmodule Streamix.Billing.Stripe.Events do
           currency: stripe_currency(object, plan),
           paid_at: stripe_paid_at(object, event),
           raw_event: event,
+          invoice_authoritative?: object["object"] == "invoice",
           invoice: stripe_invoice_attrs(object, plan, event)
         })
 
@@ -109,15 +110,23 @@ defmodule Streamix.Billing.Stripe.Events do
     }
   end
 
-  defp plan_from_stripe_object(object) do
+  defp plan_from_stripe_object(%{"object" => "subscription"} = object) do
+    # Portal price changes do not necessarily rewrite checkout metadata.
+    price_plan(object) || metadata_plan(object)
+  end
+
+  defp plan_from_stripe_object(object), do: metadata_plan(object) || price_plan(object)
+
+  defp price_plan(object),
+    do: object |> stripe_price_ids() |> Enum.find_value(&Billing.get_plan_by_stripe_price_id/1)
+
+  defp metadata_plan(object) do
     case fetch_metadata_id(object, "plan_id") do
       {:ok, plan_id} ->
         Repo.get(Plan, plan_id)
 
       {:error, :missing_metadata} ->
-        object
-        |> stripe_price_ids()
-        |> Enum.find_value(&Billing.get_plan_by_stripe_price_id/1)
+        nil
     end
   end
 
@@ -153,9 +162,18 @@ defmodule Streamix.Billing.Stripe.Events do
     get_in(object, ["parent", "subscription_details", "subscription"])
   end
 
-  defp subscription_status(status) when status in ~w(active trialing), do: "active"
-  defp subscription_status(status) when status in ~w(canceled unpaid), do: "canceled"
-  defp subscription_status(_status), do: "pending"
+  defp subscription_status(%{"status" => "trialing"}), do: "active"
+
+  defp subscription_status(%{"status" => "active", "latest_invoice" => %{"status" => "paid"}}),
+    do: "active"
+
+  defp subscription_status(%{"status" => "active", "latest_invoice" => %{"paid" => true}}),
+    do: "active"
+
+  defp subscription_status(%{"status" => status}) when status in ~w(canceled unpaid),
+    do: "canceled"
+
+  defp subscription_status(_object), do: "pending"
 
   defp billing_period(object) do
     starts_at =
@@ -252,12 +270,20 @@ defmodule Streamix.Billing.Stripe.Events do
   defp maybe_upsert_customer!(%{id: user_id} = user, object) when is_integer(user_id) do
     case object["customer"] do
       customer_id when is_binary(customer_id) ->
-        Billing.upsert_billing_customer!(
-          user,
-          :stripe,
-          customer_id,
-          object["customer_details"] || %{}
-        )
+        Subscriptions.lock_user!(user_id)
+
+        case Billing.get_billing_customer(user, :stripe) do
+          nil ->
+            Billing.upsert_billing_customer!(
+              user,
+              :stripe,
+              customer_id,
+              object["customer_details"] || %{}
+            )
+
+          customer ->
+            customer
+        end
 
       _ ->
         nil

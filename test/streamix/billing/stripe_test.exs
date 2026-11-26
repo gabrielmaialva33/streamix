@@ -2,7 +2,7 @@ defmodule Streamix.Billing.StripeTest do
   use Streamix.DataCase, async: false
 
   alias Streamix.Billing
-  alias Streamix.Billing.{CheckoutSession, Payment, Stripe, Subscription}
+  alias Streamix.Billing.{CheckoutSession, Invoice, Payment, Stripe, Subscription}
   alias Streamix.Repo
   alias Streamix.Workers.ReconcileStripeSubscriptionsWorker
 
@@ -39,6 +39,7 @@ defmodule Streamix.Billing.StripeTest do
                "status" => Process.get(:stripe_subscription_status, "active"),
                "customer" =>
                  if(id == "sub_reconcile_123", do: "cus_reconcile_test", else: "cus_test_123"),
+               "latest_invoice" => %{"id" => "in_current", "status" => "paid", "paid" => true},
                "current_period_start" => now - 60,
                "current_period_end" => now + 2_592_000,
                "metadata" => %{
@@ -227,6 +228,10 @@ defmodule Streamix.Billing.StripeTest do
     assert {:ok, %{subscription: %Subscription{} = subscription}} =
              Stripe.handle_webhook(raw_body, signature)
 
+    assert_received {:stripe_get, "https://api.stripe.test/v1/subscriptions/sub_test_123",
+                     fetch_opts}
+
+    assert fetch_opts[:params] == [{"expand[]", "latest_invoice"}]
     assert subscription.external_reference == "stripe:sub_test_123"
     assert Billing.get_billing_customer(user, :stripe).external_id == "cus_test_123"
     assert Billing.entitled?(user, :global_catalog)
@@ -576,6 +581,127 @@ defmodule Streamix.Billing.StripeTest do
     assert {:ok, %{subscription: subscription}} = Stripe.apply_event(event)
     assert subscription.expires_at == DateTime.from_unix!(now + 3600)
     assert Billing.entitled?(user, :global_catalog)
+  end
+
+  test "an active subscription with an unpaid first invoice waits for confirmation", %{
+    user: user,
+    plan: plan
+  } do
+    unpaid = checkout_event(user, plan, "unpaid")
+    Process.put(:stripe_subscription_status, "active")
+
+    Process.put(:stripe_subscription_overrides, %{
+      "latest_invoice" => %{"status" => "open", "paid" => false}
+    })
+
+    assert {:ok, %{subscription: subscription, payment: payment}} = Stripe.apply_event(unpaid)
+    assert subscription.status == "pending"
+    assert payment.status == "pending"
+    refute Billing.entitled?(user, :global_catalog)
+    Process.delete(:stripe_subscription_overrides)
+    assert {:ok, _} = Stripe.apply_event(checkout_event(user, plan, "paid"))
+    assert Billing.entitled?(user, :global_catalog)
+    assert {:ok, _} = Stripe.apply_event(Map.put(unpaid, "id", "evt_unpaid_late_distinct"))
+    assert Billing.entitled?(user, :global_catalog)
+    assert Repo.reload!(payment).status == "paid"
+  end
+
+  test "async checkout without an invoice id does not invent two invoices", %{
+    user: user,
+    plan: plan
+  } do
+    assert {:ok, _} = Stripe.apply_event(checkout_event(user, plan, "unpaid"))
+
+    paid =
+      checkout_event(user, plan, "paid")
+      |> Map.put("type", "checkout.session.async_payment_succeeded")
+
+    assert {:ok, _} = Stripe.apply_event(paid)
+    assert Repo.aggregate(Invoice, :count) == 0
+  end
+
+  test "a lower-detail checkout cannot erase an already received invoice", %{
+    user: user,
+    plan: plan
+  } do
+    checkout = checkout_event(user, plan, "paid")
+
+    object =
+      checkout["data"]["object"]
+      |> Map.merge(%{
+        "id" => "in_shared",
+        "object" => "invoice",
+        "status" => "paid",
+        "number" => "N-42",
+        "hosted_invoice_url" => "https://billing.example.test/invoice"
+      })
+
+    invoice_event = %{
+      "id" => "evt_full_invoice",
+      "type" => "invoice.paid",
+      "data" => %{"object" => object}
+    }
+
+    assert {:ok, _} = Stripe.apply_event(invoice_event)
+    checkout = put_in(checkout, ["data", "object", "invoice"], "in_shared")
+    assert {:ok, _} = Stripe.apply_event(checkout)
+    invoice = Repo.get_by!(Invoice, provider: "stripe", external_id: "in_shared")
+    assert invoice.number == "N-42"
+    assert invoice.hosted_invoice_url == "https://billing.example.test/invoice"
+  end
+
+  test "current mapped price wins over stale subscription metadata", %{user: user, plan: plan} do
+    next =
+      Billing.ensure_plan!(%{
+        name: "New price",
+        slug: "mapped-current-price",
+        price_cents: 3999,
+        currency: "BRL",
+        billing_interval: "month",
+        active: true,
+        stripe_price_id: "price_current"
+      })
+
+    event = checkout_event(user, plan, "paid")
+
+    Process.put(:stripe_subscription_overrides, %{
+      "items" => %{"data" => [%{"price" => %{"id" => "price_current"}}]}
+    })
+
+    assert {:ok, %{subscription: subscription}} = Stripe.apply_event(event)
+    assert subscription.plan_id == next.id
+  end
+
+  test "checkout reuses the mapped customer and an old customer event cannot replace it", %{
+    user: user,
+    plan: plan
+  } do
+    Billing.upsert_billing_customer!(user, :stripe, "cus_current")
+
+    assert {:ok, _} =
+             Stripe.create_checkout_session(user, plan, %{
+               success_url: "https://example.test/ok",
+               cancel_url: "https://example.test/cancel"
+             })
+
+    assert_received {:stripe_post, _, opts}
+    body = URI.decode_query(opts[:body])
+    assert body["customer"] == "cus_current"
+    refute Map.has_key?(body, "customer_email")
+
+    event =
+      checkout_event(user, plan, "paid")
+      |> put_in(["data", "object", "customer"], "cus_historical")
+
+    Process.put(:stripe_subscription_overrides, %{"customer" => "cus_historical"})
+    assert {:ok, _} = Stripe.apply_event(event)
+    assert Billing.get_billing_customer(user, :stripe).external_id == "cus_current"
+    # The current customer's list returns sub_reconcile_123, not this historical ref.
+    assert {:ok, summary} = Stripe.reconcile_subscriptions()
+    assert [%{synced: synced}] = summary.results
+    references = Enum.map(synced, fn {:ok, %{subscription: sub}} -> sub.external_reference end)
+    assert "stripe:sub_pending_test" in references
+    assert Billing.get_billing_customer(user, :stripe).external_id == "cus_current"
   end
 
   defp checkout_event(user, plan, payment_status) do

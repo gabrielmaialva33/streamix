@@ -234,11 +234,23 @@ defmodule Streamix.Billing.Payments do
       if external_id = invoice_attrs[:external_id],
         do: Repo.get_by(Invoice, provider: invoice_attrs.provider, external_id: external_id)
 
-    if not is_nil(existing) and existing.status == "paid" and invoice_attrs.status != "paid" do
-      existing
-    else
-      insert_invoice!(invoice_attrs)
+    cond do
+      invoice_attrs.provider == "stripe" and blank_external_id?(invoice_attrs) ->
+        nil
+
+      preserve_invoice?(existing, invoice_attrs, attrs) ->
+        existing
+
+      true ->
+        insert_invoice!(invoice_attrs)
     end
+  end
+
+  defp preserve_invoice?(nil, _invoice_attrs, _attrs), do: false
+
+  defp preserve_invoice?(existing, invoice_attrs, attrs) do
+    not Map.get(attrs, :invoice_authoritative?, true) or
+      (existing.status == "paid" and invoice_attrs.status != "paid")
   end
 
   defp insert_invoice!(invoice_attrs) do

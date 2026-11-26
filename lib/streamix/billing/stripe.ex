@@ -3,11 +3,15 @@ defmodule Streamix.Billing.Stripe do
   Stripe Checkout and webhook boundary for Streamix billing.
   """
 
+  import Ecto.Query
+
   alias Streamix.Billing
   alias Streamix.Billing.Plan
   alias Streamix.Billing.Stripe.Client
   alias Streamix.Billing.Stripe.EventProcessor
   alias Streamix.Billing.Stripe.Webhook
+  alias Streamix.Billing.Subscription
+  alias Streamix.Repo
 
   def create_checkout_session(%{id: user_id, email: email} = user, %Plan{} = plan, attrs)
       when is_integer(user_id) and is_binary(email) and is_map(attrs) do
@@ -85,7 +89,9 @@ defmodule Streamix.Billing.Stripe do
     case Client.list_subscriptions(secret_key, customer.external_id) do
       {:ok, subscriptions} ->
         synced =
-          Enum.map(subscriptions, &EventProcessor.reconcile(&1["id"], %{id: customer.user_id}))
+          (Enum.map(subscriptions, & &1["id"]) ++ known_subscription_ids(customer.user_id))
+          |> Enum.uniq()
+          |> Enum.map(&EventProcessor.reconcile(&1, %{id: customer.user_id}))
 
         status = if Enum.all?(synced, &match?({:ok, _}, &1)), do: :ok, else: :error
         %{customer_id: customer.id, status: status, synced: synced}
@@ -93,6 +99,18 @@ defmodule Streamix.Billing.Stripe do
       {:error, _reason} ->
         %{customer_id: customer.id, status: :error, reason: :upstream_failed}
     end
+  end
+
+  defp known_subscription_ids(user_id) do
+    from(s in Subscription,
+      where: s.user_id == ^user_id and s.source == "stripe",
+      select: s.external_reference
+    )
+    |> Repo.all()
+    |> Enum.flat_map(fn
+      "stripe:" <> id -> [id]
+      _ -> []
+    end)
   end
 
   defp checkout_form(%{id: user_id, email: email}, %Plan{} = plan, attrs) do
@@ -113,9 +131,17 @@ defmodule Streamix.Billing.Stripe do
       {"success_url", success_url},
       {"cancel_url", cancel_url},
       {"client_reference_id", to_string(user_id)},
-      {"customer_email", email},
       {"line_items[0][quantity]", "1"}
-    ] ++ checkout_line_item(plan) ++ trial_fields(plan) ++ metadata
+    ] ++
+      checkout_customer(user_id, email) ++
+      checkout_line_item(plan) ++ trial_fields(plan) ++ metadata
+  end
+
+  defp checkout_customer(user_id, email) do
+    case Billing.get_billing_customer(%{id: user_id}, :stripe) do
+      %{external_id: customer_id} -> [{"customer", customer_id}]
+      nil -> [{"customer_email", email}]
+    end
   end
 
   defp checkout_line_item(%Plan{stripe_price_id: price_id})

@@ -272,6 +272,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Active Stripe subscriptions grant paid access only with a confirmed current invoice; explicit trials remain supported. Current mapped item prices win over stale checkout metadata, historical customer events cannot replace the portal customer, and invoice records require stable Stripe identity without losing richer invoice details.
+
 - Cold image bursts wait in a bounded queue while only two resizes execute; producer lifetime is tied to the cache manager so restarts cannot accumulate workers.
 
 - Offline consent stays visible across open tabs. A tab with an expired storage session offers an explicit reload instead of silently ignoring a new opt-in.

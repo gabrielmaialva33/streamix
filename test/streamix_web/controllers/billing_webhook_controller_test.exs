@@ -55,6 +55,7 @@ defmodule StreamixWeb.BillingWebhookControllerTest do
           "id" => "sub_controller_test",
           "object" => "subscription",
           "status" => "active",
+          "latest_invoice" => %{"status" => "paid"},
           "current_period_start" => now - 60,
           "current_period_end" => now + 3600,
           "metadata" => %{"user_id" => user.id, "plan_id" => plan.id}
