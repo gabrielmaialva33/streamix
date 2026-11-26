@@ -38,6 +38,22 @@ defmodule Streamix.Security.ClientIpTest do
     end
   end
 
+  test "an IPv4 peer seen through an IPv6 listener matches IPv4 CIDRs" do
+    conn =
+      %{Plug.Test.conn(:get, "/") | remote_ip: {0, 0, 0, 0, 0, 0xFFFF, 0x7F00, 0x0001}}
+      |> put_req_header("x-forwarded-for", "203.0.113.7")
+
+    assert ClientIp.from_conn(conn) == "203.0.113.7"
+  end
+
+  test "an untrusted IPv4-mapped peer is reported as plain IPv4" do
+    conn =
+      %{Plug.Test.conn(:get, "/") | remote_ip: {0, 0, 0, 0, 0, 0xFFFF, 0xCB00, 0x7107}}
+      |> put_req_header("x-forwarded-for", "192.0.2.1")
+
+    assert ClientIp.from_conn(conn) == "203.0.113.7"
+  end
+
   test "invalid CIDRs fail configuration instead of broadening trust" do
     for value <- ["127.0.0.1", "127.0.0.1/33", "::1/129", "not-an-ip/0"] do
       assert_raise ArgumentError, fn -> ClientIp.parse_cidrs!([value]) end

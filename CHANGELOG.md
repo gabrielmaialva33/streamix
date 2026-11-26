@@ -239,7 +239,7 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Security
 
-- Client IP and rate-limit buckets now trust only an explicitly configured `TRUSTED_PROXY_CIDRS` chain, parse from the nearest hop and normalize IPv6. Configure the actual proxy peers before deploying behind a proxy; the default uses only the socket peer.
+- Client IP and rate-limit buckets now trust only an explicitly configured `TRUSTED_PROXY_CIDRS` chain, parse from the nearest hop and normalize IPv6, including IPv4 peers seen as `::ffff:a.b.c.d` by the `::` listener. The production compose trusts loopback and the `shared_network` gateway (the cloudflared hop), overridable from `.env`; elsewhere the default uses only the socket peer.
 
 - Live upstream recovery logs now use opaque content references instead of provider/content keys.
 

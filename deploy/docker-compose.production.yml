@@ -92,6 +92,14 @@ services:
     container_name: streamix
     env_file:
       - ${STREAMIX_ENV_FILE:-.env}
+    environment:
+      # The only way in is cloudflared on the host, through the port published
+      # on 127.0.0.1 below: the container sees it as the shared_network gateway
+      # (172.21.0.1). Trusting exactly that hop lets X-Forwarded-For, which the
+      # Cloudflare edge appends the client address to, name the client. Without
+      # it every visitor shares one rate-limit bucket. Override in .env if the
+      # network or the ingress changes.
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-127.0.0.1/32,::1/128,172.21.0.1/32}
     # Caches that are expensive to rebuild and worthless to lose on deploy:
     # resized images and VOD blocks already pulled from the provider.
     volumes:

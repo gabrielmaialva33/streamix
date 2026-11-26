@@ -4,7 +4,7 @@ defmodule Streamix.Security.ClientIp do
 
   def from_conn(conn) do
     networks = Application.get_env(:streamix, :trusted_proxy_cidrs, [])
-    peer = conn.remote_ip
+    peer = unmap(conn.remote_ip)
 
     ip =
       if trusted?(peer, networks) do
@@ -44,11 +44,20 @@ defmodule Streamix.Security.ClientIp do
     parsed = value |> String.split(",") |> Enum.map(&parse_ip(String.trim(&1)))
 
     if length(parsed) <= 32 and Enum.all?(parsed, &match?({:ok, _}, &1)),
-      do: Enum.map(parsed, &elem(&1, 1)),
+      do: Enum.map(parsed, &unmap(elem(&1, 1))),
       else: []
   end
 
   defp forwarded_chain(_headers), do: []
+  # A listener bound to `::` sees an IPv4 peer as `::ffff:a.b.c.d` (in production
+  # cloudflared reaches the container as ::ffff:172.21.0.1). Compared as IPv6 it
+  # would never match an IPv4 CIDR, and every client would collapse into the
+  # proxy's address.
+  defp unmap({0, 0, 0, 0, 0, 0xFFFF, high, low}),
+    do: {high >>> 8, high &&& 0xFF, low >>> 8, low &&& 0xFF}
+
+  defp unmap(ip), do: ip
+
   defp parse_ip(value), do: value |> to_charlist() |> :inet.parse_strict_address()
   defp width(ip) when tuple_size(ip) == 4, do: 32
   defp width(ip) when tuple_size(ip) == 8, do: 128
