@@ -56,7 +56,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
 
     session
     |> install_authenticated_cookie(user)
-    |> install_media_probe(movie.id)
+    |> install_media_probe(user, movie.id)
     |> visit(~p"/watch/movie/#{movie.id}")
     |> assert_has("body .phx-connected #video-player-container")
     |> assert_player_resumed_once()
@@ -119,7 +119,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
 
     session
     |> install_authenticated_cookie(user)
-    |> install_media_probe(movie.id)
+    |> install_media_probe(user, movie.id)
     |> visit(~p"/watch/movie/#{movie.id}")
     |> assert_has("body .phx-connected #video-player-container")
   end
@@ -149,14 +149,19 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
     end)
   end
 
-  defp install_media_probe(session, content_id) do
+  defp install_media_probe(session, user, content_id) do
+    # Saved positions are namespaced by account and entity (v2 keys); a bare
+    # content id is legacy data the player discards.
+    storage_key =
+      "v2:#{StreamixWeb.Helpers.ClientStorage.scope(%{user: user})}:movie:#{content_id}"
+
     source = """
     (() => {
-      const contentId = #{Jason.encode!(to_string(content_id))};
+      const storageKey = #{Jason.encode!(storage_key)};
       window.__streamixLazyHookDiagnostics = true;
       const positions = {};
-      positions[contentId] = {time: 25, duration: 120, timestamp: Date.now()};
-      localStorage.setItem("streamix_playback_positions", JSON.stringify(positions));
+      positions[storageKey] = {time: 25, duration: 120, timestamp: Date.now()};
+      localStorage.setItem("streamix_playback_positions_v2", JSON.stringify(positions));
 
       Object.defineProperty(navigator, "userAgent", {
         value: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
