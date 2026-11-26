@@ -133,8 +133,14 @@ defmodule StreamixWeb.FavoritesLive do
         phx-hook="OfflineSync"
         data-sync-type="favorites"
         data-sync-data={Jason.encode!(@sync_favorites)}
-        class="hidden"
-      />
+        class="text-sm text-text-secondary"
+      >
+        <label class="flex items-center gap-2">
+          <input type="checkbox" data-offline-opt-in aria-describedby="favorites-offline-help" />
+          Guardar minha lista e histórico neste navegador
+        </label>
+        <p id="favorites-offline-help">Opcional. Os dados offline são apagados ao sair da conta.</p>
+      </div>
 
       <div class="space-y-3">
         <.page_header id="favorites-page-header" title="Minha lista" icon="hero-heart" />

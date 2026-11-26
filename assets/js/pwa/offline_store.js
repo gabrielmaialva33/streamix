@@ -1,13 +1,10 @@
-import { createLogger } from "../core/logger.js";
-
-const log = createLogger("offline_store");
+import { offlineAccountSession } from "./offline_account_session.js";
 
 /**
  * Offline Store - IndexedDB wrapper for offline metadata caching
  * Stores favorites and watch history for offline access
  */
 
-const DB_NAME = "streamix-offline";
 const DB_VERSION = 1;
 
 const STORES = {
@@ -20,6 +17,33 @@ const FAVORITE_TYPES = new Set(["live_channel", "movie", "series", "episode"]);
 const DECIMAL_CONTENT_ID = /^\d{1,19}$/;
 
 let db = null;
+let dbLease = null;
+let unsubscribe = null;
+const transactions = new Set();
+
+function closeDB() {
+  for (const tx of transactions) {
+    try {
+      tx.abort();
+    } catch {}
+  }
+  transactions.clear();
+  db?.close();
+  db = null;
+  dbLease = null;
+}
+
+async function transaction(storeName, mode) {
+  const account = offlineAccountSession();
+  const lease = account.capture();
+  const database = await initDB();
+  account.assert(lease);
+  const tx = database.transaction(storeName, mode);
+  transactions.add(tx);
+  tx.addEventListener?.("complete", () => transactions.delete(tx));
+  tx.addEventListener?.("abort", () => transactions.delete(tx));
+  return { tx, account, lease };
+}
 
 function invalidFavorite(field) {
   return new TypeError(`[OfflineStore] invalid ${field} in favorite snapshot`);
@@ -71,18 +95,37 @@ export function normalizeFavorite(favorite, syncedAt = Date.now()) {
  * Initialize the IndexedDB database
  */
 export async function initDB() {
-  if (db) return db;
+  const account = offlineAccountSession();
+  const lease = account.capture();
+  if (db && dbLease === lease) return db;
+  closeDB();
+  unsubscribe?.();
+  unsubscribe = account.subscribe(closeDB);
   if (typeof indexedDB === "undefined") {
     throw new Error("[OfflineStore] IndexedDB is unavailable");
   }
 
+  const databaseName = account.databaseName();
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    const request = indexedDB.open(databaseName, DB_VERSION);
 
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
-      db = request.result;
-      resolve(db);
+      try {
+        account.assert(lease);
+        // Coalesce handles when concurrent callers opened the same account.
+        if (db && dbLease === lease) request.result.close();
+        else {
+          db = request.result;
+          dbLease = lease;
+          db.onversionchange = closeDB;
+        }
+        resolve(db);
+      } catch (error) {
+        request.result.close();
+        indexedDB.deleteDatabase(databaseName);
+        reject(error);
+      }
     };
 
     request.onupgradeneeded = (event) => {
@@ -122,8 +165,8 @@ export async function initDB() {
  * Save multiple items to a store
  */
 async function saveItems(storeName, items) {
-  await initDB();
-  const tx = db.transaction(storeName, "readwrite");
+  const { tx, account, lease } = await transaction(storeName, "readwrite");
+  account.assert(lease);
   const store = tx.objectStore(storeName);
 
   for (const item of items) {
@@ -131,7 +174,14 @@ async function saveItems(storeName, items) {
   }
 
   return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => {
+      transactions.delete(tx);
+      resolve();
+    };
+    tx.onabort = () => {
+      transactions.delete(tx);
+      reject(tx.error || new Error("Offline session expired"));
+    };
     tx.onerror = () => reject(tx.error);
   });
 }
@@ -140,13 +190,20 @@ async function saveItems(storeName, items) {
  * Get all items from a store
  */
 async function getAllItems(storeName) {
-  await initDB();
-  const tx = db.transaction(storeName, "readonly");
+  const { tx, account, lease } = await transaction(storeName, "readonly");
+  account.assert(lease);
   const store = tx.objectStore(storeName);
   const request = store.getAll();
 
   return new Promise((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result || []);
+    request.onsuccess = () => {
+      try {
+        account.assert(lease);
+        resolve(request.result || []);
+      } catch (error) {
+        reject(error);
+      }
+    };
     request.onerror = () => reject(request.error);
   });
 }
@@ -158,8 +215,8 @@ async function getAllItems(storeName) {
  * reader can observe an empty offline catalog between two transactions.
  */
 async function replaceItems(storeName, items) {
-  await initDB();
-  const tx = db.transaction(storeName, "readwrite");
+  const { tx, account, lease } = await transaction(storeName, "readwrite");
+  account.assert(lease);
   const store = tx.objectStore(storeName);
   store.clear();
 
@@ -168,7 +225,14 @@ async function replaceItems(storeName, items) {
   }
 
   return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => {
+      transactions.delete(tx);
+      resolve();
+    };
+    tx.onabort = () => {
+      transactions.delete(tx);
+      reject(tx.error || new Error("Offline session expired"));
+    };
     tx.onerror = () => reject(tx.error);
   });
 }
@@ -207,13 +271,20 @@ export async function addFavorite(favorite) {
  */
 export async function removeFavorite(contentType, contentId) {
   const key = favoriteKey(contentType, contentId);
-  await initDB();
-  const tx = db.transaction(STORES.FAVORITES, "readwrite");
+  const { tx, account, lease } = await transaction(STORES.FAVORITES, "readwrite");
+  account.assert(lease);
   const store = tx.objectStore(STORES.FAVORITES);
   store.delete(key);
 
   await new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => {
+      transactions.delete(tx);
+      resolve();
+    };
+    tx.onabort = () => {
+      transactions.delete(tx);
+      reject(tx.error || new Error("Offline session expired"));
+    };
     tx.onerror = () => reject(tx.error);
   });
 
@@ -273,14 +344,21 @@ export async function cacheMetadata(type, id, data) {
  * Get cached content metadata
  */
 export async function getMetadata(type, id) {
-  await initDB();
-  const tx = db.transaction(STORES.METADATA, "readonly");
+  const { tx, account, lease } = await transaction(STORES.METADATA, "readonly");
+  account.assert(lease);
   const store = tx.objectStore(STORES.METADATA);
   const key = `${type}:${id}`;
   const request = store.get(key);
 
   return new Promise((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result?.data || null);
+    request.onsuccess = () => {
+      try {
+        account.assert(lease);
+        resolve(request.result?.data || null);
+      } catch (error) {
+        reject(error);
+      }
+    };
     request.onerror = () => reject(request.error);
   });
 }
@@ -312,9 +390,4 @@ export async function getStats() {
     metadata: metadata.length,
     lastSync: favorites[0]?.synced_at || null,
   };
-}
-
-// Auto-initialize only in browser contexts that expose IndexedDB.
-if (typeof indexedDB !== "undefined") {
-  initDB().catch((err) => log.warn("[OfflineStore] Init failed:", err));
 }

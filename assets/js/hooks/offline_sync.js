@@ -13,6 +13,7 @@ const log = createLogger("offline_sync");
  *   - data-sync-data: JSON encoded data to sync
  */
 
+import { offlineAccountSession } from "../pwa/offline_account_session.js";
 import {
   addFavorite,
   removeFavorite,
@@ -26,6 +27,27 @@ const OfflineSync = {
   mounted() {
     this.syncType = this.el.dataset.syncType;
     this.lastSyncedData = null;
+    this.optIn = this.el.querySelector?.("[data-offline-opt-in]");
+    try {
+      this.account = offlineAccountSession();
+    } catch {
+      this.account = null;
+    }
+    const renderChoice = () => {
+      if (this.optIn) this.optIn.checked = this.account?.enabled() || false;
+    };
+    renderChoice();
+    this.unsubscribeAccount = this.account?.subscribe(renderChoice);
+    this.onOptIn = () => {
+      try {
+        this.account?.setEnabled(this.optIn.checked);
+        this.lastSyncedData = null;
+        this.syncFromServer();
+      } catch {
+        renderChoice();
+      }
+    };
+    this.optIn?.addEventListener("change", this.onOptIn);
 
     // Initial sync from server data
     this.syncFromServer();
@@ -53,12 +75,15 @@ const OfflineSync = {
   },
 
   destroyed() {
+    this.optIn?.removeEventListener("change", this.onOptIn);
+    this.unsubscribeAccount?.();
     window.removeEventListener("online", this.handleOnline);
     window.removeEventListener("offline", this.handleOffline);
     window.removeEventListener(OFFLINE_SYNC_RETRY_EVENT, this.handleRetry);
   },
 
   async syncFromServer() {
+    if (!this.account?.enabled()) return;
     const dataAttr = this.el.dataset.syncData;
     if (!dataAttr || dataAttr === this.lastSyncedData) return;
     this.lastSyncedData = dataAttr;
@@ -91,6 +116,7 @@ const OfflineSync = {
   },
 
   async onFavoriteAdd(data) {
+    if (!this.account?.enabled()) return;
     try {
       await addFavorite(data);
       // stored
@@ -100,6 +126,7 @@ const OfflineSync = {
   },
 
   async onFavoriteRemove({ content_type, content_id }) {
+    if (!this.account?.enabled()) return;
     try {
       await removeFavorite(content_type, content_id);
       // removed
@@ -109,6 +136,7 @@ const OfflineSync = {
   },
 
   async onHistoryUpdate(data) {
+    if (!this.account?.enabled()) return;
     try {
       await upsertHistory(data);
       // updated

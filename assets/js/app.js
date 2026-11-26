@@ -5,9 +5,16 @@ import { startLiveView } from "./bootstrap/live_view.js";
 import { installMobileDebug } from "./bootstrap/mobile_debug.js";
 import { installPosterFallback } from "./bootstrap/poster_fallback.js";
 import { installPlaybackIntent } from "./player/playback_intent.js";
+import { installOfflineAccountSession } from "./pwa/offline_account_session.js";
 import { installPwaRuntime } from "./pwa/runtime.js";
 import { registerServiceWorker } from "./pwa/service_worker.js";
 import { installHomeStuckDiagnostics } from "./telemetry/home_stuck.js";
+
+try {
+  installOfflineAccountSession();
+} catch {
+  /* Private persistence stays disabled when storage is unavailable. */
+}
 
 installPosterFallback();
 installPlaybackIntent();

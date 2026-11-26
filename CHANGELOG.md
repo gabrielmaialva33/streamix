@@ -270,6 +270,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Offline favorites/history now require explicit browser opt-in, use an opaque account namespace, and are removed on logout or account switch; late writes and stale tabs cannot repopulate them.
+
 - Player resume positions and track choices now use account and media-type namespaces; ambiguous legacy positions are discarded while device volume is preserved.
 
 - The episode dialog now moves and contains keyboard focus, makes background controls inert, and restores focus on close or player teardown.

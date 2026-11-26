@@ -144,8 +144,14 @@ defmodule StreamixWeb.HistoryLive do
         phx-hook="OfflineSync"
         data-sync-type="history"
         data-sync-data={Jason.encode!(@sync_history)}
-        class="hidden"
-      />
+        class="text-sm text-text-secondary"
+      >
+        <label class="flex items-center gap-2">
+          <input type="checkbox" data-offline-opt-in aria-describedby="history-offline-help" />
+          Guardar minha lista e histórico neste navegador
+        </label>
+        <p id="history-offline-help">Opcional. Os dados offline são apagados ao sair da conta.</p>
+      </div>
 
       <div class="space-y-3">
         <.page_header id="history-page-header" title="Histórico" icon="hero-clock" />

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { installOfflineAccountSession } from "../pwa/offline_account_session.js";
 import {
   favoriteKey,
   normalizeFavorite,
@@ -80,12 +81,14 @@ test("removes a favorite by its composite key without scanning the store", async
     },
   };
   const database = {
+    close() {},
     transaction() {
       return transaction;
     },
   };
 
   globalThis.indexedDB = {
+    deleteDatabase() {},
     open() {
       const request = { result: database };
       queueMicrotask(() => request.onsuccess?.());
@@ -96,7 +99,68 @@ test("removes a favorite by its composite key without scanning the store", async
     delete globalThis.indexedDB;
   });
 
+  const values = new Map();
+  const session = installOfflineAccountSession({
+    storage: {
+      getItem: (key) => values.get(key),
+      setItem: (key, value) => values.set(key, value),
+      removeItem: (key) => values.delete(key),
+    },
+    documentRef: { querySelector: () => ({ content: "a".repeat(43) }), addEventListener() {} },
+    windowRef: new EventTarget(),
+    indexedDB: globalThis.indexedDB,
+  });
+  session.setEnabled(true);
+  t.after(() => session.logout());
   assert.equal(await removeFavorite("movie", "00042"), true);
   assert.equal(deletedKey, "movie:42");
   assert.equal(cursorOpened, false);
+});
+
+test("logout during an IDB open closes the late handle without writing or recreating personal data", async (t) => {
+  const values = new Map();
+  const opened = [];
+  const deleted = [];
+  let writes = 0;
+  let closes = 0;
+  const idb = {
+    deleteDatabase: (name) => deleted.push(name),
+    open(name) {
+      const request = {
+        result: {
+          close: () => closes++,
+          transaction: () => {
+            writes++;
+            throw new Error("must not write");
+          },
+        },
+      };
+      opened.push({ name, request });
+      return request;
+    },
+  };
+  globalThis.indexedDB = idb;
+  t.after(() => {
+    delete globalThis.indexedDB;
+  });
+  const session = installOfflineAccountSession({
+    storage: {
+      getItem: (key) => values.get(key),
+      setItem: (key, value) => values.set(key, value),
+      removeItem: (key) => values.delete(key),
+    },
+    documentRef: { querySelector: () => ({ content: "b".repeat(43) }), addEventListener() {} },
+    windowRef: new EventTarget(),
+    indexedDB: idb,
+  });
+  session.setEnabled(true);
+  const pending = syncFavorites([{ content_type: "movie", content_id: 42 }]);
+  const rejected = assert.rejects(pending, /expired/);
+  assert.equal(opened.length, 1);
+  session.logout();
+  opened[0].request.onsuccess();
+  await rejected;
+  assert.equal(writes, 0);
+  assert.equal(closes, 1);
+  assert.ok(deleted.includes(opened[0].name));
 });
