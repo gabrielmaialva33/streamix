@@ -34,6 +34,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
   import StreamixWeb.ConnCase, only: [log_in_user: 2]
 
   alias PlaywrightEx.BrowserContext
+  alias StreamixWeb.Helpers.ClientStorage
 
   setup do
     {:ok, server} =
@@ -153,7 +154,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
     # Saved positions are namespaced by account and entity (v2 keys); a bare
     # content id is legacy data the player discards.
     storage_key =
-      "v2:#{StreamixWeb.Helpers.ClientStorage.scope(%{user: user})}:movie:#{content_id}"
+      "v2:#{ClientStorage.scope(%{user: user})}:movie:#{content_id}"
 
     source = """
     (() => {

@@ -13,9 +13,12 @@ const budgets = {
   eagerJsGzip: Number(process.env.ASSET_BUDGET_EAGER_JS_GZIP || 64 * 1024),
   totalJsGzip: Number(process.env.ASSET_BUDGET_TOTAL_JS_GZIP || 640 * 1024),
   // Shared browser predicates, async primitives and the wrapper emitter add
-  // three small chunks over the 37-file base. Keep the measured 40-file cap;
-  // byte budgets above are unchanged (the hook/wrapper extractions add no chunks).
-  reachableJsFiles: Number(process.env.ASSET_BUDGET_REACHABLE_JS_FILES || 40),
+  // three small chunks over the 37-file base. The offline account session adds
+  // one more: app.js must load it at boot (logout and account switches purge
+  // private offline data even when no offline hook mounts) and the lazy offline
+  // hooks share it, so esbuild gives it its own chunk. Keep the measured 41-file
+  // cap; byte budgets above are unchanged.
+  reachableJsFiles: Number(process.env.ASSET_BUDGET_REACHABLE_JS_FILES || 41),
 };
 
 function gzipSize(file) {
